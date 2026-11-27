@@ -92,7 +92,6 @@ h1, h2, h3 { font-family: var(--display); line-height: 1.05; }
 .brand-copy { display: grid; }
 .brand-copy, .brand-copy strong, .brand-name { font: 700 1.35rem/1 var(--display); }
 .brand-copy small { margin-top: .25rem; color: var(--muted); }
-.header-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: .65rem; }
 .game-main { flex: 1; width: min(calc(100% - 2.5rem), 75rem); margin-inline: auto; padding-block: 1.8rem 3.5rem; }
 
 .eyebrow, .chip, .card-type, .critter-role {
@@ -173,6 +172,9 @@ img.hero-art { mask-image: linear-gradient(90deg, transparent, #000 24%); }
 .critter-grid:has(> :nth-child(5)) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .cousin-roster { margin-bottom: 1.5rem; }
 .cousin-roster .critter-art img { object-position: center 20%; }
+.familiar-option { display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
+.familiar-option .critter-card { flex: 1; }
+.familiar-option .button[aria-pressed='true'] { border-color: var(--lime); color: var(--lime); }
 .critter-card {
   position: relative;
   display: flex;
@@ -189,9 +191,6 @@ img.hero-art { mask-image: linear-gradient(90deg, transparent, #000 24%); }
   box-shadow: 0 .45rem .9rem #07110b45;
   transition: border-color .16s ease, transform .16s ease, box-shadow .16s ease;
 }
-.familiar-option { display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
-.familiar-option .critter-card { flex: 1; }
-.familiar-option .button[aria-pressed='true'] { border-color: var(--lime); color: var(--lime); }
 button.critter-card:hover:not(:disabled), .critter-card[aria-pressed='true'], .critter-card.is-selected {
   transform: translateY(-3px);
   border-color: var(--lime);
@@ -218,14 +217,7 @@ img.critter-art { height: auto; }
 .battle-head { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin: .25rem 0 1.15rem; }
 .battle-head h1 { margin: .2rem 0; font-size: clamp(2rem, 4vw, 3.75rem); letter-spacing: -.045em; }
 .fight-heading h1 { font-size: clamp(1.8rem, 4vw, 3.25rem); }
-.battle-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(15rem, .32fr);
-  gap: .85rem;
-  align-items: start;
-  margin-top: .85rem;
-}
-.battlefield, .battle-sidebar, .hand-panel, .reward-panel, .end-panel {
+.battlefield, .hand-panel, .reward-panel, .end-panel {
   min-width: 0;
   padding: 1rem;
   border: 1px solid var(--line);
@@ -239,13 +231,11 @@ img.critter-art { height: auto; }
     repeating-radial-gradient(ellipse at 90% 5%, transparent 0 1.6rem, #b3ca8a07 1.65rem 1.7rem, transparent 1.75rem 2.4rem),
     linear-gradient(145deg, #254733, #172a20 85%);
 }
-body[data-battle-area] :is(.battlefield, .battle-sidebar, .hand-panel) { background: #12251beb; }
 body[data-battle-area] .fight-heading { text-shadow: 0 2px 8px #0a160d; }
 .rival-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem .85rem; }
 .rival-heading h2 { color: var(--coral); font-size: 1.4rem; }
 .rival-heading p { color: var(--paper); font-size: .92rem; }
-.battle-sidebar { display: grid; gap: .8rem; }
-.battle-sidebar h2, .hand-heading h2 { font-size: 1.35rem; }
+.hand-heading h2 { font-size: 1.35rem; }
 .combat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: .65rem; }
 .unit-card {
   position: relative;
@@ -369,15 +359,12 @@ img.unit-art { width: 34%; }
 .end-panel h1 { font-size: clamp(2.65rem, 6vw, 5rem); letter-spacing: -.045em; }
 
 @media (max-width: 54rem) {
-  .battle-grid { grid-template-columns: minmax(0, 1fr); }
   .critter-grid:has(> :nth-child(5)) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 38rem) {
   .site-header, .game-main { width: calc(100% - 1.5rem); }
   .site-header { display: grid; min-height: 0; gap: .6rem; padding-block: .6rem; }
-  .header-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .35rem; }
-  .header-actions .button { min-width: 0; padding: .4rem .2rem; font-size: .8rem; }
   .game-main { padding-top: 1rem; }
   .hero { min-height: 16rem; grid-template-columns: minmax(0, 1fr); }
   .hero-copy { align-self: end; padding: 1.2rem; }
@@ -394,7 +381,7 @@ img.unit-art { width: 34%; }
   .unit-info { padding: .45rem; }
   .battle-log h2 { font-size: 1rem; }
   .hand-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .battlefield, .battle-sidebar, .hand-panel { padding: .65rem; }
+  .battlefield, .hand-panel { padding: .65rem; }
   .turn-actions .button-primary { flex: 1; }
 }
 
@@ -666,22 +653,10 @@ button.level-choice:hover:not(:disabled), .level-choice[aria-pressed='true'], .l
 .level-choice strong { color: var(--lime); }
 .reward-label { margin: 1rem 0 .5rem; font-size: 1.05rem; }
 .reward-status { margin-top: .65rem; color: var(--lime); }
-.app-footer {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  width: min(calc(100% - 2.5rem), 75rem);
-  margin: 0 auto;
-  padding-block: 1rem;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-size: .8rem;
-}
-
 @media (max-width: 38rem) {
-  .app-footer { width: calc(100% - 1.5rem); }
   .critter-badge { inset: .4rem .4rem auto auto; }
 }
+
 body:not([data-battle-area]) { isolation: isolate; }
 body:not([data-battle-area])::before {
   content: '';
@@ -691,4 +666,252 @@ body:not([data-battle-area])::before {
   background: linear-gradient(180deg, #07130eae, #07130e55 42%, #07130e9c),
     url('assets/creepy-woods.webp') center 48% / cover no-repeat;
   pointer-events: none;
+}
+
+/* The viewport is the game screen. Long lists scroll inside their own scene. */
+.app-shell { height: 100dvh; min-height: 0; overflow: hidden; }
+.site-header {
+  position: relative;
+  z-index: 12;
+  min-height: 0;
+  flex: none;
+  padding-block: .4rem;
+  border-bottom-color: #72977d45;
+}
+.brand-mark { width: 2rem; height: 2rem; }
+.brand-copy { font-size: 1.2rem; }
+.game-menu, .combat-info { position: relative; }
+.game-menu summary, .combat-info summary { list-style: none; white-space: nowrap; }
+.game-menu summary { padding: .3rem .65rem; }
+.game-menu summary::-webkit-details-marker, .combat-info summary::-webkit-details-marker { display: none; }
+.game-menu-panel, .combat-info-panel {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + .4rem);
+  right: 0;
+  display: grid;
+  gap: .55rem;
+  width: min(24rem, 90vw);
+  max-height: 68dvh;
+  overflow: auto;
+  padding: .8rem;
+  border: 1px solid var(--action-line);
+  border-radius: .65rem;
+  background: var(--forest-deep);
+  box-shadow: 0 .8rem 2rem #08110caa;
+}
+.game-menu-panel > .button { text-align: left; }
+.game-menu-panel #run-tools:empty { display: none; }
+.game-menu-panel .save-controls { margin-bottom: .35rem; }
+.game-main {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  padding: 0;
+}
+.game-stage { min-height: 0; overflow: auto; padding: .85rem .25rem 1.2rem; overscroll-behavior: contain; scrollbar-width: thin; }
+.game-stage[data-scene='combat'] { overflow: hidden; padding: 0; }
+.game-main > .feedback {
+  position: absolute;
+  z-index: 15;
+  top: .35rem;
+  left: 50%;
+  width: max-content;
+  max-width: 85%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.game-main > .feedback:not(:empty) {
+  padding: .45rem .7rem;
+  border: 1px solid var(--action-line);
+  border-radius: .4rem;
+  background: var(--forest-deep);
+}
+.game-stage .hero { min-height: clamp(12rem, 36dvh, 23rem); }
+.game-stage .area-overview { min-height: clamp(9rem, 27dvh, 16rem); }
+.current-route { margin: 0 0 .85rem; max-width: none; padding: 0; border: 1px solid var(--line); }
+.current-route::before, .current-route .route-options::before, .current-route .route-options::after { display: none; }
+.current-route .route-options { max-width: none; gap: .65rem; }
+.current-route .trail-rung { padding: .8rem; }
+.campaign-map { padding: .65rem .8rem; border: 1px solid var(--line); border-radius: .6rem; background: var(--forest-deep); }
+.act-levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); gap: .35rem; margin: .65rem 0 0; padding: 0; list-style: none; }
+.act-levels li { display: flex; min-width: 0; gap: .35rem; padding: .25rem .4rem; border: 1px solid var(--line); border-radius: .3rem; color: var(--muted); font-size: .8rem; }
+.act-levels [aria-current] { border-color: var(--gold); color: var(--paper); }
+
+.combat-screen { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; }
+.combat-screen .fight-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .45rem .25rem; }
+.combat-screen .fight-heading h1 { font-size: clamp(1.2rem, 2.7vw, 2rem); margin-top: .1rem; }
+.combat-screen .fight-heading .eyebrow { font-size: .8rem; }
+.combat-info { z-index: 9; }
+.combat-info-panel { width: min(28rem, 90vw); }
+.combat-info-panel h2 { font-size: 1.15rem; }
+.compact-card-text { display: none; }
+.compact-card-text ul { margin: .4rem 0 0; padding-left: 1.2rem; font-size: .83rem; }
+.combat-info-panel .companion-battle, .combat-info-panel .secondary-hand { margin-top: 0; }
+.arena-scroll {
+  display: flex;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: .4rem .3rem;
+}
+.combat-screen .battlefield {
+  width: min(100%, 59rem);
+  margin: auto;
+  padding: .65rem;
+  border-color: #72977d68;
+  background: #10201893;
+}
+.combat-screen .rival-heading { min-height: 2rem; align-items: center; }
+.combat-screen .rival-heading .button { padding: .2rem .5rem; }
+.combat-screen .rival-card {
+  border-color: #a18a62;
+  background: linear-gradient(130deg, #29231bec, #171e17f2);
+  box-shadow: 0 .35rem 1.2rem #080c08a0;
+}
+.combat-screen :is(.is-drag-aiming, .is-choosing-target) .rival-card:not(:disabled) { border-color: var(--lime); }
+.combat-screen .rival-card .unit-art { width: 42%; min-height: clamp(7rem, 26dvh, 14rem); }
+.combat-screen .rival-card .unit-name { font-size: clamp(1.15rem, 2.4vw, 1.85rem); }
+.combat-screen .hand-panel {
+  gap: .35rem;
+  padding: .55rem .7rem max(.45rem, env(safe-area-inset-bottom));
+  border-radius: .7rem .7rem 0 0;
+  border-color: #72977d80;
+  background: linear-gradient(160deg, #1d3326, #101d16 70%);
+  box-shadow: 0 -.4rem 1.5rem #08150d75;
+}
+.combat-screen .hand-heading { flex-direction: row; align-items: center; gap: .5rem; }
+.hud-portrait { display: block; flex: none; width: 2.65rem; height: 2.65rem; overflow: hidden; border: 1px solid var(--gold); border-radius: .45rem; }
+.hud-portrait img { width: 100%; height: 100%; object-fit: cover; object-position: center 26%; }
+.hud-familiar { flex: 1; min-width: 0; }
+.hud-familiar h2 { font-size: clamp(.95rem, 2vw, 1.4rem); }
+.hud-familiar .turn-details { color: var(--paper); font-size: .78rem; }
+.combat-screen .turn-energy { flex: none; font-size: .9rem; white-space: nowrap; }
+.combat-screen .hand-heading [data-do='end'] { flex: none; border-color: var(--gold); white-space: nowrap; }
+.combat-screen .turn-instructions { font-size: .77rem; }
+.hud-instructions { display: flex; align-items: center; justify-content: space-between; gap: .3rem; }
+.hud-instructions .button { padding: .12rem .4rem; font-size: .75rem; white-space: nowrap; }
+.is-choosing-target .hud-instructions { justify-content: flex-end; }
+.is-choosing-target .hud-instructions p { display: none; }
+.combat-screen .combat-hand {
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: clamp(8.25rem, 15vw, 11rem);
+  justify-content: safe center;
+  gap: .5rem;
+  overflow-x: auto;
+  padding: .25rem;
+  scrollbar-width: thin;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: .25rem;
+}
+.combat-screen .combat-hand .play-card {
+  gap: .35rem;
+  min-height: 7.3rem;
+  padding: .5rem;
+  scroll-snap-align: start;
+  background: linear-gradient(155deg, #344738, #152219);
+}
+.combat-screen .combat-hand .card-title { font-size: 1rem; }
+.combat-screen .combat-hand .card-effect { font-size: .74rem; }
+.combat-screen .combat-actions { justify-content: space-between; gap: .35rem; margin: 0; }
+.combat-screen .combat-actions .button { padding: .25rem .5rem; font-size: .77rem; }
+.combat-screen .hand-counts:last-child { margin-left: auto; }
+.hand-pagination { display: flex; gap: .2rem; }
+.hand-pagination .button { padding: .08rem .45rem; font-size: 1.25rem; line-height: 1.2; }
+.combat-hand .muted { grid-column: 1/-1; min-width: max-content; }
+.attack-preview { width: max-content; max-width: min(14rem, 100vw); }
+
+@media (max-width: 38rem) {
+  .site-header, .game-main { width: calc(100% - .8rem); }
+  .site-header { display: flex; flex-direction: row; align-items: center; }
+  .game-stage { padding-top: .5rem; }
+  .game-stage .hero-copy { padding: .9rem; }
+  .game-stage .area-overview { min-height: 8.5rem; }
+  .current-route .route-options { gap: .35rem; }
+  .current-route .route-option { padding: .5rem; }
+  .combat-screen .fight-heading { padding-block: .3rem; }
+  .combat-screen .fight-heading .button { padding: .25rem .45rem; font-size: .76rem; }
+  .combat-screen .battlefield { padding: .35rem; gap: .3rem; }
+  .combat-screen .rival-heading { gap: .3rem; }
+  .combat-screen .rival-heading h2 { font-size: .95rem; }
+  .combat-screen .rival-heading p { font-size: .72rem; }
+  .combat-screen .rival-card .unit-art { width: 100%; height: clamp(2.5rem, 10dvh, 5.2rem); min-height: 0; }
+  .combat-screen .rival-card .unit-info { gap: .18rem; padding: .3rem; }
+  .combat-screen .rival-card .unit-info > :not(.unit-name, .health-bar, .rival-aim-label) { font-size: .68rem; }
+  .combat-screen .hand-panel { padding-inline: .4rem; }
+  .combat-screen .hand-heading { gap: .3rem; }
+  .combat-screen .hand-heading [data-do='end'], .combat-screen .turn-energy { padding: .26rem .35rem; font-size: .76rem; }
+  .hud-portrait { width: 1.85rem; height: 1.85rem; }
+  .combat-screen .combat-hand { grid-auto-columns: clamp(5.4rem, 29vw, 8.4rem); gap: .35rem; }
+  .combat-screen .combat-hand .play-card { padding: .3rem; gap: .25rem; }
+  .combat-screen .combat-hand .card-title { font-size: .9rem; }
+  .combat-screen .combat-hand .card-effect { font-size: .68rem; }
+  .combat-screen .combat-hand .card-type { font-size: .65rem; }
+  .combat-screen .card-cost { width: 1.2rem; height: 1.2rem; font-size: .82rem; }
+  .combat-screen .hand-counts { font-size: .68rem; }
+}
+
+@media (max-height: 480px) {
+  .compact-card-text { display: block; }
+  .combat-screen .combat-actions .hand-counts, .combat-screen .combat-actions:not(:has(.button)) { display: none; }
+  .combat-screen .combat-hand .play-card { min-height: 5.6rem; }
+  .combat-screen .combat-hand .card-effect { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.2; }
+  .combat-screen .hand-panel { gap: .2rem; }
+  .combat-screen .turn-instructions { font-size: .7rem; line-height: 1.2; }
+}
+
+@media (max-width: 38rem) and (max-height: 480px) {
+  .site-header { padding-block: .2rem; }
+  .combat-screen .rival-card { flex-direction: row; }
+  .combat-screen .rival-card .unit-art { width: 2.25rem; min-width: 0; height: auto; }
+  .combat-screen .rival-heading { min-height: 1.25rem; }
+}
+
+@media (min-width: 62rem) {
+  .hand-panel:not(:has(.combat-hand .play-card:nth-child(7))) .hand-pagination { display: none; }
+}
+
+.setup-actions {
+  position: sticky;
+  z-index: 2;
+  top: .15rem;
+  margin-block: .65rem;
+  padding: .35rem;
+  border: 1px solid var(--line);
+  border-radius: .45rem;
+  background: var(--forest-deep);
+}
+.setup-actions h3 { margin-inline-end: auto; }
+.creature-library { margin-top: .7rem; }
+.creature-library .roster-filters { margin-top: .65rem; }
+
+.game-stage .title-screen {
+  min-height: 100%;
+  grid-template-columns: 1fr;
+  align-items: center;
+  background: var(--forest-deep);
+}
+.title-screen img.hero-art {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  grid-area: auto;
+  width: 100%;
+  object-position: center 46%;
+  mask-image: linear-gradient(90deg, transparent, #000 72%);
+}
+.title-screen .hero-copy { padding: clamp(1.2rem, 6vw, 5rem); }
+.title-screen .hero-copy h1 { max-width: 10ch; margin-top: 0; }
+.title-screen .mode-picker { display: grid; width: min(100%, 17rem); }
+.title-screen .mode-picker .button { text-align: left; background: #132a20e8; border-color: var(--action-line); }
+.title-screen .mode-picker .button:hover { background: var(--action-hover); }
+.setup-screen > h1 { font-size: clamp(1.6rem, 4vw, 2.75rem); }
+
+@media (max-width: 38rem) {
+  .game-stage .title-screen { align-items: end; }
+  .title-screen img.hero-art { object-position: 66% top; mask-image: linear-gradient(0deg, transparent, #000 70%); }
+  .title-screen .hero-copy { padding: 1.2rem; }
 }
