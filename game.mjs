@@ -1,8 +1,8 @@
 export const COUSINS = {
-  hudson: { id: 'hudson', name: 'Hudson', role: 'Tank', maxHp: 48, signature: 'shieldWall' },
-  quinn: { id: 'quinn', name: 'Quinn', role: 'Witch', maxHp: 30, signature: 'witchHex' },
-  alba: { id: 'alba', name: 'Alba', role: 'Bard', maxHp: 32, signature: 'cuttingChorus' },
-  tita: { id: 'tita', name: 'Tita', role: 'Trickster', maxHp: 19, signature: 'secretStar' },
+  hudson: { id: 'hudson', name: 'Hudson', role: 'Tank', maxHp: 45, type: 'stone', signature: 'shieldWall' },
+  quinn: { id: 'quinn', name: 'Quinn', role: 'Witch', maxHp: 34, type: 'ember', signature: 'witchHex' },
+  alba: { id: 'alba', name: 'Alba', role: 'Bard', maxHp: 32, type: 'grove', signature: 'cuttingChorus' },
+  tita: { id: 'tita', name: 'Tito', role: 'Trickster', maxHp: 35, type: 'tide', signature: 'secretStar' },
 };
 
 export const CRITTERS = {
@@ -18,8 +18,8 @@ export const CRITTERS = {
 };
 
 export const CARDS = {
-  shieldWall: { id: 'shieldWall', name: 'Shield Wall', cost: 1, type: 'support', target: 'none', block: 10, allyBlock: 8 },
-  witchHex: { id: 'witchHex', name: 'Witch’s Hex', cost: 1, type: 'support', target: 'enemy', vulnerable: 1, frail: 1 },
+  shieldWall: { id: 'shieldWall', name: 'Shield Wall', cost: 1, type: 'support', target: 'none', block: 8, allyBlock: 7 },
+  witchHex: { id: 'witchHex', name: 'Witch’s Hex', cost: 1, type: 'support', target: 'enemy', vulnerable: 1, frail: 1, block: 4 },
   cuttingChorus: { id: 'cuttingChorus', name: 'Cutting Chorus', cost: 'X', type: 'attack', target: 'enemy', damage: 5 },
   secretStar: { id: 'secretStar', name: 'Secret Star', cost: 3, type: 'attack', target: 'enemy', damage: 22, pierce: true },
   strike: { id: 'strike', name: 'Claw Strike', cost: 1, type: 'attack', target: 'enemy', damage: 6 },
@@ -73,7 +73,7 @@ const WOODLAND_RECRUITS = [
   {
     id: 'mouse', name: 'Tallow', role: 'Scout', maxHp: 29, wins: 3,
     description: 'Finds a narrow path through the dark and shows an ally the way.',
-    card: { name: 'Narrow Escape', cost: 0, block: 3, allyBlock: 3 },
+    card: { name: 'Narrow Escape', cost: 0, block: 2, allyBlock: 2 },
   },
   {
     id: 'squirrel', name: 'Hazel', role: 'Supplier', maxHp: 32, wins: 4,
@@ -83,17 +83,17 @@ const WOODLAND_RECRUITS = [
   {
     id: 'frog', name: 'Fen', role: 'Medic', maxHp: 34, wins: 5,
     description: 'Carries the healing waters of the shadow marsh.',
-    card: { name: 'Marsh Chorus', cost: 1, heal: 3, allyHeal: 5 },
+    card: { name: 'Marsh Chorus', cost: 1, heal: 2, allyHeal: 4 },
   },
   {
-    id: 'weasel', name: 'Nim', role: 'Skirmisher', maxHp: 30, wins: 6,
+    id: 'weasel', name: 'Nim', role: 'Skirmisher', maxHp: 35, wins: 6,
     description: 'Darts in under a raised guard and strikes first.',
     card: { name: 'Slip Through', cost: 0, damage: 4, pierce: true },
   },
   {
     id: 'hedgehog', name: 'Clover', role: 'Guardian', maxHp: 37, wins: 7,
     description: 'Curls around a companion when the brambles close in.',
-    card: { name: 'Bramble Curl', cost: 1, block: 5, allyBlock: 10 },
+    card: { name: 'Bramble Curl', cost: 1, block: 5, allyBlock: 8 },
   },
   {
     id: 'bat', name: 'Echo', role: 'Seer', maxHp: 31, wins: 7,
@@ -126,7 +126,7 @@ const WOODLAND_RECRUITS = [
     card: { name: 'Quill Volley', cost: 1, damage: 6, block: 5 },
   },
   {
-    id: 'skunk', name: 'Spore', role: 'Seer', maxHp: 34, wins: 11,
+    id: 'skunk', name: 'Spore', role: 'Seer', maxHp: 38, wins: 11,
     description: 'Breaks an enemy’s composure and covers a friend’s retreat.',
     card: { name: 'Twilight Cloud', cost: 1, mark: true, block: 5, allyBlock: 4 },
   },
@@ -141,9 +141,9 @@ const WOODLAND_RECRUITS = [
     card: { name: 'Palisade', cost: 2, block: 12, allyBlock: 13 },
   },
   {
-    id: 'turtle', name: 'Loam', role: 'Guardian', maxHp: 44, wins: 14,
+    id: 'turtle', name: 'Loam', role: 'Guardian', maxHp: 42, wins: 14,
     description: 'Endures the heaviest blows and draws strength from the earth.',
-    card: { name: 'Old Shell', cost: 1, block: 10, heal: 2 },
+    card: { name: 'Old Shell', cost: 1, block: 8, heal: 2 },
   },
   {
     id: 'salamander', name: 'Cinder', role: 'Medic', maxHp: 33, wins: 15,
@@ -176,7 +176,7 @@ const WOODLAND_RECRUITS = [
     card: { name: 'Mountain Sweep', cost: 3, damage: 22, allyBlock: 7 },
   },
   {
-    id: 'wolverine', name: 'Grit', role: 'Hunter', maxHp: 39, clears: 4,
+    id: 'wolverine', name: 'Grit', role: 'Hunter', maxHp: 42, clears: 4,
     description: 'Finds the strength for one last blow at the end of the hunt.',
     card: { name: 'Last Bite', cost: 3, damage: 19, woundedBonus: 7, heal: 4 },
   },
@@ -192,6 +192,34 @@ for (const { id, name, role, maxHp, description, card, wins, clears } of WOODLAN
     target: card.damage || card.mark ? 'enemy' : 'none',
   };
   CRITTER_UNLOCKS[id] = clears ? { kind: 'clears', count: clears } : { kind: 'wins', count: wins };
+}
+
+export const TYPES = {
+  ember: { name: 'Ember', strongAgainst: 'grove' },
+  grove: { name: 'Grove', strongAgainst: 'tide' },
+  tide: { name: 'Tide', strongAgainst: 'stone' },
+  stone: { name: 'Stone', strongAgainst: 'ember' },
+};
+
+const typeAnimals = {
+  ember: ['fox', 'boar', 'salamander', 'bear', 'coyote', 'wolverine', 'weasel'],
+  grove: ['hare', 'hedgehog', 'stag', 'squirrel', 'mouse', 'moth', 'porcupine'],
+  tide: ['otter', 'frog', 'heron', 'turtle', 'beaver', 'viper', 'raccoon', 'magpie'],
+  stone: ['badger', 'owl', 'wolf', 'bat', 'crow', 'mole', 'skunk', 'lynx'],
+};
+
+for (const [type, animals] of Object.entries(typeAnimals)) {
+  for (const animal of animals) CRITTERS[animal].type = type;
+}
+
+export function matchup(attackerType, defenderType) {
+  if (TYPES[attackerType]?.strongAgainst === defenderType) return 1.5;
+  if (TYPES[defenderType]?.strongAgainst === attackerType) return 0.75;
+  return 1;
+}
+
+function typedDamage(amount, attackerType, defenderType) {
+  return Math.floor(amount * matchup(attackerType, defenderType));
 }
 
 const MARK_DAMAGE = 3;
@@ -217,6 +245,23 @@ function describeCard(card, attackBonus) {
   const effect = sentences.join(' ');
   if (card.cost !== 'X') return effect;
   return `Spend all remaining energy and repeat for each energy spent. ${effect}${card.damage ? ' Extra hits move to the next rival.' : ''}`;
+}
+
+for (const card of Object.values(CARDS)) {
+  const upgraded = { ...card, id: `${card.id}+`, name: `${card.name}+` };
+  const improvedFields = ['damage', 'block', 'allyBlock', 'heal', 'allyHeal', 'stealBlock', 'woundedBonus', 'strength'];
+  let improved = false;
+  for (const field of improvedFields) {
+    if (!card[field]) continue;
+    upgraded[field] = card[field] + Math.max(2, Math.ceil(card[field] * 0.4));
+    improved = true;
+  }
+  if (card.allyEnergy) {
+    upgraded.allyEnergy += 1;
+    improved = true;
+  }
+  if (!improved) upgraded.block = 3;
+  CARDS[upgraded.id] = upgraded;
 }
 
 for (const card of Object.values(CARDS)) {
@@ -372,6 +417,8 @@ export const MERCHANTS = {
   18: { name: 'The Last Lantern', stock: [{ id: 'renew', price: 10 }, { id: 'avalanche', price: 16 }, { id: 'sanctuary', price: 16 }] },
 };
 
+export const CAMPS = [2, 6, 10, 14, 18];
+
 export function getEncounter(state) {
   return TRAIL[state.encounter].find((route) => route.id === state.path[state.encounter]);
 }
@@ -396,7 +443,7 @@ export function validateStartingDeck(cards) {
 
 export function getCardDescription(state, playerIndex, cardId) {
   const player = state.players[playerIndex];
-  return describeCard(CARDS[cardId], player.attackBonus + player.strength);
+  return describeCard(CARDS[cardId], player.attackBonus + (state.phase === 'combat' ? player.strength : 0));
 }
 
 export function canAffordCard(card, energy) {
@@ -529,7 +576,7 @@ export function createRun(critterIds, seed = Date.now(), startingDecks = critter
   });
   return {
     runId: String(seed), seed: seed >>> 0, phase: 'route', encounter: 0, players,
-    enemies: [], path: [], gold: 0, visitedShops: [], soldCards: [], log: [],
+    enemies: [], path: [], gold: 0, visitedShops: [], visitedCamps: [], campChoices: [], soldCards: [], log: [],
   };
 }
 
@@ -620,11 +667,12 @@ function resolveCardEffect(state, player, card, target) {
     enemy.block -= stolen;
     gainBlock(player, stolen);
     enemy.marked = false;
-    const dealt = hit(enemy, damage, card.pierce);
+    const multiplier = matchup(CRITTERS[player.critterId].type, CRITTERS[enemy.animal].type);
+    const dealt = hit(enemy, typedDamage(damage, CRITTERS[player.critterId].type, CRITTERS[enemy.animal].type), card.pierce);
     state.lastAttacker = player.id;
     state.lastTarget = target;
     state.bondTriggered ||= bond;
-    log(state, `${enemy.name} takes ${dealt} damage${bond ? ' with a Bond Strike' : ''}.`);
+    log(state, `${enemy.name} takes ${dealt} damage${bond ? ' with a Bond Strike' : ''}${multiplier > 1 ? ' (super effective)' : multiplier < 1 ? ' (resisted)' : ''}.`);
     if (enemy.hp === 0) {
       enemy.intent = null;
       state.gold += enemy.gold;
@@ -644,8 +692,11 @@ function resolveCardEffect(state, player, card, target) {
 
 function enemyAttack(state, enemy, player, amount) {
   if (player.hp === 0) return;
-  const dealt = hit(player, amount);
-  log(state, `${enemy.name} deals ${dealt} damage to ${critterName(player)}.`);
+  const attacker = CRITTERS[enemy.animal].type;
+  const defender = CRITTERS[player.critterId].type;
+  const multiplier = matchup(attacker, defender);
+  const dealt = hit(player, typedDamage(amount, attacker, defender));
+  log(state, `${enemy.name} deals ${dealt} damage to ${critterName(player)}${multiplier > 1 ? ' (super effective)' : multiplier < 1 ? ' (resisted)' : ''}.`);
   if (player.hp === 0) log(state, `${critterName(player)} is down.`);
 }
 
@@ -741,9 +792,38 @@ function chooseRoute(state, { player, routeId }) {
     state.phase = 'shop';
     return;
   }
+  if (routeId === 'camp') {
+    state.visitedCamps ??= [];
+    if (!CAMPS.includes(state.encounter) || state.visitedCamps.includes(state.encounter)) throw new Error('The camp is unavailable.');
+    state.visitedCamps.push(state.encounter);
+    state.campChoices = state.players.map(() => null);
+    state.phase = 'camp';
+    return;
+  }
   if (!TRAIL[state.encounter].some((route) => route.id === routeId)) throw new Error('Choose an available route.');
   state.path[state.encounter] = routeId;
   beginEncounter(state);
+}
+
+function useCamp(state, action) {
+  if (state.phase !== 'camp') throw new Error('Visit a camp first.');
+  if (state.campChoices[action.player]) throw new Error('You already rested at this camp.');
+  const player = state.players[action.player];
+  if (action.choice === 'heal') {
+    const amount = Math.ceil(player.maxHp * 0.3);
+    const previous = player.hp;
+    player.hp = Math.min(player.maxHp, player.hp + amount);
+    log(state, `${critterName(player)} rests and restores ${player.hp - previous} HP.`);
+  } else if (action.choice === 'upgrade') {
+    const index = action.cardIndex;
+    if (!Number.isInteger(index) || index < 0 || index >= player.deck.length) throw new Error('Choose a card to upgrade.');
+    const id = player.deck[index];
+    if (id.endsWith('+') || !CARDS[`${id}+`]) throw new Error('Choose a card that has not been upgraded.');
+    player.deck[index] = `${id}+`;
+    log(state, `${critterName(player)} upgrades ${CARDS[id].name}.`);
+  } else throw new Error('Choose to heal or upgrade a card.');
+  state.campChoices[action.player] = action.choice;
+  if (state.campChoices.every(Boolean)) state.phase = 'route';
 }
 
 function buyCard(state, { player, cardId }) {
@@ -760,6 +840,11 @@ function buyCard(state, { player, cardId }) {
 
 export function applyAction(state, action) {
   if (!action || !Number.isInteger(action.player) || !state.players[action.player]) throw new Error('Choose a valid player.');
+  if (action.type === 'camp') {
+    const next = structuredClone(state);
+    useCamp(next, action);
+    return next;
+  }
   if (action.type === 'route' || action.type === 'buy' || action.type === 'leaveShop') {
     const next = structuredClone(state);
     if (action.type === 'route') chooseRoute(next, action);

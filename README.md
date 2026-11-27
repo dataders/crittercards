@@ -15,13 +15,15 @@ The four cousins are playable from the start.
 - **Hudson · Tank · 48 HP.** Shield Wall protects him and his partner.
 - **Quinn · Witch · 30 HP.** Witch’s Hex makes a rival Vulnerable and Frail.
 - **Alba · Bard · 32 HP.** Cutting Chorus sings one damaging note per energy spent.
-- **Tita · Trickster · 19 HP.** The youngest cousin’s Secret Star spends 3 energy to deal 22 base damage through Block.
+- **Tito · Trickster · 19 HP.** The youngest cousin’s Secret Star spends 3 energy to deal 22 base damage through Block.
 
 Ember the fox and Pip the hare are available from the start, too. Recruit Bramble the badger and Latch the raccoon at your first win. The collection shows requirements for all 30 species, and your browser remembers your recruits across runs. Each animal has a signature card, a role, and its own starting health. Level-up perks include attack damage, health, starting Block, extra cards, starting energy, and healing.
 
 Each starting deck contains two copies of the character’s signature and five cards you choose from the shared library. Start with eleven library cards and unlock nine more by defeating individual rival creatures. Unlocks stay in the browser even if the run ends in defeat. Drafted cards go into your current deck.
 
 Rallying Howl adds Strength, which boosts every attack for the rest of the fight. Expose applies Vulnerable, which makes the next hit deal 50% more damage. Brittle Hex applies Frail, which reduces the target’s next Block gain by 3. Ironhide and Cindermaw can apply Frail to your familiars.
+
+Every animal has one type. Ember beats Grove, Grove beats Tide, Tide beats Stone, and Stone beats Ember. Attacks deal 50% more damage against the type they beat and 25% less against the type that beats them. Other matchups deal normal damage. The multiplier applies before Vulnerable and Block, and enemy attacks use the same rules.
 
 Fixed costs range from 0 to 3 energy. Quick Jab and Quick Brace cost 0 and give you 2 damage or 2 Block. Briar Lunge costs 2 for 13 damage, while Root Barricade costs 2 for 11 Block for you and 10 for your partner. Crownfall spends 3 for 24 damage and 5 Block for your partner. X-cost cards spend all remaining energy and repeat once per energy spent. Wild Flurry deals four base damage per hit and moves to another rival if its target falls. Thorn Circle grants both familiars Block per energy spent.
 
@@ -31,7 +33,11 @@ The Ash Regent uses Eclipse to damage the team and apply Vulnerable, Shadow Ward
 
 Optional merchants at levels 4, 8, 12, 16, and 19 sell cards from different inventories. Gold is shared and each purchase goes into one player’s deck for the current run. Visit each merchant once, then return to choose a fight on that level. In room play, Player 1 chooses routes and each player buys for their own deck.
 
+Optional camps appear at levels 3, 7, 11, 15, and 19. Each familiar chooses either to recover 30% of its maximum health, rounded up, or upgrade one card for this run. Each card can be upgraded once. A camp can be visited once, and each player chooses separately in co-op.
+
 Room state lives in one server process and expires after six hours of inactivity. A reload can recover your seat in the same tab while the room still exists. Restarting the process clears the rooms. Collection progress is saved in the browser and stays with that browser.
+
+Use **Save game** during a run and **Continue saved game** on the opening screen to resume on the same browser. One manual save is kept, and saving again replaces it. A saved room game resumes as shared-screen play, with both players controlled on that browser.
 
 ## Tests
 

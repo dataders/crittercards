@@ -1,6 +1,6 @@
 import {
   COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, STARTER_DECK, MAX_STARTING_COPIES, FRAIL_BLOCK_LOSS,
-  ENCOUNTERS, TRAIL, MERCHANTS, LEVEL_PERKS, createRun, applyAction, getEncounter,
+  ENCOUNTERS, TRAIL, MERCHANTS, CAMPS, LEVEL_PERKS, TYPES, matchup, createRun, applyAction, getEncounter,
   getCardDescription, validateStartingDeck, canAffordCard,
 } from './game.mjs';
 import { createRoom, joinRoom, resumeRoom } from './transport.mjs';
@@ -12,6 +12,7 @@ const collectionKey = 'crittercards.collection.v1';
 const progressKey = 'crittercards.progress.v1';
 const cardKey = 'crittercards.cards.v1';
 const roomKey = 'crittercards.room.v1';
+const saveKey = 'crittercards.save.v1';
 const starterIds = [...Object.keys(COUSINS), 'fox', 'hare'];
 const playerName = (seat) => `Player ${seat + 1}`;
 const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -58,12 +59,13 @@ const ui = {
   error: '',
   notice: '',
   joinCode: invite,
+  savedRunOrigin: null,
 };
 
 function unlockRecruits(state) {
   if (!state) return;
   const recorded = readStorage(localStorage, progressKey, { runs: {}, wins: 0, clears: 0, encounter: 0 });
-  const runKey = `${ui.room?.code ?? 'local'}:${state.runId}`;
+  const runKey = `${ui.room?.code ?? ui.savedRunOrigin ?? 'local'}:${state.runId}`;
   const beats = state.phase === 'victory' ? TRAIL.length :
     state.encounter + Number(state.phase === 'reward');
   const previous = recorded.runs[runKey] ?? 0;
@@ -114,7 +116,7 @@ function collectionCount() {
 function rosterCard(critter, seat, picks, enabled) {
   const selected = picks[seat] === critter.id;
   const locked = !collection.has(critter.id) && !selected;
-  const subtitle = [critter.animal, critter.role, `${critter.maxHp} HP`].filter(Boolean).join(' · ');
+  const subtitle = [critter.animal, critter.role, `${TYPES[critter.type].name} type`, `${critter.maxHp} HP`].filter(Boolean).join(' · ');
   const signature = CARDS[critter.signature];
   return `<button class="critter-card ${locked ? 'is-locked' : ''}" type="button" data-do="pick" data-seat="${seat}" data-id="${escape(critter.id)}" aria-pressed="${selected}" ${!enabled || locked ? 'disabled' : ''}>
     ${art(critter.id, 'critter-art', critter.name)}
@@ -133,6 +135,7 @@ function roster(seat, picks, enabled) {
   return `
     <section aria-label="${playerName(seat)} character selection">
       <div class="section-heading"><h2>${playerName(seat)}</h2><span class="muted">${enabled ? 'Choose a character' : picks[seat] ? 'Character chosen' : 'Waiting to choose'}</span></div>
+      <p class="type-key">Type strengths · Ember beats Grove · Grove beats Tide · Tide beats Stone · Stone beats Ember</p>
       <h3>The four cousins</h3>
       <div class="critter-grid cousin-roster">
         ${Object.values(COUSINS).map((critter) => rosterCard(critter, seat, picks, enabled)).join('')}
@@ -142,7 +145,7 @@ function roster(seat, picks, enabled) {
         ${[['all', 'All creatures'], ['owned', 'Recruited'], ['locked', 'Unrecruited']].map(([id, label]) =>
           button(label, 'filter', { data: `data-id="${id}" aria-pressed="${ui.filter === id}"` })).join('')}
       </div>
-      <div class="critter-grid" tabindex="0" aria-label="Creature collection">
+      <div class="critter-grid" aria-label="Creature collection">
         ${creatures.map((critter) => rosterCard(critter, seat, picks, enabled)).join('') || '<p class="muted">No creatures in this view.</p>'}
       </div>
     </section>`;
@@ -187,6 +190,7 @@ function lobby() {
       </div>
     </section>
     <div class="lobby-panel">
+      ${!room && readStorage(localStorage, saveKey, null)?.state ? `<div class="save-panel"><strong>Saved trail</strong><span>Level ${readStorage(localStorage, saveKey, null).state.encounter + 1} · saved on this browser</span>${button('Continue saved game', 'continue', { style: 'primary' })}</div>` : ''}
       <div class="mode-picker" aria-label="Play mode">
         ${button('Single player', 'solo', { style: ui.mode === 'solo' ? 'primary' : 'secondary', data: `aria-pressed="${ui.mode === 'solo'}"` })}
         ${button('Share a screen', 'local', { style: ui.mode === 'local' ? 'primary' : 'secondary', data: `aria-pressed="${ui.mode === 'local'}"` })}
@@ -241,7 +245,7 @@ function allyCard(player, seat, state) {
   return `<div class="unit-card ${state.activePlayer === seat ? 'is-active' : ''} ${player.hp <= 0 ? 'is-defeated' : ''}">
     ${art(critter.id, 'unit-art', critter.name)}
     <div class="unit-info">
-      <span class="combat-label">${playerName(seat)} · Lv. ${player.level}</span>
+      <span class="combat-label">${playerName(seat)} · Lv. ${player.level} · ${escape(TYPES[critter.type].name)}</span>
       <strong class="unit-name">${escape(critter.name)}</strong>
       ${health(player)}
       ${effects(player)}
@@ -250,27 +254,34 @@ function allyCard(player, seat, state) {
   </div>`;
 }
 
-function intentLabel(intent, enemy) {
+function intentLabel(intent, enemy, state) {
   if (!intent) return '';
   if (intent.type === 'guard') return `Gains ${Math.max(0, intent.amount - (enemy.frail ? FRAIL_BLOCK_LOSS : 0))} Block`;
   if (intent.type === 'shadowWard') return `Shadow Ward · gains ${Math.max(0, intent.amount - (enemy.frail ? FRAIL_BLOCK_LOSS : 0))} Block and heals 8`;
-  if (intent.type === 'eclipse') return `Eclipse · hits all for ${intent.amount} and applies Vulnerable`;
-  if (intent.type === 'crownCurse') return `Crown Curse · hits P${intent.target + 1} for ${intent.amount}, applies Frail and Vulnerable`;
-  if (intent.type === 'teamAttack') return `Hits both for ${intent.amount}`;
-  return `Hits P${intent.target + 1} for ${intent.amount}${intent.type === 'frailAttack' ? ' and applies Frail' : ''}`;
+  const damage = (seat) => Math.floor(intent.amount * matchup(CRITTERS[enemy.animal].type, CRITTERS[state.players[seat].critterId].type));
+  if (intent.type === 'eclipse' || intent.type === 'teamAttack') {
+    const hits = state.players.filter((player) => player.hp > 0).map((player) => `P${player.id + 1} for ${damage(player.id)}`).join(', ');
+    return `${intent.type === 'eclipse' ? 'Eclipse · ' : ''}Hits ${hits}${intent.type === 'eclipse' ? ' and applies Vulnerable' : ''}`;
+  }
+  const victim = state.players[intent.target]?.hp > 0 ? intent.target : state.players.findIndex((player) => player.hp > 0);
+  if (intent.type === 'crownCurse') return `Crown Curse · hits P${victim + 1} for ${damage(victim)}, applies Frail and Vulnerable`;
+  return `Hits P${victim + 1} for ${damage(victim)}${intent.type === 'frailAttack' ? ' and applies Frail' : ''}`;
 }
 
 function enemyCard(enemy, index, state) {
   const selected = ui.target === index;
   const bondTarget = state.players.length > 1 && state.lastTarget === index && state.lastAttacker !== state.activePlayer && !state.bondTriggered;
+  const multiplier = matchup(CRITTERS[state.players[state.activePlayer].critterId].type, CRITTERS[enemy.animal].type);
+  const effectiveness = multiplier > 1 ? 'Super effective · ×1.5' : multiplier < 1 ? 'Resisted · ×0.75' : 'Normal damage';
   return `<button class="unit-card ${selected ? 'is-target selected-target' : ''} ${enemy.hp <= 0 ? 'is-defeated' : ''}" type="button" data-do="target" data-index="${index}" aria-pressed="${selected}" ${enemy.hp <= 0 ? 'disabled' : ''}>
     ${art(enemy.animal, 'unit-art')}
     <span class="unit-info">
-      <span class="combat-label">${bondTarget ? 'Bond Strike ready' : enemy.marked ? 'Marked' : enemy.boss ? 'Final boss' : 'Rival creature'}</span>
+      <span class="combat-label">${escape(TYPES[CRITTERS[enemy.animal].type].name)} · ${bondTarget ? 'Bond Strike ready' : enemy.marked ? 'Marked' : enemy.boss ? 'Final boss' : 'Rival creature'}</span>
       <strong class="unit-name">${escape(enemy.name)}</strong>
       ${health(enemy)}
       ${effects(enemy)}
-      <span class="intent">${enemy.hp <= 0 ? 'Defeated' : escape(intentLabel(enemy.intent, enemy))}</span>
+      ${enemy.hp > 0 ? `<span class="type-matchup">Your attacks: ${effectiveness}</span>` : ''}
+      <span class="intent">${enemy.hp <= 0 ? 'Defeated' : escape(intentLabel(enemy.intent, enemy, state))}</span>
     </span>
   </button>`;
 }
@@ -294,6 +305,8 @@ function trailMap(state) {
       const picked = state.path[level];
       const merchant = MERCHANTS[level];
       const visited = state.visitedShops.includes(level);
+      const camp = CAMPS.includes(level);
+      const campVisited = (state.visitedCamps ?? []).includes(level);
       return `<li class="trail-rung ${current ? 'is-current' : ''}" ${current ? 'aria-current="step"' : ''}>
         <h2><span>${level === TRAIL.length - 1 ? '♛' : '✦'}</span> ${level === TRAIL.length - 1 ? 'Level 20 · Final boss' : `Level ${level + 1}`}</h2>
         <div class="route-options">
@@ -312,8 +325,34 @@ function trailMap(state) {
         ${merchant ? `<div class="merchant-detour">${current && !visited ? `<button type="button" class="route-option route-merchant" data-do="route" data-id="merchant" ${canLead ? '' : 'disabled'}>
             <span class="route-tag">Merchant · optional stop</span><strong>${escape(merchant.name)}</strong><span>Spend gold on cards, then pick a fight on this level.</span>
           </button>` : `<div class="route-option route-merchant ${visited ? 'is-cleared' : 'is-future'}"><span class="route-tag">Merchant${visited ? ' · visited' : ' · optional stop'}</span><strong>${escape(merchant.name)}</strong><span>Returns to the same level.</span></div>`}</div>` : ''}
+        ${camp ? `<div class="merchant-detour">${current && !campVisited ? `<button type="button" class="route-option route-camp" data-do="route" data-id="camp" ${canLead ? '' : 'disabled'}><span class="route-tag">Camp · optional stop</span><strong>Campfire</strong><span>Heal 30% of max HP or upgrade a card.</span></button>` : `<div class="route-option route-camp ${campVisited ? 'is-cleared' : 'is-future'}"><span class="route-tag">Camp${campVisited ? ' · visited' : ' · optional stop'}</span><strong>Campfire</strong><span>Heal or upgrade, then return to this level.</span></div>`}</div>` : ''}
       </li>`;
     }).join('')}</ol>`;
+}
+
+function campScreen(state) {
+  return `<section class="battle-head"><div><p class="eyebrow">Level ${state.encounter + 1} · Camp</p><h1>Rest by the fire</h1></div>${purse(state)}</section>
+    <div class="reward-panel camp-panel"><p>Each familiar chooses one. Your choice lasts for this run.</p>
+      ${state.players.map((player, seat) => {
+        const enabled = !ui.pending && !state.campChoices[seat] && (!ui.room || ui.room.seat === seat);
+        const recovered = Math.min(player.maxHp - player.hp, Math.ceil(player.maxHp * 0.3));
+        const critter = CRITTERS[player.critterId];
+        return `<section><div class="section-heading"><h2>${escape(critter.name)} · ${playerName(seat)}</h2><span class="muted">${player.hp} / ${player.maxHp} HP</span></div>
+          ${state.campChoices[seat] ? `<p class="collection-status">${state.campChoices[seat] === 'heal' ? 'Rested' : 'Card upgraded'} · waiting for the pack.</p>` : `
+            <p>Heal ${recovered} HP, or select one card below to upgrade it once.</p>
+            ${button(`Heal ${recovered} HP`, 'camp-heal', { style: 'primary', disabled: !enabled, data: `data-seat="${seat}"` })}
+            <div class="camp-cards">${player.deck.map((id, index) => {
+              const card = CARDS[id];
+              const improved = CARDS[`${id}+`];
+              return `<button type="button" class="camp-card" data-do="camp-upgrade" data-seat="${seat}" data-index="${index}" ${!enabled || !improved ? 'disabled' : ''}>
+                <strong>${escape(card.name)}${improved ? ` → ${escape(improved.name)}` : ' · upgraded'}</strong>
+                <span>${escape(getCardDescription(state, seat, id))}</span>
+                ${improved ? `<span class="camp-improvement">After · ${escape(getCardDescription(state, seat, improved.id))}</span>` : ''}
+              </button>`;
+            }).join('')}</div>`}
+        </section>`;
+      }).join('')}
+    </div>`;
 }
 
 function merchantShop(state) {
@@ -366,6 +405,7 @@ function combat(state) {
     ${cardReveal()}
     <div class="battle-grid">
       <section class="battlefield" aria-label="Battlefield">
+        <p class="type-key">Ember beats Grove · Grove beats Tide · Tide beats Stone · Stone beats Ember. Enemy intents include type effects before Block and Vulnerable.</p>
         <h2 class="combat-label">Rival creatures · select a target</h2>
         <div class="combat-row">${state.enemies.map((enemy, index) => enemyCard(enemy, index, state)).join('')}</div>
         <h2 class="combat-label">Your familiars</h2>
@@ -383,6 +423,7 @@ function combat(state) {
     <section class="hand-panel" aria-label="Active player’s hand">
       <div class="hand-heading"><h2>${escape(CRITTERS[player.critterId].name)}’s hand</h2>
         <span class="hand-counts">${player.drawPile.length} draw · ${player.discardPile.length} discard</span></div>
+      <p class="type-hint">Attack cards use ${escape(TYPES[CRITTERS[player.critterId].type].name)} type. Card damage is shown before matchup effects.</p>
       <div class="hand-grid">${player.hand.map((id, index) => actionCard(state, seat, id, index, enabled && canAffordCard(CARDS[id], player.energy))).join('') || '<p class="muted">No cards left in hand.</p>'}</div>
       ${other?.hp > 0 && other.hand.length ? `<div class="secondary-hand"><strong>${escape(CRITTERS[other.critterId].name)}’s hand</strong> · ${other.hand.map((id) => escape(CARDS[id].name)).join(', ')}</div>` : ''}
     </section>`;
@@ -439,15 +480,26 @@ function conclusion(state) {
 }
 
 function render() {
+  const scrollY = window.scrollY;
   const previous = document.activeElement;
   const focus = previous?.dataset.do ? ['do', 'seat', 'id', 'index'].map((key) => previous.dataset[key]) : null;
-  const scroll = game.querySelector('.critter-grid')?.scrollTop ?? 0;
   const state = ui.room ? ui.room.state : ui.run;
   const messages = `<div class="feedback" aria-live="polite">${ui.error ? `<p class="error-line" role="alert">${escape(ui.error)}</p>` : ''}${ui.notice ? `<p class="status-line">${escape(ui.notice)}</p>` : ''}</div>`;
-  const runScenes = { route: trailMap, shop: merchantShop, combat, reward: rewards, victory: conclusion, defeat: conclusion };
+  const runScenes = { route: trailMap, camp: campScreen, shop: merchantShop, combat, reward: rewards, victory: conclusion, defeat: conclusion };
   const scene = state ? runScenes[state.phase](state) : lobby();
-  game.innerHTML = messages + scene;
-  if (game.querySelector('.critter-grid')) game.querySelector('.critter-grid').scrollTop = scroll;
+  const saveControl = state && !['victory', 'defeat'].includes(state.phase)
+    ? `<div class="save-controls">${button('Save game', 'save', { disabled: ui.pending })}<span class="muted">Saved in this browser${ui.room ? ' · resumes on one screen' : ''}</span></div>` : '';
+  game.innerHTML = messages + saveControl + scene;
+  if (ui.scrollToRoute && state?.phase === 'route') {
+    game.querySelector('.trail-rung.is-current')?.scrollIntoView({ block: 'start' });
+    ui.scrollToRoute = false;
+    ui.scrollToTop = false;
+  } else if (ui.scrollToTop) {
+    window.scrollTo(0, 0);
+    ui.scrollToTop = false;
+  } else {
+    window.scrollTo(0, scrollY);
+  }
   if (focus) {
     const equivalent = [...game.querySelectorAll('[data-do]')].find((node) =>
       ['do', 'seat', 'id', 'index'].every((key, i) => node.dataset[key] === focus[i]));
@@ -457,11 +509,12 @@ function render() {
 
 function acceptState(state, previous) {
   if (state?.encounter !== previous?.encounter || state?.phase !== previous?.phase) {
+    ui.scrollToRoute = state?.phase === 'route' && state.encounter > 0;
     ui.perks = [null, null];
     ui.drafts = [null, null];
     ui.recruits = [];
     ui.target = null;
-    window.scrollTo(0, 0);
+    ui.scrollToTop = true;
   }
   if (state?.encounter !== previous?.encounter) ui.newCards = [];
   if (ui.target === null || state?.enemies[ui.target]?.hp <= 0) {
@@ -475,6 +528,7 @@ function attachRoom(room) {
   ui.stopWatching?.();
   ui.room = room;
   ui.mode = 'online';
+  ui.savedRunOrigin = null;
   if (room.deck) ui.startingDecks[room.seat] = [...room.deck];
   let latestState = room.state;
   writeStorage(sessionStorage, roomKey, { code: room.code, token: room.token });
@@ -522,17 +576,18 @@ function dispatch(action) {
 }
 
 function home(mode = 'local') {
-  if (ui.run || ui.room?.state) {
+  const leavingRun = Boolean(ui.run || ui.room?.state);
+  if (leavingRun) {
     ui.picks = [null, null];
     ui.pickSeat = 0;
   }
   ui.stopWatching?.();
   writeStorage(sessionStorage, roomKey, null);
-  Object.assign(ui, { room: null, run: null, mode, target: null, recruits: [], newCards: [], notice: '', error: '' });
+  Object.assign(ui, { room: null, run: null, mode, target: null, recruits: [], newCards: [], notice: '', error: '', savedRunOrigin: null });
   const url = new URL(location.href);
   url.searchParams.delete('room');
   history.replaceState(null, '', url);
-  window.scrollTo(0, 0);
+  ui.scrollToTop = leavingRun;
   render();
 }
 
@@ -546,9 +601,40 @@ document.addEventListener('click', async (event) => {
   if (action === 'rules') { rules.showModal(); return; }
   ui.error = '';
   ui.notice = '';
+  if (action === 'save') {
+    try {
+      localStorage.setItem(saveKey, JSON.stringify({ version: 1, state, origin: ui.room?.code ?? ui.savedRunOrigin ?? 'local', perks: ui.perks, drafts: ui.drafts, target: ui.target }));
+      ui.notice = 'Game saved in this browser. Choose Continue saved game from the opening screen.';
+    } catch {
+      ui.error = 'Could not save in this browser. Check browser storage and try again.';
+    }
+    render();
+    return;
+  }
+  if (action === 'continue') {
+    const saved = readStorage(localStorage, saveKey, null);
+    if (!saved || saved.version !== 1 || !saved.state || !Array.isArray(saved.state.players) || !['route', 'combat', 'camp', 'shop', 'reward'].includes(saved.state.phase)) {
+      ui.error = 'This saved game could not be loaded.';
+      render();
+      return;
+    }
+    ui.stopWatching?.();
+    writeStorage(sessionStorage, roomKey, null);
+    ui.room = null;
+    ui.run = saved.state;
+    ui.mode = saved.state.players.length === 1 ? 'solo' : 'local';
+    ui.savedRunOrigin = saved.origin;
+    ui.target = saved.target;
+    ui.perks = Array.isArray(saved.perks) ? saved.perks : [null, null];
+    ui.drafts = Array.isArray(saved.drafts) ? saved.drafts : [null, null];
+    ui.scrollToTop = true;
+    ui.notice = 'Saved game loaded.';
+    render();
+    return;
+  }
   if (action === 'home' && state && !['victory', 'defeat'].includes(state.phase) && !confirm('Leave this run and return to creature selection?')) return;
   if (action === 'home' || action === 'local') { home(); return; }
-  if (action === 'solo') { home('solo'); ui.pickSeat = 0; render(); return; }
+  if (action === 'solo') { ui.pickSeat = 0; home('solo'); return; }
   if (action === 'online') ui.mode = 'online';
   if (action === 'seat') ui.pickSeat = seat;
   if (action === 'filter') ui.filter = id;
@@ -571,11 +657,14 @@ document.addEventListener('click', async (event) => {
   if (action === 'edit-deck') return dispatch({ type: 'deck', cards: null });
   if (action === 'start') {
     if (ui.room) return dispatch({ type: 'start' });
+    ui.savedRunOrigin = null;
     ui.run = createRun(ui.mode === 'solo' ? ui.picks.slice(0, 1) : ui.picks, Date.now(), ui.mode === 'solo' ? ui.startingDecks.slice(0, 1) : ui.startingDecks);
     acceptState(ui.run, null);
   }
   if (action === 'route') return dispatch({ type: 'route', player: 0, routeId: id });
   if (action === 'buy') return dispatch({ type: 'buy', player: seat, cardId: id });
+  if (action === 'camp-heal') return dispatch({ type: 'camp', player: seat, choice: 'heal' });
+  if (action === 'camp-upgrade') return dispatch({ type: 'camp', player: seat, choice: 'upgrade', cardIndex: index });
   if (action === 'leave-shop') return dispatch({ type: 'leaveShop', player: 0 });
   if (action === 'target') ui.target = index;
   if (action === 'play') return dispatch({

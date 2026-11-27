@@ -156,13 +156,6 @@ img.hero-art { mask-image: linear-gradient(90deg, transparent, #000 24%); }
 
 .critter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: .9rem; }
 .critter-grid:has(> :nth-child(5)) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.critter-grid:has(> :nth-child(9)) {
-  max-height: min(29rem, 65svh);
-  padding: .3rem .45rem .4rem .3rem;
-  overflow-y: auto;
-  scrollbar-color: #688a53 #172a21;
-  scrollbar-gutter: stable;
-}
 .cousin-roster { margin-bottom: 1.5rem; }
 .cousin-roster .critter-art img { object-position: center 35%; }
 .critter-card {
@@ -292,7 +285,7 @@ img.unit-art { width: 34%; }
 .turn-actions .status-line { margin-inline-end: auto; }
 .battle-sidebar .turn-actions { margin-top: 0; }
 .status-line strong { color: var(--paper); }
-.battle-log { display: grid; gap: .4rem; max-height: 17rem; margin: 0; padding: 0; overflow: auto; color: var(--muted); font-size: .85rem; list-style: none; }
+.battle-log { display: grid; gap: .4rem; margin: 0; padding: 0; color: var(--muted); font-size: .85rem; list-style: none; }
 .battle-log ol { display: grid; gap: .45rem; margin: 0; padding: 0; list-style: none; }
 .battle-log li { padding-bottom: .45rem; border-bottom: 1px solid var(--line); }
 .progress-track { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; margin: 0; padding: 0; list-style: none; }
@@ -309,7 +302,6 @@ img.unit-art { width: 34%; }
 
 @media (max-width: 54rem) {
   .battle-grid { grid-template-columns: minmax(0, 1fr); }
-  .battle-log { max-height: 9rem; }
   .critter-grid:has(> :nth-child(5)) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
@@ -330,7 +322,6 @@ img.unit-art { width: 34%; }
   .unit-card { flex-direction: column; }
   .unit-art, img.unit-art { width: 100%; min-height: 0; height: 4.25rem; }
   .unit-info { padding: .45rem; }
-  .battle-log { max-height: 5.5rem; }
   .battle-log h2 { font-size: 1rem; }
   .hand-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .battlefield, .battle-sidebar, .hand-panel { padding: .65rem; }
@@ -415,6 +406,9 @@ dialog ol { display: grid; gap: .65rem; margin: 0 0 .5rem; padding-left: 1.35rem
 }
 .art-fallback { padding: .25rem; color: var(--paper); font: 700 .95rem/1.1 var(--label); text-transform: uppercase; }
 .collection-status { color: var(--lime); font-weight: 700; }
+.save-controls { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem; margin-bottom: .8rem; }
+.save-panel { display: flex; align-items: center; flex-wrap: wrap; gap: .7rem; padding: .8rem; border: 1px solid #728749; border-radius: .6rem; }
+.save-panel span { color: var(--muted); }
 .gold-counter { display: inline-flex; align-items: center; gap: .35rem; align-self: start; white-space: nowrap; border: 1px solid #806737; border-radius: 2rem; padding: .35rem .7rem; color: var(--gold); background: var(--forest-deep); font-weight: 700; }
 .trail-wait { margin-bottom: .85rem; }
 .trail-ladder { display: grid; gap: 1rem; padding: 0 0 0 1.15rem; margin: 0 0 1rem .5rem; border-left: 1px solid var(--line); list-style: none; }
@@ -436,6 +430,46 @@ button.route-option:hover:not(:disabled) { border-color: var(--lime); background
 .route-option.is-future { color: var(--muted); }
 .route-option.is-future .route-tag { color: var(--muted); }
 .route-option.is-cleared { border-color: #728749; }
+.map-intro { color: var(--muted); margin: 0 0 1rem; }
+.trail-ladder {
+  position: relative;
+  display: grid;
+  gap: 0;
+  margin: 0 auto 2rem;
+  padding: 0 0 1.5rem;
+  border: 0;
+  max-width: 58rem;
+  background: radial-gradient(ellipse at 50% 15%, #34513b, transparent 60%), #102319;
+  border-radius: 1rem;
+  list-style: none;
+}
+.trail-ladder::before { content: ''; position: absolute; top: 1rem; bottom: 1rem; left: 50%; border-left: 3px dashed #7c8c5a; opacity: .7; }
+.trail-rung { position: relative; padding: 1.1rem 1rem 1.5rem; border: 0; background: transparent; }
+.trail-rung::before { display: none; }
+.trail-rung h2 { position: relative; z-index: 1; width: fit-content; margin: 0 auto; padding: .35rem .75rem; border: 1px solid #617b4f; border-radius: 2rem; background: #1b3527; color: var(--paper); font-size: 1.05rem; text-align: center; }
+.trail-rung h2 span { color: var(--lime); }
+.trail-rung.is-current h2 { border-color: var(--lime); box-shadow: 0 0 0 2px #d4ed8340; }
+.trail-rung .route-options { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(.75rem, 8vw, 5rem); margin: 1rem auto 0; max-width: 50rem; }
+.trail-rung .route-options::before { content: ''; position: absolute; top: -.55rem; left: 25%; right: 25%; height: .55rem; border: 2px dashed #7c8c5a; border-bottom: 0; border-radius: .5rem .5rem 0 0; }
+.trail-rung .route-options::after { content: ''; position: absolute; bottom: -.85rem; left: 25%; right: 25%; height: .7rem; border: 2px dashed #7c8c5a; border-top: 0; border-radius: 0 0 .5rem .5rem; }
+.trail-rung .route-option { position: relative; z-index: 1; }
+.trail-rung .route-hard .route-tag { color: var(--coral); }
+.trail-rung .route-hard { border-color: #a3634f; }
+.trail-rung .route-option.is-future { opacity: .7; }
+.merchant-detour { position: relative; z-index: 2; max-width: 22rem; margin: 1.15rem auto 0; }
+.merchant-detour::before, .merchant-detour::after { content: ''; position: absolute; left: 50%; height: .8rem; border-left: 2px dashed var(--gold); }
+.merchant-detour::before { top: -.8rem; }
+.merchant-detour::after { bottom: -.8rem; }
+.merchant-detour .route-option { width: 100%; border-color: #8d7541; }
+.merchant-detour .route-camp { border-color: #c78e57; }
+.route-camp .route-tag { color: #ffbc7b; }
+.camp-panel > section { padding-top: 1rem; border-top: 1px solid var(--line); }
+.camp-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: .65rem; margin-top: .8rem; }
+.camp-card { display: grid; gap: .4rem; padding: .8rem; text-align: left; border: 1px solid var(--line); border-radius: .6rem; background: var(--forest-deep); color: var(--paper); }
+.camp-card:hover:not(:disabled) { border-color: var(--lime); }
+.camp-card:disabled { opacity: .55; }
+.camp-card span { font-size: .85rem; }
+.camp-improvement { color: var(--lime); }
 .shop-item h2 { font-size: 1.35rem; }
 .shop-item > p:not(.route-tag) { font-size: .92rem; }
 .shop-buy { display: grid; gap: .4rem; }
@@ -455,6 +489,8 @@ button.route-option:hover:not(:disabled) { border-color: var(--lime); background
 .health-label { display: flex; flex-wrap: wrap; gap: .2rem .65rem; font-size: .82rem; font-weight: 700; }
 .health-bar { display: block; }
 .unit-effects { display: flex; flex-wrap: wrap; gap: .25rem; font-size: .72rem; font-weight: 700; }
+.type-key, .type-hint { color: var(--muted); font-size: .85rem; }
+.type-matchup { color: var(--lime); font-size: .82rem; font-weight: 700; }
 .unit-effects > span { border-radius: .3rem; padding: .15rem .35rem; }
 .effect-strength { background: #debc71; color: #302208; }
 .effect-vulnerable { background: #efaf9f; color: #441b16; }
