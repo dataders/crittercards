@@ -4,8 +4,8 @@ import test from 'node:test';
 
 import { ACTS, CAMPS, LEVELS_PER_ACT, MERCHANTS, TRAIL, applyAction, createRun, trailPosition } from '../game.mjs';
 
-function replay({ critters, seed, decks }, actions) {
-  let state = createRun(critters, seed, decks);
+function replay({ critters, seed, decks, companions }, actions) {
+  let state = createRun(critters, seed, decks, companions);
   return actions.map((action, index) => {
     try {
       state = applyAction(state, action);
@@ -106,6 +106,49 @@ test('a seeded solo replay clears 20 levels and defeats the Ash Regent', () => {
   assert.equal(final.players[0].level, 20);
   assert.ok(final.players[0].hp > 0);
   assert.equal(final.enemies.find((enemy) => enemy.boss)?.hp, 0);
+});
+
+test('a seeded co-op replay clears all three acts from a fresh run', () => {
+  const fixture = new URL('./fixtures/coop-campaign.json', import.meta.url);
+  const { setup, actions } = JSON.parse(readFileSync(fixture, 'utf8'));
+  const timeline = replay(setup, actions);
+  for (const [index, state] of replay(setup, actions).entries()) {
+    assert.deepEqual(state, timeline[index], `Seed ${setup.seed} diverged at action ${index + 1}`);
+  }
+
+  const fights = timeline.filter((state, index) => state.phase === 'combat' && actions[index].type === 'route');
+  assert.deepEqual(fights.map(({ encounter }) => encounter), TRAIL.map((_, index) => index));
+  assert.deepEqual(timeline[0].players.map(({ companionId }) => companionId), setup.companions);
+  for (const { id } of timeline[0].players) {
+    assert.ok(actions.some(({ type, player }) => type === 'companionStrike' && player === id));
+  }
+  assert.ok(timeline.some(({ log }) => log.some((entry) => entry.startsWith('Bond Ward grants '))));
+
+  for (const [index, act] of ACTS.entries()) {
+    const encounter = (index + 1) * LEVELS_PER_ACT - 1;
+    const victory = timeline.find((state) => state.encounter === encounter && ['reward', 'victory'].includes(state.phase));
+    assert.equal(victory?.phase, index === ACTS.length - 1 ? 'victory' : 'reward', act.boss);
+    const defeatedBoss = victory.enemies.find(({ boss }) => boss);
+    assert.equal(defeatedBoss?.name, act.boss);
+    assert.equal(defeatedBoss.hp, 0);
+    assert.equal(victory.path[encounter], 'perilous');
+
+    if (victory.phase === 'reward') {
+      const nextAct = timeline.find((state) => state.encounter === encounter + 1 && state.phase === 'route');
+      assert.ok(nextAct, `Expected to advance after defeating ${act.boss}`);
+      assert.deepEqual(nextAct.players.map(({ hp }) => hp), nextAct.players.map(({ maxHp }) => maxHp));
+      assert.deepEqual(nextAct.players.map(({ level }) => level), [encounter + 2, encounter + 2]);
+    }
+  }
+
+  const final = timeline.at(-1);
+  assert.equal(final.phase, 'victory');
+  assert.deepEqual(final.visitedCamps, CAMPS);
+  assert.deepEqual(final.visitedShops, [3, 23, 43]);
+  assert.ok(final.players.every((player) => player.deck.some((id) => id.endsWith('+'))));
+  assert.deepEqual(final.players.map(({ hardPerk, level }) => [hardPerk, level]), [
+    ['bondWard', TRAIL.length], ['bondWard', TRAIL.length],
+  ]);
 });
 
 test('all three acts have 20 levels and only the last boss ends the campaign', () => {

@@ -53,10 +53,12 @@ Run `node --test` from the repository root. The tests drive game actions directl
 
 ## Roadmap
 
+The 60-level campaign, shared-screen save/resume, and recruitment status filters are playable. Seeded engine replays cover solo Act I and a full co-op clear. A two-client loopback check covers room setup, turn handoff, stale actions, and guest seat recovery.
+
 | Milestone | Gameplay | Visual design | Engineering |
 | --- | --- | --- | --- |
-| First playtest | Watch two players share a screen. Ask which animal they want next, whether the first level-up changes a decision, and whether they coordinate without prompting. Record wins and run time by pair. | Check whether both players can read whose turn it is, what rival creatures intend to do, and what unlocks next. | Test the full run loop, then repeat the room flow across two devices and capture reconnect failures. |
-| Collection update | Add recruitment choices tied to animals met on the trail. Give a few favorites distinct level paths and try a draft choice to remove or upgrade a card. | Make recruitment and level-ups more visible with short, skippable reveals. Give the collection filters for combat role and recruitment progress. | Add rematches and save/resume for shared-screen runs. Add deterministic replays for balancing and regression checks. |
+| First playtest | Watch two players share a screen. Ask which animal they want next, whether the first level-up changes a decision, and whether they coordinate without prompting. Record wins and run time by pair. | Check whether both players can read whose turn it is, what rival creatures intend to do, and what unlocks next. | Repeat the room flow across two devices. Check recovery after a brief connection loss and give players a way back to setup when a room expires. |
+| Collection update | Add recruitment choices tied to animals met on the trail. Give a few favorites distinct level paths and try a draft choice to remove or upgrade a card. | Make recruitment and level-ups more visible with short, skippable reveals. Add a combat role filter to the collection. | Add a rematch that keeps the players' chosen characters and starting decks. |
 | Wider playtest | Add more trainer patterns and encounters before evaluating PvP. Tune creature pairings using playtest results. | Give each biome distinct arena artwork and tune combat effects for readability with reduced motion. | Persist online rooms and actions, test recovery across browsers, and put the service behind HTTPS before opening a public playtest. |
 
 ## Artwork
