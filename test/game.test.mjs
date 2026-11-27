@@ -46,11 +46,17 @@ test('Tito can draw one powerful Secret Star in the opening hand or on round two
     assert.equal(spellRound.players[0].hand.length, 5);
     const cardIndex = spellRound.players[0].hand.indexOf('secretStar');
     assert.ok(cardIndex >= 0);
-    // A guarded Tide rival lets us measure the full neutral damage.
+    // Against a Tide rival, Block absorbs the neutral damage before HP.
+    const play = { type: 'play', player: 0, cardIndex, target: 1 };
     Object.assign(spellRound.enemies[1], { hp: 30, maxHp: 30, block: 30 });
-    const cast = applyAction(spellRound, { type: 'play', player: 0, cardIndex, target: 1 });
-    assert.equal(cast.enemies[1].hp, 8);
-    assert.equal(cast.enemies[1].block, 30);
+    const blocked = applyAction(spellRound, play);
+    assert.equal(blocked.enemies[1].hp, 30);
+    assert.equal(blocked.enemies[1].block, 10);
+
+    spellRound.enemies[1].block = 6;
+    const cast = applyAction(spellRound, play);
+    assert.equal(cast.enemies[1].hp, 16);
+    assert.equal(cast.enemies[1].block, 0);
     assert.equal(cast.players[0].energy, 0);
     const { hand, drawPile, discardPile, deck } = cast.players[0];
     assert.ok(![...hand, ...drawPile, ...discardPile].includes('secretStar'));
@@ -317,7 +323,7 @@ test('act trials change enemy tactics and offer their featured card to both play
       const rallying = trial.enemies.findIndex(({ intent }) => intent.type === 'rally');
       trial = finishRound(trial);
       assert.equal(trial.enemies[rallying].strength, 8);
-      assert.equal(trial.enemies[rallying].intent.amount, 27);
+      assert.equal(trial.enemies[rallying].intent.amount, 28);
     }
 
     // Finish with both seats still present so each can claim their own reward.

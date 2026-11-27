@@ -19,6 +19,7 @@ const BOND_DAMAGE = 4;
 const HAND_SIZE = 5;
 const TURN_ENERGY = 3;
 const OPENING_SURGE_ATTACKS = 2;
+const ENEMY_DAMAGE_BONUS = 1;
 
 function typedDamage(amount, attackerType, defenderType) {
   return Math.floor(amount * matchup(attackerType, defenderType));
@@ -108,8 +109,10 @@ export function getEnemyIntent(state, encounter, enemyIndex, round) {
   const moves = encounter.enemies[enemyIndex].moves;
   const [move, amount] = moves[(round - 1) % moves.length];
   const type = move === 'openingSurge' && round > 1 ? 'teamAttack' : move;
-  const base = defensiveIntents.has(type) ? amount : amount + (state.enemies?.[enemyIndex]?.strength ?? 0);
-  const intent = { type, amount: state.players.length === 1 && !defensiveIntents.has(type) ? Math.ceil(base * 0.7) : base };
+  const defensive = defensiveIntents.has(type);
+  const base = amount + (defensive ? 0 : state.enemies?.[enemyIndex]?.strength ?? 0);
+  const scaled = state.players.length === 1 && !defensive ? Math.ceil(base * 0.7) : base;
+  const intent = { type, amount: scaled + (defensive ? 0 : ENEMY_DAMAGE_BONUS) };
   if (type === 'openingSurge') intent.attacksRemaining = OPENING_SURGE_ATTACKS;
   if (type === 'attack' || type === 'frailAttack' || type === 'crownCurse') {
     const preferred = (round - 1 + enemyIndex) % state.players.length;
