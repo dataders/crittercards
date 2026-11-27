@@ -34,7 +34,8 @@ test('solo defeat stops the enemy turn after the last familiar falls', () => {
 
 test('Tito can draw one powerful Secret Star in the opening hand or on round two', () => {
   assert.ok(Object.values(CRITTERS).every(({ id, maxHp }) => id === 'tita' || maxHp > CRITTERS.tita.maxHp));
-  for (const [seed, drawsEarly] of [[1, false], [2, true]]) {
+  // Seed 17 rolls between 1 in 4 and 1 in 3, so it exercises the higher chance.
+  for (const [seed, drawsEarly] of [[1, false], [17, true]]) {
     const run = createRun(['tita'], seed);
     assert.equal(run.players[0].hp, 24);
     assert.equal(run.players[0].deck.filter((id) => id === 'secretStar').length, 1);
@@ -59,7 +60,7 @@ test('Tito can draw one powerful Secret Star in the opening hand or on round two
 });
 
 test('a saved co-op deck with two Secret Stars keeps its upgraded copy and draws through a large deck', () => {
-  const run = createRun(['hudson', 'tita'], 1);
+  const run = createRun(['hudson', 'tita'], 2);
   const tito = run.players[1];
   tito.deck.push('secretStar+', ...Array(12).fill('strike'));
   const opening = applyAction(run, { type: 'route', player: 0, routeId: 'steady' });
