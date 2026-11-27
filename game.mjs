@@ -557,7 +557,6 @@ function draftCard(state, { player: playerIndex, cardId = null, perkId = 'fang',
   player.level += 1;
   player.maxHp += 3;
   if (player.hp === 0) player.hp = Math.ceil(player.maxHp / 2);
-  heal(player, 7);
   if (perkId === 'fang') {
     player.attackBonus += 1;
   } else if (perkId === 'bark') {

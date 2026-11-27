@@ -17,9 +17,10 @@ function win(critterIds, encounter, routeId, seed = 40) {
   return play(play(battle, 0), 0, 1);
 }
 
-test('skipping leaves the deck intact and applies normal level-up benefits once', () => {
+test('both reward choices preserve current HP while granting level-up benefits', () => {
   const won = win(['fox', 'tita'], 0, 'steady');
   won.players[0].hp = 10;
+  won.players[1].hp = 12;
   const skipped = draft(won);
   assert.equal(skipped.phase, 'reward');
   assert.deepEqual(skipped.rewardPicks[0], { cardId: null, perkId: 'fang', hardPerkId: null });
@@ -27,13 +28,14 @@ test('skipping leaves the deck intact and applies normal level-up benefits once'
   assert.equal(skipped.players[0].level, 2);
   assert.equal(skipped.players[0].attackBonus, 1);
   assert.equal(skipped.players[0].maxHp, won.players[0].maxHp + 3);
-  assert.equal(skipped.players[0].hp, 17);
+  assert.equal(skipped.players[0].hp, 10);
   assert.throws(() => draft(skipped), /already claimed/);
   assert.throws(() => draft(skipped, { player: 1, hardPerkId: 'trailWard' }), /No Hard route perk/);
   const cardId = skipped.rewardOptions[1][0];
   const next = draft(skipped, { player: 1, cardId });
   assert.equal(next.phase, 'route');
   assert.deepEqual(next.players[1].deck, [...won.players[1].deck, cardId]);
+  assert.deepEqual(route(next).players.map(({ hp }) => hp), [10, 12]);
 });
 
 test('level 3 Hard offers a bonus and solo perks reset at the start of each fight', () => {
