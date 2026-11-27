@@ -1,4 +1,4 @@
-export const setupSelect = '[data-deck-slot], [data-companion-seat]';
+export const setupSelect = '[data-companion-seat]';
 
 export function captureViewState(root) {
   const active = root.contains(document.activeElement) ? document.activeElement : null;
@@ -25,8 +25,7 @@ export function restoreViewState(root, { details, field, draft }) {
     if (restoreCode) restoreCode.value = draft;
   }
   if (!field) return focused;
-  const { deckSlot, companionSeat, seat, viewField } = field.dataset;
-  if (deckSlot !== undefined) return root.querySelector(`[data-deck-slot="${deckSlot}"][data-seat="${seat}"]:enabled`);
+  const { companionSeat, viewField } = field.dataset;
   if (companionSeat !== undefined) return root.querySelector(`[data-companion-seat="${companionSeat}"]:enabled`);
   const match = root.querySelector(`[data-view-field="${viewField}"]`);
   if (match && match !== field && match.value === field.value) {

@@ -2,7 +2,7 @@ import {
   COUSINS, CRITTERS, CARDS, matchup, FRAIL_BLOCK_LOSS,
   COMPANION_ABILITIES, LEVEL_PERKS, HARD_PERKS, hardPerkOptions, trailPosition,
   FLOODGATE_RECOIL_PERCENT, TRAIL, MERCHANTS, CAMPS, getEncounter,
-  rivalHealth, briarHealer, BASE_CARDS, STARTER_DECK, STARTING_DECK_SIZE, MIN_STARTING_ONE_COST, MAX_STARTING_COPIES,
+  rivalHealth, briarHealer, BASE_CARDS, BASIC_CARDS, ENERGY_CARDS, STARTER_DECK, STARTING_DECK_SIZE, MIN_STARTING_ONE_COST, MAX_STARTING_COPIES,
   MIN_RUN_DECK_SIZE, CARD_UNLOCKS, MARK_DAMAGE, describeCard, deckLibrary,
 } from './data.mjs';
 
@@ -291,7 +291,7 @@ function finishEncounter(state) {
   state.hardReward = encounter.hardReward === true;
   const available = TRAIL.slice(0, state.encounter + 1).flatMap((routes, level) =>
     routes.find(({ id }) => id === state.path[level]).enemies.flatMap((enemy) => CARD_UNLOCKS[enemy.animal] ?? []));
-  const pool = [...new Set([...available, ...BASE_CARDS, 'spark', 'ward', 'thorns', 'moonmend', 'avalanche', 'sanctuary'])];
+  const pool = [...new Set([...available, ...BASIC_CARDS, 'spark', 'ward', 'thorns', 'moonmend', 'avalanche', 'sanctuary'])];
   state.rewardOptions = state.players.map(() => {
     const offers = [0, 2, 3].map((cost) => shuffle(state, pool.filter((id) => CARDS[id].cost === cost))[0]);
     if (encounter.trialReward) offers.push(encounter.trialReward);
@@ -302,6 +302,9 @@ function finishEncounter(state) {
   const bonusPool = pool.filter((id) => [1, 'X'].includes(CARDS[id].cost) && id !== encounter.trialReward);
   for (const offers of state.rewardOptions) {
     offers.splice(3, 0, bonusPool[Math.floor(nextRandom(bonusRandom) * bonusPool.length)]);
+    if ((state.encounter + 1) % 4 === 0) {
+      offers.push(ENERGY_CARDS[Math.floor(nextRandom(bonusRandom) * ENERGY_CARDS.length)]);
+    }
   }
   log(state, 'The pack prevails. Choose a level perk and take or skip a card for each critter.');
 }
@@ -349,6 +352,8 @@ function defeatEnemy(state, enemy) {
 function resolveCardEffect(state, player, card, target, attackerId = player.critterId) {
   const ally = state.players[1 - player.id] ?? player;
   const enemy = state.enemies[target];
+  let energy = (card.energy ?? 0) + (player.energy === 0 ? card.emptyEnergy ?? 0 : 0) +
+    (player.block > 0 ? card.guardedEnergy ?? 0 : 0) + (player.hp <= player.maxHp / 2 ? card.hurtEnergy ?? 0 : 0);
   if (card.damage) {
     const bond = ally !== player && !state.bondTriggered && state.lastAttacker === ally.id && state.lastTarget === target;
     const woundedBonus = enemy.hp <= enemy.maxHp / 2 ? card.woundedBonus ?? 0 : 0;
@@ -380,7 +385,10 @@ function resolveCardEffect(state, player, card, target, attackerId = player.crit
         }
       }
     }
-    if (enemy.hp === 0) defeatEnemy(state, enemy);
+    if (enemy.hp === 0) {
+      energy += card.energyOnDefeat ?? 0;
+      defeatEnemy(state, enemy);
+    }
   }
   if (card.poison && enemy.hp > 0) enemy.poison = (enemy.poison ?? 0) + card.poison;
   if (card.mark && enemy.hp > 0) enemy.marked = true;
@@ -389,7 +397,13 @@ function resolveCardEffect(state, player, card, target, attackerId = player.crit
   if (card.frail && enemy.hp > 0) enemy.frail += card.frail;
   if (card.block) gainBlock(player, card.block);
   if (card.allyBlock && ally.hp > 0) gainBlock(ally, card.allyBlock);
+  if (energy) {
+    player.energy += energy;
+    log(state, `${critterName(player)} gains ${energy} energy.`);
+  }
+  if (card.nextEnergy) player.reserveEnergy += card.nextEnergy;
   if (card.allyEnergy && ally.hp > 0) ally.reserveEnergy += card.allyEnergy;
+  if (card.selfFrail) player.frail = (player.frail ?? 0) + card.selfFrail;
   if (card.heal) heal(player, card.heal);
   if (card.allyHeal) heal(ally, card.allyHeal);
 }

@@ -919,6 +919,7 @@ body:not([data-battle-area])::before {
   font-variant-numeric: tabular-nums;
 }
 .combat-screen .turn-energy strong { font-size: 1.35em; }
+.energy-reserve { color: var(--lime); font-size: .72em; white-space: nowrap; }
 .combat-screen .button {
   border-color: #789394;
   border-radius: .5rem;

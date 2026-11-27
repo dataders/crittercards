@@ -5,8 +5,9 @@ import { resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { gzipSync, gunzipSync } from 'node:zlib';
+import { deckLibrary } from './data.mjs';
 
-import { applyAction, createRun, COUSINS, CRITTERS, dealStartingDeck, validateStartingDeck } from './game.mjs';
+import { applyAction, createRun, COUSINS, CRITTERS, dealStartingDeck } from './game.mjs';
 
 const roomLifetime = 6 * 60 * 60 * 1000;
 const publicWaitLifetime = 45 * 1000;
@@ -97,12 +98,19 @@ function pruneExpiredRooms(rooms, now) {
   }
 }
 
+function dealRoomDeck(unlocked) {
+  const available = Array.isArray(unlocked) ? unlocked.slice(0, deckLibrary.size) : undefined;
+  return dealStartingDeck(randomBytes(4).readUInt32LE(), available);
+}
+
 function createRoom(rooms, { critterId, publicMatch, now }) {
   const code = newRoomCode(rooms);
   const token = randomBytes(32).toString('base64url');
+  const dealt = critterId ? dealRoomDeck() : null;
   const room = {
     code, tokens: [token, null], picks: [critterId, null], companions: [null, null],
-    decks: [critterId && !COUSINS[critterId] ? dealStartingDeck(randomBytes(4).readUInt32LE()) : null, null],
+    dealtDecks: [dealt, null],
+    decks: [critterId && !COUSINS[critterId] ? dealt : null, null],
     state: null, revision: 0, updatedAt: now, publicMatch,
   };
   rooms.set(code, room);
@@ -115,7 +123,8 @@ function joinRoom(room, critterId, now) {
   const token = randomBytes(32).toString('base64url');
   room.tokens[1] = token;
   room.picks[1] = critterId;
-  room.decks[1] = critterId && !COUSINS[critterId] ? dealStartingDeck(randomBytes(4).readUInt32LE()) : null;
+  room.dealtDecks[1] = critterId ? dealRoomDeck() : null;
+  room.decks[1] = critterId && !COUSINS[critterId] ? room.dealtDecks[1] : null;
   room.updatedAt = now;
   room.revision += 1;
   return { ...snapshot(room, 1), token };
@@ -144,6 +153,7 @@ function snapshot(room, seat) {
     picks: room.picks,
     companions: room.companions,
     deck: room.decks[seat],
+    dealtDeck: room.dealtDecks[seat],
     ready: room.decks.map(Boolean),
     ...(seat === 0 && process.env.ROOM_RECOVERY_SECRET ? { recoveryCode: signedRecoveryCode(room) } : {}),
   };
@@ -170,6 +180,7 @@ function recoverRoom(rooms, recoveryCode) {
   pruneExpiredRooms(rooms, now);
   if (rooms.has(room.code)) throw new RequestError(409, 'This room is already active.');
   if (rooms.size >= roomCapacity) throw new RequestError(503, 'All rooms are currently in use.');
+  room.dealtDecks ??= room.picks.map((pick, seat) => room.decks[seat] ?? (pick ? dealRoomDeck() : null));
   room.updatedAt = now;
   rooms.set(room.code, room);
   return { ...snapshot(room, 0), token: room.tokens[0] };
@@ -205,6 +216,7 @@ function takeAction(room, seat, action) {
   if (action.type === 'select') {
     validateCritter(action.critterId);
     room.picks[seat] = action.critterId;
+    room.dealtDecks[seat] ??= dealRoomDeck(action.unlocked);
     room.companions[seat] = null;
     room.decks[seat] = null;
     return;
@@ -222,11 +234,8 @@ function takeAction(room, seat, action) {
   if (action.type === 'deck') {
     if (!room.picks[seat]) throw new RequestError(409, 'Choose your creature first.');
     if (COUSINS[room.picks[seat]] && !room.companions[seat]) throw new RequestError(409, 'Choose an animal companion first.');
-    if (action.cards !== null) {
-      try { validateStartingDeck(action.cards); }
-      catch (error) { throw new RequestError(400, error.message); }
-    }
-    room.decks[seat] = action.cards;
+    if (action.cards !== undefined) throw new RequestError(400, 'Starting cards are dealt randomly and cannot be changed.');
+    room.decks[seat] = room.dealtDecks[seat];
     return;
   }
 

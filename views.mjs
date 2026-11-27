@@ -183,7 +183,11 @@ export function combat(state, { room, pending, newCards }) {
         <div class="hand-heading" data-block-drop>
           ${art(player.critterId, 'hud-portrait', name)}
           <div class="hud-familiar"><h2 id="turn-heading">${escape(turnTitle)}</h2><span class="turn-details">${player.hp}/${player.maxHp} HP${player.block ? ` · ${player.block} Block` : ''}</span></div>
-          <span class="turn-energy" role="group" aria-label="${player.energy} energy available"><span class="combat-metric-label" aria-hidden="true">Energy</span><strong aria-hidden="true">${player.energy}</strong></span>
+          <span class="turn-energy" role="group" aria-label="${player.energy} energy available${player.reserveEnergy ? `, plus ${player.reserveEnergy} next turn` : ''}">
+            <span class="combat-metric-label" aria-hidden="true">Energy</span>
+            <strong aria-hidden="true">${player.energy}</strong>
+            ${player.reserveEnergy ? `<span class="energy-reserve" aria-hidden="true">+${player.reserveEnergy} next</span>` : ''}
+          </span>
           <div class="hand-pagination" aria-label="Scroll hand">
             ${button('‹', 'hand-scroll', { data: 'data-index="-1" aria-label="Previous cards"' })}${button('›', 'hand-scroll', { data: 'data-index="1" aria-label="Next cards"' })}
           </div>

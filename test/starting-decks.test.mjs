@@ -35,7 +35,7 @@ test('solo and co-op runs add their own signatures, and older replay decks remai
   assert.throws(() => validateStartingDeck(STARTER_DECK), /15 cards/);
 });
 
-test('deck edits cannot swap in signatures or drop below seven one-cost cards', () => {
+test('starting deck validation rejects signatures or fewer than seven one-cost cards', () => {
   const deck = [
     'strike', 'strike', 'guard', 'guard', 'cover', 'cover', 'howl',
     'mark', 'mark', 'flurry', 'flurry', 'jab', 'jab', 'brace', 'lunge',

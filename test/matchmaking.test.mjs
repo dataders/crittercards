@@ -52,7 +52,7 @@ test('private recovery code restores both players and game after a server restar
   const guest = (await firstServer(`${path}/join`, { body: {} })).body;
   assert.equal(guest.recoveryCode, undefined);
   let revision = guest.revision;
-  for (const [token, action] of [[host.token, { type: 'select', critterId: 'fox' }], [guest.token, { type: 'select', critterId: 'hare' }], [host.token, { type: 'deck', cards: dealStartingDeck(1) }], [guest.token, { type: 'deck', cards: dealStartingDeck(2) }], [host.token, { type: 'start' }]]) {
+  for (const [token, action] of [[host.token, { type: 'select', critterId: 'fox' }], [guest.token, { type: 'select', critterId: 'hare' }], [host.token, { type: 'deck' }], [guest.token, { type: 'deck' }], [host.token, { type: 'start' }]]) {
     const result = await firstServer(`${path}/actions`, { token, body: { revision, action } });
     assert.equal(result.status, 200);
     revision = result.body.revision;
@@ -202,11 +202,12 @@ test('public teammates can pick and confirm their own decks on the same revision
     host.act({ type: 'select', critterId: 'fox' }),
     guest.act({ type: 'select', critterId: 'hare' }),
   ]);
-  const hostDeck = dealStartingDeck(1);
-  const guestDeck = dealStartingDeck(2);
+  const hostDeck = host.dealtDeck;
+  const guestDeck = guest.dealtDeck;
+  await assert.rejects(host.act({ type: 'deck', cards: dealStartingDeck(73) }), { status: 400 });
   await Promise.all([
-    host.act({ type: 'deck', cards: hostDeck }),
-    guest.act({ type: 'deck', cards: guestDeck }),
+    host.act({ type: 'deck' }),
+    guest.act({ type: 'deck' }),
   ]);
   const ready = await resumeRoom(host.code, host.token);
   assert.deepEqual(ready.ready, [true, true]);

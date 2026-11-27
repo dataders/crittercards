@@ -1,8 +1,8 @@
 import {
-  COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, dealStartingDeck, STARTING_DECK_SIZE, MIN_STARTING_ONE_COST, MAX_STARTING_COPIES,
+  COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, dealStartingDeck,
   ENCOUNTERS, TRAIL, MERCHANTS, CAMPS, LEVEL_PERKS, HARD_PERKS, TYPES, COMPANION_ABILITIES, getCompanionDescription, createRun, applyAction, getEncounter,
   ACTS, LEVELS_PER_ACT, trailPosition, hardPerkOptions, getEnemyIntent, rivalHealth,
-  getCardDescription, validateStartingDeck, canRemoveRunCard, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE,
+  getCardDescription, canRemoveRunCard, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE,
 } from './game.mjs';
 import { deckLibrary } from './data.mjs';
 import { createCombatInput } from './combat-input.mjs';
@@ -279,26 +279,23 @@ function deckBuilder(seat, critterId, room) {
   if (!critterId) return '';
   const critter = CRITTERS[critterId];
   const signature = CARDS[critter.signature];
-  const cards = room?.deck ?? ui.startingDecks[seat];
+  const cards = room ? room.dealtDeck ?? room.deck ?? [] : ui.startingDecks[seat];
   const oneCost = cards.filter((id) => CARDS[id].cost === 1).length;
-  const disabled = ui.pending || Boolean(room?.deck);
   return `<section class="deck-builder" aria-labelledby="deck-title">
-    <div class="section-heading"><h2 id="deck-title">Build ${escape(critter.name)}’s deck</h2><span class="muted">${knownCards.size} / ${cardLibrary.length} library cards unlocked</span></div>
-    <p class="muted">Keep your random cards or swap them. A new deck needs ${STARTING_DECK_SIZE} library cards, at least ${MIN_STARTING_ONE_COST} that cost 1 energy, and at least one attack. Use up to two copies of a card.</p>
-    <p class="muted">${oneCost} cards cost 1 energy.</p>
+    <div class="section-heading"><h2 id="deck-title">${escape(critter.name)}’s starting deck</h2><span class="muted">${knownCards.size} / ${cardLibrary.length} library cards unlocked</span></div>
+    <p class="muted">${cards.length} dealt cards · ${oneCost} cost 1 energy. Your starting cards are locked.</p>
     <p class="deck-signature"><strong>${escape(signature.name)} × ${critter.signatureCopies ?? 2}</strong> · ${signature.cost} energy · ${escape(signature.description)}</p>
-    <div class="deck-slots">${cards.map((id, index) => `<label class="field deck-slot">Card ${index + 1}<select data-deck-slot="${index}" data-seat="${seat}" ${disabled ? 'disabled' : ''}>
-      ${cardLibrary.filter((cardId) => knownCards.has(cardId) || cardId === id).map((cardId) => {
-        const full = cards.filter((entry, slot) => slot !== index && entry === cardId).length >= MAX_STARTING_COPIES;
-        return `<option value="${cardId}" ${cardId === id ? 'selected' : ''} ${full ? 'disabled' : ''}>${escape(CARDS[cardId].name)} · ${CARDS[cardId].cost} energy</option>`;
-      }).join('')}</select><span class="muted">${escape(CARDS[id].description)}</span></label>`).join('')}</div>
+    <div class="deck-slots">${cards.map((id) => {
+      const card = CARDS[id];
+      return `<article class="battle-deck-card" data-starting-card="${escape(id)}"><strong>${escape(card.name)}</strong><span>${card.cost} energy</span><p>${escape(card.description)}</p></article>`;
+    }).join('')}</div>
     <details class="deck-library" data-view-state="deck-library" ${ui.showLibrary ? 'open' : ''}><summary>Card library and unlocks</summary>
       <ul>${cardLibrary.map((id) => {
         const rival = ENCOUNTERS.flatMap((entry) => entry.enemies).find(({ animal }) => CARD_UNLOCKS[animal]?.includes(id));
         return `<li><strong>${escape(CARDS[id].name)}</strong> · ${knownCards.has(id) ? escape(CARDS[id].description) : `Defeat ${escape(rival?.name)} to unlock.`}</li>`;
       }).join('')}</ul>
     </details>
-    ${room ? `<div class="turn-actions">${button(room.deck ? 'Edit deck' : 'Confirm deck', room.deck ? 'edit-deck' : 'ready', { style: room.deck ? 'secondary' : 'primary', disabled: ui.pending || (Object.hasOwn(COUSINS, critterId) && !room.companions[seat]) })}</div>` : ''}
+    ${room && !room.deck ? `<div class="turn-actions">${button('Confirm deck', 'ready', { style: 'primary', disabled: ui.pending || (Object.hasOwn(COUSINS, critterId) && !room.companions[seat]) })}</div>` : ''}
   </section>`;
 }
 
@@ -728,8 +725,6 @@ function attachRoom(room) {
   ui.reconnect = null;
   ui.mode = 'online';
   ui.savedRunOrigin = null;
-  let latestPick = room.picks[room.seat];
-  ui.startingDecks[room.seat] = room.deck?.length === STARTING_DECK_SIZE ? [...room.deck] : latestPick ? newStartingDeck() : null;
   let latestState = room.state;
   let deferredRender;
   writeStorage(sessionStorage, roomKey, { code: room.code, token: room.token });
@@ -749,11 +744,6 @@ function attachRoom(room) {
 
   ui.stopWatching = room.watch(() => {
     if (ui.room !== room) return;
-    const pick = room.picks[room.seat];
-    if (pick !== latestPick) {
-      ui.startingDecks[room.seat] = room.deck?.length === STARTING_DECK_SIZE ? [...room.deck] : pick ? newStartingDeck() : null;
-      latestPick = pick;
-    }
     acceptState(room.state, latestState);
     latestState = room.state;
     ui.error = '';
@@ -818,6 +808,7 @@ function home(mode = 'local', showSetup = mode === 'online') {
   const leavingRun = Boolean(ui.run || ui.room?.state);
   if (leavingRun) {
     ui.picks = [null, null];
+    ui.startingDecks = [null, null];
     ui.companions = [null, null];
     ui.pickSeat = 0;
   }
@@ -999,8 +990,8 @@ document.addEventListener('click', async (event) => {
   if (action === 'filter') ui.filter = id;
   if (action === 'create') return runRemote(async () => attachRoom(await createRoom()));
   if (action === 'pick') {
-    if (ui.room) return dispatch({ type: 'select', critterId: id });
-    if (ui.picks[seat] !== id) ui.startingDecks[seat] = newStartingDeck();
+    if (ui.room) return dispatch({ type: 'select', critterId: id, unlocked: [...knownCards] });
+    ui.startingDecks[seat] ??= newStartingDeck();
     ui.picks[seat] = id;
     ui.companions[seat] = null;
   }
@@ -1008,8 +999,7 @@ document.addEventListener('click', async (event) => {
     if (ui.room) return dispatch({ type: 'companion', companionId: id });
     ui.companions[seat] = id;
   }
-  if (action === 'ready') return dispatch({ type: 'deck', cards: ui.startingDecks[ui.room.seat] });
-  if (action === 'edit-deck') return dispatch({ type: 'deck', cards: null });
+  if (action === 'ready' && ui.room) return dispatch({ type: 'deck' });
   if (action === 'start') {
     startMusic(state);
     if (ui.room) return dispatch({ type: 'start' });
@@ -1063,21 +1053,7 @@ game.addEventListener('change', (event) => {
     render();
     return;
   }
-  if (!Object.hasOwn(field.dataset, 'deckSlot')) return;
-  const seat = Number(field.dataset.seat);
-  const index = Number(field.dataset.deckSlot);
-  const cards = [...ui.startingDecks[seat]];
-  cards[index] = field.value;
-  ui.showLibrary = game.querySelector('.deck-library').open;
-  ui.error = '';
-  try {
-    validateStartingDeck(cards);
-    ui.startingDecks[seat] = cards;
-  } catch (error) {
-    ui.error = error.message;
-  }
-  render();
-  game.querySelector(`[data-deck-slot="${index}"]`)?.focus({ preventScroll: true });
+
 });
 
 game.addEventListener('toggle', (event) => {

@@ -17,7 +17,22 @@ export const CRITTERS = {
   wolf: { id: 'wolf', name: 'Sable', animal: 'wolf', role: 'Hunter', description: 'Finishes wounded foes before they can strike back.', maxHp: 35, signature: 'harry' },
 };
 
+const energyCards = {
+  fireflySpark: { id: 'fireflySpark', name: 'Firefly Spark', cost: 0, type: 'skill', target: 'none', energy: 1, exhaust: true },
+  moonwoodCache: { id: 'moonwoodCache', name: 'Moonwood Cache', cost: 1, type: 'skill', target: 'none', nextEnergy: 2, block: 3, exhaust: true },
+  briarChannel: { id: 'briarChannel', name: 'Briar Channel', cost: 0, type: 'skill', target: 'none', emptyEnergy: 2, exhaust: true },
+  lanternStrike: { id: 'lanternStrike', name: 'Lantern Strike', cost: 1, type: 'attack', target: 'enemy', damage: 4, energyOnDefeat: 2 },
+  rootwell: { id: 'rootwell', name: 'Rootwell', cost: 0, type: 'skill', target: 'none', guardedEnergy: 1, block: 3, exhaust: true },
+  twinLanterns: { id: 'twinLanterns', name: 'Twin Lanterns', cost: 1, type: 'support', target: 'none', energy: 2, allyEnergy: 1, exhaust: true },
+  mothBargain: { id: 'mothBargain', name: 'Moth’s Bargain', cost: 0, type: 'skill', target: 'none', energy: 2, selfFrail: 2, exhaust: true },
+  lastEmber: { id: 'lastEmber', name: 'Last Ember', cost: 1, type: 'skill', target: 'none', hurtEnergy: 2, heal: 3, exhaust: true },
+  starwell: { id: 'starwell', name: 'Starwell', cost: 2, type: 'skill', target: 'none', nextEnergy: 3, block: 6 },
+};
+
+export const ENERGY_CARDS = Object.keys(energyCards);
+
 export const CARDS = {
+  ...energyCards,
   shieldWall: { id: 'shieldWall', name: 'Venom Ward', cost: 1, type: 'support', target: 'enemy', block: 6, allyBlock: 5, poison: 3 },
   witchHex: { id: 'witchHex', name: 'Bone Hex', cost: 1, type: 'support', target: 'enemy', vulnerable: 1, frail: 1, block: 4 },
   cuttingChorus: { id: 'cuttingChorus', name: 'Spirit Chorus', cost: 'X', type: 'attack', target: 'enemy', damage: 5 },
@@ -234,7 +249,14 @@ export function describeCard(card, attackBonus) {
   if (card.poison) sentences.push(`Apply ${card.poison} Poison. Before acting, the rival loses 1 HP per Poison stack, then loses 1 stack.`);
   if (card.heal) sentences.push(`Heal for ${card.heal}.`);
   if (card.allyHeal) sentences.push(`Heal your ally for ${card.allyHeal}.`);
-  if (card.allyEnergy) sentences.push(`Your ally gains ${card.allyEnergy} energy next turn.`);
+  if (card.energy) sentences.push(`Gain ${card.energy} energy this turn.`);
+  if (card.nextEnergy) sentences.push(`Gain ${card.nextEnergy} energy next turn.`);
+  if (card.emptyEnergy) sentences.push(`If you have no energy, gain ${card.emptyEnergy} energy this turn.`);
+  if (card.energyOnDefeat) sentences.push(`If this attack defeats the rival, gain ${card.energyOnDefeat} energy this turn.`);
+  if (card.guardedEnergy) sentences.push(`If you already had Block, gain ${card.guardedEnergy} energy this turn.`);
+  if (card.hurtEnergy) sentences.push(`If you had half HP or less before healing, gain ${card.hurtEnergy} energy this turn.`);
+  if (card.allyEnergy) sentences.push(`Your ally gains ${card.allyEnergy} energy next turn. In solo, you gain it instead.`);
+  if (card.selfFrail) sentences.push(`Gain ${card.selfFrail} Frail. Each stack reduces your next Block gain by ${FRAIL_BLOCK_LOSS}.`);
   if (card.mark) sentences.push(`Mark the target. The next attack against it deals +${MARK_DAMAGE} damage.`);
   if (card.strength) sentences.push(`Gain ${card.strength} Strength, adding that much damage to attacks this fight.`);
   if (card.vulnerable) sentences.push('Apply Vulnerable. The next hit against this target deals 50% more damage.');
@@ -639,7 +661,8 @@ export function briarHealer(state, rival) {
   return healer?.hp > 0 ? healer : null;
 }
 
-export const BASE_CARDS = ['strike', 'guard', 'cover', 'mark', 'howl', 'expose', 'flurry', 'jab', 'brace', 'lunge', 'barricade'];
+export const BASIC_CARDS = ['strike', 'guard', 'cover', 'mark', 'howl', 'expose', 'flurry', 'jab', 'brace', 'lunge', 'barricade'];
+export const BASE_CARDS = [...BASIC_CARDS, ...ENERGY_CARDS];
 export const STARTER_DECK = ['strike', 'strike', 'guard', 'cover', 'mark'];
 export const STARTING_DECK_SIZE = 15;
 export const MIN_STARTING_ONE_COST = 7;
