@@ -3,4 +3,3 @@ node_modules/
 /.claude/
 /.agents/skills/*
 !/.agents/skills/crittercards-*/
-/.crittercards-data/

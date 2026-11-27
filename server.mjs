@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync, gunzipSync } from 'node:zlib';
 
 import { applyAction, createRun, COUSINS, CRITTERS, startingDeckFor, validateStartingDeck } from './game.mjs';
-import { createLeaderboard, LeaderboardError } from './leaderboard.mjs';
 
 const roomLifetime = 6 * 60 * 60 * 1000;
 const publicWaitLifetime = 45 * 1000;
@@ -20,7 +19,7 @@ const hourSoundtrackDownload = `/downloads/${hourSoundtrackFile}`;
 const enchantedWoodsAlbum = '/assets/crittercards-enchanted-woods-album.zip';
 const staticFiles = new Set([
   '/index.html', '/soundtrack.html', '/styles.css', '/app.mjs', '/game.mjs', '/transport.mjs',
-  '/audio.mjs', '/combat-input.mjs', '/data.mjs', '/storage.mjs', '/view-state.mjs', '/views.mjs', '/leaderboard-ui.mjs',
+  '/audio.mjs', '/combat-input.mjs', '/data.mjs', '/storage.mjs', '/view-state.mjs', '/views.mjs',
   '/assets/crittercards-soundtrack.zip', enchantedWoodsAlbum,
 ]);
 const assetPath = /^\/assets\/(?:[\w-]+\/)*[\w.-]+\.(?:avif|gif|ico|jpe?g|mp3|png|svg|webp|woff2)$/i;
@@ -48,18 +47,18 @@ function sendJson(response, status, data, headers = {}) {
   response.end(JSON.stringify(data));
 }
 
-async function readJson(request, byteLimit = jsonLimit) {
+async function readJson(request) {
   if (!/^application\/json(?:;|$)/i.test(request.headers['content-type'] ?? '')) {
     throw new RequestError(415, 'Send a JSON request.');
   }
 
-  if (Number(request.headers['content-length']) > byteLimit) throw new RequestError(413, 'Request is too large.');
+  if (Number(request.headers['content-length']) > jsonLimit) throw new RequestError(413, 'Request is too large.');
   const chunks = [];
   let bytes = 0;
   // Leave the socket open long enough to send the 413 response, then close it.
   for await (const chunk of request.iterator({ destroyOnReturn: false })) {
     bytes += chunk.length;
-    if (bytes > byteLimit) throw new RequestError(413, 'Request is too large.');
+    if (bytes > jsonLimit) throw new RequestError(413, 'Request is too large.');
     chunks.push(chunk);
   }
 
@@ -146,7 +145,6 @@ function snapshot(room, seat) {
     companions: room.companions,
     deck: room.decks[seat],
     ready: room.decks.map(Boolean),
-    ...(room.timing?.finishedAt ? { clearTimeMs: Math.max(1, room.timing.finishedAt - room.timing.startedAt) } : {}),
     ...(seat === 0 && process.env.ROOM_RECOVERY_SECRET ? { recoveryCode: signedRecoveryCode(room) } : {}),
   };
 }
@@ -198,7 +196,6 @@ function takeAction(room, seat, action) {
   if (room.state) {
     try {
       room.state = applyAction(room.state, { ...action, player: seat });
-      if (room.state.phase === 'victory' && room.timing && !room.timing.finishedAt) room.timing.finishedAt = Date.now();
     } catch (error) {
       throw new RequestError(400, error.message);
     }
@@ -241,7 +238,6 @@ function takeAction(room, seat, action) {
   if (!room.decks.every(Boolean)) throw new RequestError(409, 'Both players need to confirm their decks.');
   if (room.picks.some((pick, index) => COUSINS[pick] && !room.companions[index])) throw new RequestError(409, 'Each cousin needs an animal companion.');
   room.state = createRun([...room.picks], randomBytes(4).readUInt32LE(), room.decks, room.companions);
-  room.timing = { id: randomBytes(16).toString('hex'), startedAt: Date.now() };
 }
 
 async function serveStatic(request, response, pathname) {
@@ -306,33 +302,14 @@ async function serveStatic(request, response, pathname) {
   }
 }
 
-export function createGameServer({ leaderboard: leaderboardOptions } = {}) {
+export function createGameServer() {
   const rooms = new Map();
-  const leaderboard = createLeaderboard(leaderboardOptions);
 
   return createServer({ requestTimeout: 10000 }, async (request, response) => {
     try {
       const { pathname } = new URL(request.url, 'http://localhost');
       if (!pathname.startsWith('/api/')) {
         await serveStatic(request, response, pathname);
-        return;
-      }
-
-      if (request.method === 'GET' && pathname === '/api/leaderboard') {
-        sendJson(response, 200, await leaderboard.list());
-        return;
-      }
-      if (request.method === 'POST' && pathname === '/api/leaderboard/start') {
-        sendJson(response, 201, leaderboard.start(await readJson(request)));
-        return;
-      }
-      if (request.method === 'POST' && pathname === '/api/leaderboard/finish') {
-        sendJson(response, 200, leaderboard.finish(await readJson(request, 128 * 1024)));
-        return;
-      }
-      if (request.method === 'POST' && pathname === '/api/leaderboard') {
-        const { ticket, name } = await readJson(request);
-        sendJson(response, 200, await leaderboard.claim(ticket, name));
         return;
       }
 
@@ -361,7 +338,7 @@ export function createGameServer({ leaderboard: leaderboardOptions } = {}) {
         return;
       }
 
-      const route = /^\/api\/rooms\/([A-Z2-9]{6})(?:\/(join|actions|leaderboard))?$/.exec(pathname);
+      const route = /^\/api\/rooms\/([A-Z2-9]{6})(?:\/(join|actions))?$/.exec(pathname);
       if (!route) throw new RequestError(404, 'Room not found.');
 
       const [, code, operation] = route;
@@ -384,11 +361,6 @@ export function createGameServer({ leaderboard: leaderboardOptions } = {}) {
       }
 
       const seat = authenticate(room, request);
-      if (operation === 'leaderboard') {
-        if (seat !== 0) throw new RequestError(403, 'The host submits the team time.');
-        sendJson(response, 200, await leaderboard.claimRoom(room, body.name));
-        return;
-      }
       if (operation === 'actions') {
         if (body.revision !== room.revision) {
           sendJson(response, 409, { message: 'The room changed. Review the update and try again.', snapshot: snapshot(room, seat) });
@@ -411,7 +383,7 @@ export function createGameServer({ leaderboard: leaderboardOptions } = {}) {
       sendJson(response, 200, snapshot(room, seat));
     } catch (error) {
       if (response.destroyed) return;
-      if (error instanceof RequestError || error instanceof LeaderboardError) {
+      if (error instanceof RequestError) {
         const headers = error.status === 413 ? { Connection: 'close' } : {};
         sendJson(response, error.status, { message: error.message }, headers);
         return;
@@ -425,10 +397,7 @@ export function createGameServer({ leaderboard: leaderboardOptions } = {}) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT ?? process.argv[2] ?? 4173);
   const host = process.env.HOST ?? (process.env.RENDER === 'true' ? '0.0.0.0' : '127.0.0.1');
-  const server = createGameServer({ leaderboard: {
-    file: process.env.LEADERBOARD_FILE || resolve('.crittercards-data/leaderboard.json'),
-    secret: process.env.LEADERBOARD_SECRET || process.env.ROOM_RECOVERY_SECRET || undefined,
-  } });
+  const server = createGameServer();
   server.listen(port, host, () => {
     const address = server.address();
     const urlHost = address.family === 'IPv6' ? `[${address.address}]` : address.address;

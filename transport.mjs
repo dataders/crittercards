@@ -51,10 +51,6 @@ function connect(data) {
       }
     },
 
-    submitTime(name) {
-      return request(`${path}/leaderboard`, { method: 'POST', token, data: { name } });
-    },
-
     watch(onSnapshot, onError) {
       subscription?.stop();
       let stopped = false;
@@ -128,11 +124,3 @@ export async function resumeRoom(code, token) {
 export async function recoverRoom(recoveryCode) {
   return connect(await request('/api/rooms/recover', { method: 'POST', data: { recoveryCode: recoveryCode.trim() } }));
 }
-
-export const getLeaderboard = () => request('/api/leaderboard');
-
-export const startTimedRun = (setup) => request('/api/leaderboard/start', { method: 'POST', data: setup });
-
-export const finishTimedRun = (ticket, moves) => request('/api/leaderboard/finish', { method: 'POST', data: { ticket, moves } });
-
-export const submitTimedRun = (ticket, name) => request('/api/leaderboard', { method: 'POST', data: { ticket, name } });

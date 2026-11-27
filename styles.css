@@ -1126,32 +1126,3 @@ body:not([data-battle-area])::before {
   .title-screen img.hero-art { object-position: 66% top; mask-image: linear-gradient(0deg, transparent, #000 70%); }
   .title-screen .hero-copy { padding: 1.2rem; }
 }
-
-#leaderboard { width: min(calc(100% - 1.5rem), 42rem); }
-.leaderboard-panel { display: grid; gap: .85rem; padding: clamp(.85rem, 4vw, 1.5rem); }
-.leaderboard-panel .section-heading { margin: 0; }
-.leaderboard-panel p { line-height: 1.45; }
-#leaderboard-list {
-  max-height: min(55svh, 34rem);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  gap: .35rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-#leaderboard-list:empty { display: none; }
-#leaderboard-list li {
-  display: grid;
-  grid-template-columns: 1.6rem minmax(0, 1fr) max-content;
-  align-items: center;
-  gap: clamp(.35rem, 2vw, .85rem);
-  padding: .55rem;
-  border: 1px solid var(--line);
-  border-radius: .45rem;
-  background: var(--forest-deep);
-}
-#leaderboard-list small { display: block; color: var(--muted); }
-#leaderboard-list strong, #leaderboard-list small { overflow-wrap: anywhere; }
-.leaderboard-rank { color: var(--lime); font-weight: 750; text-align: center; }
-.leaderboard-time { color: var(--gold); font-variant-numeric: tabular-nums; font-weight: 750; }
