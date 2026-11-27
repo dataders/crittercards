@@ -115,6 +115,45 @@ test('lethal Poison bypasses Block and ends the encounter before a rival can att
   assert.equal(reward.enemies[0].intent, null);
 });
 
+test('Act I levels 8–12 open with distinct tactics on both routes', () => {
+  const open = (level, routeId = 'steady') => {
+    const run = createRun(['fox'], 40);
+    run.encounter = level - 1;
+    run.path = Array(level - 1).fill('steady');
+    return applyAction(run, { type: 'route', player: 0, routeId });
+  };
+  const end = (state) => applyAction(state, { type: 'endTurn', player: 0 });
+  const intents = (state) => state.enemies.map(({ intent }) => intent.type);
+  const openers = [
+    ['guard', 'attack'], ['frailAttack', 'guard'], ['rally', 'attack'],
+    ['attack', 'teamAttack'], ['attack', 'mendRivals'],
+  ];
+
+  for (const routeId of ['steady', 'perilous']) {
+    assert.deepEqual(openers.map((_, index) => intents(open(index + 8, routeId))), openers);
+  }
+  const barricade = end(open(8));
+  assert.equal(barricade.enemies[0].block, 16);
+  assert.equal(barricade.enemies[0].intent.type, 'attack');
+
+  const splinters = end(open(9));
+  assert.equal(splinters.players[0].frail, 1);
+  assert.deepEqual(intents(splinters), ['attack', 'attack']);
+
+  const rally = end(open(10));
+  assert.equal(rally.enemies[0].strength, 6);
+  assert.equal(rally.enemies[0].intent.type, 'attack');
+
+  const crossfire = end(open(11));
+  assert.ok(crossfire.players[0].hp < crossfire.players[0].maxHp);
+  assert.deepEqual(intents(crossfire), ['guard', 'guard']);
+
+  const healing = open(12);
+  assert.equal(healing.enemies[0].block, 12);
+  healing.enemies[0].hp -= 8;
+  assert.equal(end(healing).enemies[0].hp, healing.enemies[0].maxHp);
+});
+
 test('a seeded solo replay clears 20 levels and defeats the Ash Regent', () => {
   const fixture = new URL('./fixtures/solo-campaign.json', import.meta.url);
   const { setup, actions } = JSON.parse(readFileSync(fixture, 'utf8'));

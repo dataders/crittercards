@@ -419,7 +419,53 @@ const woodlandTeams = [
   [['stag', 'wolverine'], ['frog', 'porcupine']],
 ];
 
-function woodlandEnemy(animal, level, slot, perilous) {
+const middleWoodland = {
+  8: {
+    names: ['The Bramble Barricade', 'The Thorn Barricade'],
+    clue: 'One rival raises a barricade while the other attacks.',
+    moves: [
+      [['guard', 16], ['attack', 16], ['guard', 12]],
+      [['attack', 12], ['teamAttack', 9], ['attack', 12]],
+    ],
+  },
+  9: {
+    names: ['The Splinter Path', 'The Splinter Thicket'],
+    clue: 'One rival applies Frail before its partner joins the attack.',
+    moves: [
+      [['frailAttack', 9], ['attack', 13], ['frailAttack', 11]],
+      [['guard', 8], ['attack', 17], ['attack', 10]],
+    ],
+  },
+  10: {
+    names: ['The Gathering Howl', 'The War Cry'],
+    clue: 'One rival rallies while its partner attacks. Stop the rallying rival before its next strike.',
+    hpAdjustment: [-8, 8],
+    moves: [
+      [['rally', 6], ['attack', 13], ['rally', 3]],
+      [['attack', 12], ['guard', 9], ['teamAttack', 10]],
+    ],
+  },
+  11: {
+    names: ['The Crossfire', 'The Thorn Crossfire'],
+    clue: 'Both rivals strike at once, pause to guard, then strike together again.',
+    moves: [
+      [['attack', 16], ['guard', 9], ['attack', 16]],
+      [['teamAttack', 15], ['guard', 9], ['teamAttack', 15]],
+    ],
+  },
+  12: {
+    names: ['The Mossbound Pair', 'The Hidden Mend'],
+    clue: 'The attacker starts behind Block and its partner can heal it. Focus on the healer first.',
+    hpAdjustment: [4, 6],
+    openingBlock: [12, 0],
+    moves: [
+      [['attack', 14], ['guard', 10], ['frailAttack', 12]],
+      [['mendRivals', 14], ['attack', 9], ['mendRivals', 14]],
+    ],
+  },
+};
+
+function woodlandEnemy(animal, level, slot, perilous, tactics) {
   const critter = CRITTERS[animal];
   const scale = 1 + Math.floor(level / 4) * 0.12;
   const damage = Math.ceil((slot ? 7 : 9) * scale);
@@ -428,8 +474,9 @@ function woodlandEnemy(animal, level, slot, perilous) {
   return {
     animal,
     name: `${critter.name} of the Wilds`,
-    hp: Math.ceil((slot ? 24 : 30) * scale) + (perilous ? 4 : 0),
-    moves: [opening, slot ? ['teamAttack', Math.ceil(damage * 0.7)] : ['guard', defense], ['attack', damage + 2]],
+    hp: Math.ceil((slot ? 24 : 30) * scale) + (perilous ? 4 : 0) + (tactics?.hpAdjustment?.[slot] ?? 0),
+    ...(tactics?.openingBlock?.[slot] ? { openingBlock: tactics.openingBlock[slot] } : {}),
+    moves: tactics?.moves[slot] ?? [opening, slot ? ['teamAttack', Math.ceil(damage * 0.7)] : ['guard', defense], ['attack', damage + 2]],
   };
 }
 
@@ -450,15 +497,16 @@ export function trailPosition(encounter) {
 
 const openingTrail = Array.from({ length: LEVELS_PER_ACT }, (_, index) => {
   if (index >= 2 && index < 19) {
+    const tactics = middleWoodland[index + 1];
     return woodlandTeams[index - 2].map((animals, option) => {
       const alternate = option === 1;
       const perilous = alternate && HARD_LEVELS.has(index);
-      const enemies = animals.map((animal, slot) => woodlandEnemy(animal, index, slot, perilous));
+      const enemies = animals.map((animal, slot) => woodlandEnemy(animal, index, slot, perilous, tactics));
       return {
         id: alternate ? 'perilous' : 'steady',
-        name: `Level ${index + 1} · ${alternate ? 'Shadow' : 'Moonlit'} Grove`,
+        name: `Level ${index + 1} · ${tactics?.names[option] ?? (alternate ? 'Shadow Grove' : 'Moonlit Grove')}`,
         trainer: `Warden of Level ${index + 1}`,
-        subtitle: `Face ${enemies.map(({ name }) => name).join(' and ')}.`,
+        subtitle: tactics?.clue ?? `Face ${enemies.map(({ name }) => name).join(' and ')}.`,
         difficulty: perilous ? 'Hard' : 'Standard',
         hardReward: perilous && index === 2,
         goldPerEnemy: perilous ? 24 : 8,
