@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { ACTS, CAMPS, LEVELS_PER_ACT, MERCHANTS, TRAIL, applyAction, createRun, trailPosition } from '../game.mjs';
+import { ACTS, CAMPS, CRITTERS, LEVELS_PER_ACT, MERCHANTS, TRAIL, applyAction, createRun, trailPosition } from '../game.mjs';
 
 function replay({ critters, seed, decks, companions }, actions) {
   let state = createRun(critters, seed, decks, companions);
@@ -30,6 +30,44 @@ test('solo defeat stops the enemy turn after the last familiar falls', () => {
   assert.equal(result.players[0].hp, 0);
   assert.equal(result.round, before.round);
   assert.deepEqual(combat, before);
+});
+
+test('Tito has the lowest starting HP and draws one powerful Secret Star in round two', () => {
+  assert.ok(Object.values(CRITTERS).every(({ id, maxHp }) => id === 'tita' || maxHp > CRITTERS.tita.maxHp));
+  for (const seed of [1, 42]) {
+    const run = createRun(['tita'], seed);
+    assert.equal(run.players[0].hp, 24);
+    assert.equal(run.players[0].deck.filter((id) => id === 'secretStar').length, 1);
+    const opening = applyAction(run, { type: 'route', player: 0, routeId: 'steady' });
+    assert.equal(opening.players[0].hand.length, 4);
+    assert.ok(!opening.players[0].hand.includes('secretStar'));
+    const secondRound = applyAction(opening, { type: 'endTurn', player: 0 });
+    const cardIndex = secondRound.players[0].hand.indexOf('secretStar');
+    assert.ok(cardIndex >= 0);
+    // A guarded Tide rival lets us measure the full neutral damage.
+    Object.assign(secondRound.enemies[1], { hp: 30, maxHp: 30, block: 30 });
+    const cast = applyAction(secondRound, { type: 'play', player: 0, cardIndex, target: 1 });
+    assert.equal(cast.enemies[1].hp, 8);
+    assert.equal(cast.enemies[1].block, 30);
+    assert.equal(cast.players[0].energy, 0);
+    const { hand, drawPile, discardPile, deck } = cast.players[0];
+    assert.ok(![...hand, ...drawPile, ...discardPile].includes('secretStar'));
+    assert.ok(deck.includes('secretStar'));
+  }
+});
+
+test('a saved co-op deck with two Secret Stars keeps its upgraded copy and draws through a large deck', () => {
+  const run = createRun(['hudson', 'tita'], 40);
+  const tito = run.players[1];
+  tito.deck.push('secretStar+', ...Array(12).fill('strike'));
+  const opening = applyAction(run, { type: 'route', player: 0, routeId: 'steady' });
+  assert.deepEqual(opening.players[1].deck.filter((id) => id.startsWith('secretStar')), ['secretStar+']);
+  assert.ok(!opening.players[1].hand.includes('secretStar+'));
+  const handoff = applyAction(opening, { type: 'endTurn', player: 0 });
+  const secondRound = applyAction(handoff, { type: 'endTurn', player: 1 });
+  assert.equal(secondRound.round, 2);
+  assert.ok(secondRound.players[1].hand.includes('secretStar+'));
+  assert.deepEqual(secondRound.players[0].deck.filter((id) => id === 'shieldWall'), ['shieldWall', 'shieldWall']);
 });
 
 test('Venom Ward protects both witches and Poison ticks before the rival acts', () => {

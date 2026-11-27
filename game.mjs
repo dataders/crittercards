@@ -2,7 +2,7 @@ export const COUSINS = {
   hudson: { id: 'hudson', name: 'Hudson', role: 'Poison Witch', maxHp: 45, type: 'stone', signature: 'shieldWall' },
   quinn: { id: 'quinn', name: 'Quinn', role: 'Bone Witch', maxHp: 34, type: 'ember', signature: 'witchHex' },
   alba: { id: 'alba', name: 'Alba', role: 'Spirit-Song Witch', maxHp: 32, type: 'grove', signature: 'cuttingChorus' },
-  tita: { id: 'tita', name: 'Tito', role: 'Star-Spirit Witch', maxHp: 35, type: 'tide', signature: 'secretStar' },
+  tita: { id: 'tita', name: 'Tito', role: 'Star-Spirit Witch', maxHp: 24, type: 'tide', signature: 'secretStar', signatureCopies: 1 },
 };
 
 export const CRITTERS = {
@@ -21,7 +21,7 @@ export const CARDS = {
   shieldWall: { id: 'shieldWall', name: 'Venom Ward', cost: 1, type: 'support', target: 'enemy', block: 6, allyBlock: 5, poison: 3 },
   witchHex: { id: 'witchHex', name: 'Bone Hex', cost: 1, type: 'support', target: 'enemy', vulnerable: 1, frail: 1, block: 4 },
   cuttingChorus: { id: 'cuttingChorus', name: 'Spirit Chorus', cost: 'X', type: 'attack', target: 'enemy', damage: 5 },
-  secretStar: { id: 'secretStar', name: 'Secret Star', cost: 3, type: 'attack', target: 'enemy', damage: 22, pierce: true },
+  secretStar: { id: 'secretStar', name: 'Secret Star', cost: 3, type: 'attack', target: 'enemy', damage: 22, pierce: true, drawRound: 2, exhaust: true },
   strike: { id: 'strike', name: 'Claw Strike', cost: 1, type: 'attack', target: 'enemy', damage: 6 },
   guard: { id: 'guard', name: 'Hold Fast', cost: 1, type: 'skill', target: 'none', block: 8 },
   cover: { id: 'cover', name: 'Stand Together', cost: 1, type: 'support', target: 'none', block: 4, allyBlock: 7 },
@@ -243,6 +243,8 @@ function describeCard(card, attackBonus) {
   if (card.strength) sentences.push(`Gain ${card.strength} Strength, adding that much damage to attacks this fight.`);
   if (card.vulnerable) sentences.push('Apply Vulnerable. The next hit against this target deals 50% more damage.');
   if (card.frail) sentences.push(`Apply Frail. The target gains ${FRAIL_BLOCK_LOSS} less Block the next time it gains Block.`);
+  if (card.drawRound) sentences.push(`First drawn in round ${card.drawRound}.`);
+  if (card.exhaust) sentences.push('After casting, remove this card for the rest of the fight.');
   const effect = sentences.join(' ');
   if (card.cost !== 'X') return effect;
   return `Spend all remaining energy and repeat for each energy spent. ${effect}${card.damage ? ' Extra hits move to the next rival.' : ''}`;
@@ -616,13 +618,17 @@ function shuffle(state, values) {
 
 function drawHand(state, player) {
   const handSize = HAND_SIZE + player.perks.filter((perk) => perk === 'keen').length;
+  const scheduled = player.drawPile.findIndex((id) => CARDS[id].drawRound === state.round);
+  if (scheduled !== -1) player.hand.push(player.drawPile.splice(scheduled, 1)[0]);
   while (player.hand.length < handSize) {
     if (player.drawPile.length === 0) {
       if (player.discardPile.length === 0) break;
       player.drawPile = shuffle(state, player.discardPile);
       player.discardPile = [];
     }
-    player.hand.push(player.drawPile.pop());
+    const next = player.drawPile.findLastIndex((id) => (CARDS[id].drawRound ?? 1) <= state.round);
+    if (next === -1) break;
+    player.hand.push(player.drawPile.splice(next, 1)[0]);
   }
 }
 
@@ -690,6 +696,14 @@ function beginEncounter(state) {
     player.strength = 0;
     player.vulnerable = 0;
     player.frail = 0;
+    const { signature, signatureCopies } = CRITTERS[player.critterId];
+    if (signatureCopies === 1) {
+      // Older saves may have two copies. Keep the upgraded card when available.
+      const upgraded = `${signature}+`;
+      const upgradeIndex = player.deck.indexOf(upgraded);
+      const keep = upgradeIndex === -1 ? player.deck.indexOf(signature) : upgradeIndex;
+      player.deck = player.deck.filter((id, index) => index === keep || (id !== signature && id !== upgraded));
+    }
     player.drawPile = shuffle(state, player.deck);
     player.discardPile = [];
     player.hand = [];
@@ -728,7 +742,7 @@ export function createRun(critterIds, seed = Date.now(), startingDecks, companio
       attackBonus: 0,
       perks: [],
       hand: [],
-      deck: [...startingDecks[id], critter.signature, critter.signature],
+      deck: [...startingDecks[id], ...Array(critter.signatureCopies ?? 2).fill(critter.signature)],
       drawPile: [],
       discardPile: [],
     };
@@ -801,7 +815,7 @@ function playCard(state, action) {
   const cost = variable ? player.energy : card.cost;
   player.energy -= cost;
   player.hand.splice(action.cardIndex, 1);
-  player.discardPile.push(card.id);
+  if (!card.exhaust) player.discardPile.push(card.id);
   log(state, `${critterName(player)} plays ${card.name}${variable ? ` with ${cost} energy` : ''}.`);
 
   let target = action.target;

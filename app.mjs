@@ -283,8 +283,8 @@ function deckBuilder(seat, critterId, room) {
   const disabled = ui.pending || Boolean(room?.deck);
   return `<section class="deck-builder" aria-labelledby="deck-title">
     <div class="section-heading"><h2 id="deck-title">Build ${escape(critter.name)}’s deck</h2><span class="muted">${knownCards.size} / ${cardLibrary.length} library cards unlocked</span></div>
-    <p class="muted">Pick five library cards, with up to two copies each and at least one attack. Your character always brings two copies of their signature.</p>
-    <p class="deck-signature"><strong>${escape(signature.name)} × 2</strong> · ${signature.cost} energy · ${escape(signature.description)}</p>
+    <p class="muted">Pick five library cards, with up to two copies each and at least one attack.</p>
+    <p class="deck-signature"><strong>${escape(signature.name)} × ${critter.signatureCopies ?? 2}</strong> · ${signature.cost} energy · ${escape(signature.description)}</p>
     <div class="deck-slots">${cards.map((id, index) => `<label class="field deck-slot">Card ${index + 1}<select data-deck-slot="${index}" data-seat="${seat}" ${disabled ? 'disabled' : ''}>
       ${cardLibrary.filter((cardId) => knownCards.has(cardId) || cardId === id).map((cardId) => {
         const full = cards.filter((entry, slot) => slot !== index && entry === cardId).length >= MAX_STARTING_COPIES;
