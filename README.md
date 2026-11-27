@@ -23,7 +23,7 @@ Each cousin chooses a recruited woodland animal as a companion. Its special abil
 
 Ember the fox and Pip the hare are available from the start, too. Recruit Bramble the badger and Latch the raccoon at your first win. The collection shows requirements for all 30 species, and your browser remembers your recruits across runs. Each animal has a signature card, a role, and its own starting health. Level-up perks include attack damage, health, starting Block, extra cards, starting energy, and healing.
 
-Each starting deck contains five cards you choose from the shared library and two copies of the character’s signature, or one Secret Star for Tito. Start with eleven library cards and unlock nine more by defeating individual rival creatures. Unlocks stay in the browser even if the run ends in defeat. Drafted cards go into your current deck.
+Each starting deck contains five cards you choose from the shared library and two copies of the character’s signature, or one Secret Star for Tito. Each character draws five cards per round, with extra draws from Keen Senses. Start with eleven library cards and unlock nine more by defeating individual rival creatures. Unlocks stay in the browser even if the run ends in defeat. Drafted cards go into your current deck.
 
 Rallying Howl adds Strength, which boosts every attack for the rest of the fight. Expose applies Vulnerable, which makes the next hit deal 50% more damage. Brittle Hex applies Frail, which reduces the target’s next Block gain by 3. Ironhide and Cindermaw can apply Frail to your familiars.
 

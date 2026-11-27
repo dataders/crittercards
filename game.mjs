@@ -227,7 +227,7 @@ function typedDamage(amount, attackerType, defenderType) {
 
 const MARK_DAMAGE = 3;
 const BOND_DAMAGE = 4;
-const HAND_SIZE = 4;
+const HAND_SIZE = 5;
 const TURN_ENERGY = 3;
 export const FRAIL_BLOCK_LOSS = 3;
 

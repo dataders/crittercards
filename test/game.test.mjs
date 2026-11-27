@@ -40,9 +40,10 @@ test('Tito can draw one powerful Secret Star in the opening hand or on round two
     assert.equal(run.players[0].hp, 24);
     assert.equal(run.players[0].deck.filter((id) => id === 'secretStar').length, 1);
     const opening = applyAction(run, { type: 'route', player: 0, routeId: 'steady' });
-    assert.equal(opening.players[0].hand.length, 4);
+    assert.equal(opening.players[0].hand.length, 5);
     assert.equal(opening.players[0].hand.includes('secretStar'), drawsEarly);
     const spellRound = drawsEarly ? opening : applyAction(opening, { type: 'endTurn', player: 0 });
+    assert.equal(spellRound.players[0].hand.length, 5);
     const cardIndex = spellRound.players[0].hand.indexOf('secretStar');
     assert.ok(cardIndex >= 0);
     // A guarded Tide rival lets us measure the full neutral damage.
@@ -65,6 +66,7 @@ test('a saved co-op deck with two Secret Stars keeps its upgraded copy and draws
   tito.deck.push('secretStar+', ...Array(12).fill('strike'));
   const opening = applyAction(run, { type: 'route', player: 0, routeId: 'steady' });
   assert.deepEqual(opening.players[1].deck.filter((id) => id.startsWith('secretStar')), ['secretStar+']);
+  assert.deepEqual(opening.players.map(({ hand }) => hand.length), [5, 5]);
   assert.ok(!opening.players[1].hand.includes('secretStar+'));
   const handoff = applyAction(opening, { type: 'endTurn', player: 0 });
   const secondRound = applyAction(handoff, { type: 'endTurn', player: 1 });
