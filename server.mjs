@@ -13,9 +13,10 @@ const roomCapacity = 300;
 const codeAlphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 const hourSoundtrackFile = 'crittercards-faster-soundtrack-one-hour.mp3';
 const hourSoundtrackDownload = `/downloads/${hourSoundtrackFile}`;
+const enchantedWoodsAlbum = '/assets/crittercards-enchanted-woods-album.zip';
 const staticFiles = new Set([
   '/index.html', '/soundtrack.html', '/styles.css', '/app.mjs', '/game.mjs', '/transport.mjs',
-  '/assets/crittercards-soundtrack.zip',
+  '/assets/crittercards-soundtrack.zip', enchantedWoodsAlbum,
 ]);
 const assetPath = /^\/assets\/(?:[\w-]+\/)*[\w.-]+\.(?:avif|gif|ico|jpe?g|mp3|png|svg|webp|woff2)$/i;
 const types = {
@@ -241,7 +242,9 @@ async function serveStatic(request, response, pathname) {
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-cache',
   };
-  if (download) headers['Content-Disposition'] = `attachment; filename="${hourSoundtrackFile}"`;
+  if (download || path === enchantedWoodsAlbum) {
+    headers['Content-Disposition'] = `attachment; filename="${path.split('/').at(-1)}"`;
+  }
   if (headers['Content-Type'] === 'audio/mpeg') {
     headers['Accept-Ranges'] = 'bytes';
     const range = request.method === 'GET' && /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
