@@ -32,6 +32,34 @@ const cancelQueue = (request, room, revision = room.revision) => request(`${room
   body: { revision, action: { type: 'cancelMatch' } },
 });
 
+test('private recovery code restores both players and game after a server restart', async () => {
+  const firstServer = createClient();
+  const host = (await firstServer('/api/rooms', { body: {} })).body;
+  const path = roomPath(host);
+  const guest = (await firstServer(`${path}/join`, { body: {} })).body;
+  assert.equal(guest.recoveryCode, undefined);
+  let revision = guest.revision;
+  for (const [token, action] of [[host.token, { type: 'select', critterId: 'fox' }], [guest.token, { type: 'select', critterId: 'hare' }], [host.token, { type: 'deck', cards: ['strike', 'strike', 'guard', 'cover', 'mark'] }], [guest.token, { type: 'deck', cards: ['strike', 'strike', 'guard', 'cover', 'mark'] }], [host.token, { type: 'start' }]]) {
+    const result = await firstServer(`${path}/actions`, { token, body: { revision, action } });
+    assert.equal(result.status, 200);
+    revision = result.body.revision;
+  }
+  const backup = (await readRoom(firstServer, host)).body;
+  assert.equal(backup.state.phase, 'route');
+  assert.equal((await firstServer('/api/rooms/recover', { body: { recoveryCode: backup.recoveryCode } })).status, 409);
+  const restarted = createClient();
+  assert.equal((await readRoom(restarted, guest)).status, 404);
+  assert.equal((await restarted('/api/rooms/recover', { body: { recoveryCode: 'invalid' } })).status, 400);
+  const restored = await restarted('/api/rooms/recover', { body: { recoveryCode: backup.recoveryCode } });
+  assert.equal(restored.status, 200);
+  assert.equal(restored.body.code, host.code);
+  assert.deepEqual(restored.body.state, backup.state);
+  const guestResume = await readRoom(restarted, guest);
+  assert.equal(guestResume.status, 200);
+  assert.equal(guestResume.body.revision, revision);
+  assert.equal(guestResume.body.recoveryCode, undefined);
+});
+
 test('concurrent public requests share one room and leave private rooms available by code', async () => {
   const request = createClient();
   const { body: privateRoom } = await request('/api/rooms', { body: {} });
