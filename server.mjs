@@ -10,13 +10,16 @@ const roomLifetime = 6 * 60 * 60 * 1000;
 const publicWaitLifetime = 45 * 1000;
 const roomCapacity = 300;
 const codeAlphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-const staticFiles = new Set(['/index.html', '/styles.css', '/app.mjs', '/game.mjs', '/transport.mjs']);
+const staticFiles = new Set([
+  '/index.html', '/soundtrack.html', '/styles.css', '/app.mjs', '/game.mjs', '/transport.mjs',
+  '/assets/crittercards-soundtrack.zip',
+]);
 const assetPath = /^\/assets\/(?:[\w-]+\/)*[\w.-]+\.(?:avif|gif|ico|jpe?g|mp3|png|svg|webp|woff2)$/i;
 const types = {
   avif: 'image/avif', css: 'text/css; charset=utf-8', gif: 'image/gif',
   html: 'text/html; charset=utf-8', ico: 'image/x-icon', jpeg: 'image/jpeg',
   jpg: 'image/jpeg', mjs: 'text/javascript; charset=utf-8', mp3: 'audio/mpeg', png: 'image/png',
-  svg: 'image/svg+xml', webp: 'image/webp', woff2: 'font/woff2',
+  svg: 'image/svg+xml', webp: 'image/webp', woff2: 'font/woff2', zip: 'application/zip',
 };
 
 class RequestError extends Error {

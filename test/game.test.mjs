@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { ACTS, CAMPS, CRITTERS, LEVELS_PER_ACT, MERCHANTS, TRAIL, applyAction, createRun, trailPosition } from '../game.mjs';
+import { ACTS, CAMPS, CARDS, CRITTERS, LEVELS_PER_ACT, MERCHANTS, TRAIL, applyAction, createRun, matchup, trailPosition } from '../game.mjs';
 
 function replay({ critters, seed, decks, companions }, actions) {
   let state = createRun(critters, seed, decks, companions);
@@ -190,6 +190,7 @@ test('a seeded co-op replay clears all three acts from a fresh run', () => {
 });
 
 test('all three acts have 20 levels and only the last boss ends the campaign', () => {
+  assert.ok(Object.values(MERCHANTS).every((shop) => shop.stock.every((card) => card.price >= 15)));
   assert.equal(TRAIL.length, 60);
   assert.equal(CAMPS.length, 15);
   assert.equal(Object.keys(MERCHANTS).length, 15);
@@ -225,4 +226,95 @@ test('all three acts have 20 levels and only the last boss ends the campaign', (
     assert.equal(run.players[0].attackBonus, 1);
     assert.equal(run.gold, 16);
   }
+});
+
+test('act trials change enemy tactics and offer their featured card to both players', () => {
+  const prizes = ['thornbreak', 'undertow', 'lastWord'];
+  const finishRound = (state) => [0, 1].reduce((next, player) => applyAction(next, { type: 'endTurn', player }), state);
+  for (const [act, cardId] of prizes.entries()) {
+    const run = createRun(['fox', 'hare'], 12);
+    run.encounter = act * LEVELS_PER_ACT + 4;
+    run.path = Array(run.encounter).fill('steady');
+    const ordinary = applyAction(run, { type: 'route', player: 0, routeId: 'steady' });
+    let trial = applyAction(run, { type: 'route', player: 0, routeId: 'trial' });
+    assert.equal(trial.path.at(-1), 'trial');
+    assert.notDeepEqual(trial.enemies.map(({ intent }) => intent), ordinary.enemies.map(({ intent }) => intent));
+
+    // Set up one damaged rival to observe the first enemy turn.
+    if (act === 0) {
+      const patient = trial.enemies.findIndex(({ intent }) => intent.type !== 'mendRivals');
+      trial.enemies[patient].hp -= 15;
+      const before = trial.enemies[patient].hp;
+      const patientType = CRITTERS[trial.enemies[patient].animal].type;
+      const damage = Math.floor(CARDS.strike.damage * matchup(CRITTERS.fox.type, patientType));
+      trial.players[0].hand = ['strike'];
+      trial = applyAction(trial, { type: 'play', player: 0, cardIndex: 0, target: patient });
+      const wardedHp = before - Math.floor(damage / 2);
+      assert.equal(trial.enemies[patient].hp, wardedHp);
+      trial = finishRound(trial);
+      assert.equal(trial.enemies[patient].hp, wardedHp + 12);
+    } else if (act === 1) {
+      assert.deepEqual(trial.enemies.map(({ intent }) => intent.type).sort(), ['guard', 'teamAttack']);
+      const bracing = trial.enemies.findIndex(({ intent }) => intent.type === 'guard');
+      const surging = 1 - bracing;
+      const { block: openingBlock, intent: guard } = trial.enemies[bracing];
+      const { block: surgeBlock, intent: firstSurge } = trial.enemies[surging];
+      assert.ok(openingBlock > surgeBlock && surgeBlock > 0);
+      trial = finishRound(trial);
+      assert.equal(trial.enemies[bracing].intent.type, 'teamAttack');
+      assert.ok(trial.enemies[bracing].intent.amount > firstSurge.amount);
+      assert.equal(trial.enemies[bracing].block, guard.amount);
+      assert.equal(trial.enemies[surging].intent.type, 'guard');
+      assert.equal(trial.enemies[surging].block, 0);
+    } else {
+      const rallying = trial.enemies.findIndex(({ intent }) => intent.type === 'rally');
+      trial = finishRound(trial);
+      assert.equal(trial.enemies[rallying].strength, 8);
+      assert.equal(trial.enemies[rallying].intent.amount, 27);
+    }
+
+    // Finish with both seats still present so each can claim their own reward.
+    trial.enemies[0].hp = 1;
+    trial.enemies[0].block = 0;
+    trial.enemies[1].hp = 0;
+    trial.players[0].hand = ['jab'];
+    const reward = applyAction(trial, { type: 'play', player: 0, cardIndex: 0, target: 0 });
+    assert.equal(reward.phase, 'reward');
+    assert.ok(reward.rewardOptions.every((offers) => offers.includes(cardId)));
+    const picked = applyAction(reward, { type: 'draft', player: 0, cardId, perkId: 'fang' });
+    const skipped = applyAction(picked, { type: 'draft', player: 1, perkId: 'fang' });
+    assert.equal(skipped.phase, 'route');
+    assert.ok(skipped.players[0].deck.includes(cardId));
+    assert.ok(!skipped.players[1].deck.includes(cardId));
+  }
+});
+
+test('Briar Ward halves piercing attacks, drops with the healer, and lets Poison through', () => {
+  const run = createRun(['fox'], 12);
+  run.encounter = 8;
+  const trial = applyAction(run, { type: 'route', player: 0, routeId: 'trial' });
+  const patient = trial.enemies.findIndex(({ briarHealer }) => briarHealer !== undefined);
+  const healer = trial.enemies[patient].briarHealer;
+  assert.ok(trial.enemies[healer].block > 0);
+
+  // Compare the same attack with and without the healer.
+  trial.players[0].hand = ['ghostfire', 'jab', 'ghostfire'];
+  trial.enemies[healer].block = 0;
+  trial.enemies[healer].hp = 1;
+  const play = (state, target) => applyAction(state, { type: 'play', player: 0, cardIndex: 0, target });
+  const warded = play(trial, patient);
+  const exposed = play(warded, healer);
+  const fullHit = play(exposed, patient);
+  const wardedDamage = trial.enemies[patient].hp - warded.enemies[patient].hp;
+  const fullDamage = exposed.enemies[patient].hp - fullHit.enemies[patient].hp;
+  assert.ok(fullDamage > wardedDamage);
+  assert.equal(wardedDamage, Math.floor(fullDamage / 2));
+
+  // At this level the patient takes Poison damage before the healer acts.
+  const poisoned = structuredClone(trial);
+  poisoned.enemies[patient].hp = 1;
+  poisoned.enemies[patient].poison = 1;
+  const nextRound = applyAction(poisoned, { type: 'endTurn', player: 0 });
+  assert.equal(nextRound.enemies[patient].hp, 0);
+  assert.ok(nextRound.enemies[healer].hp > 0);
 });

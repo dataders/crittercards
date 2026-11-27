@@ -56,6 +56,9 @@ export const CARDS = {
   moonmend: { id: 'moonmend', name: 'Moon Mend', cost: 2, type: 'support', target: 'none', heal: 5, allyHeal: 6, allyBlock: 4 },
   avalanche: { id: 'avalanche', name: 'Stonefall', cost: 3, type: 'attack', target: 'enemy', damage: 22, block: 5 },
   sanctuary: { id: 'sanctuary', name: 'Forest Sanctuary', cost: 3, type: 'support', target: 'none', block: 15, allyBlock: 15, allyHeal: 4 },
+  thornbreak: { id: 'thornbreak', name: 'Thornbreak', cost: 1, type: 'attack', target: 'enemy', damage: 5, stealBlock: 6, frail: 1 },
+  undertow: { id: 'undertow', name: 'Undertow', cost: 'X', type: 'attack', target: 'enemy', damage: 3, allyBlock: 2 },
+  lastWord: { id: 'lastWord', name: 'Last Word', cost: 1, type: 'attack', target: 'enemy', damage: 5, woundedBonus: 7 },
 };
 
 export const CRITTER_UNLOCKS = {
@@ -540,7 +543,70 @@ for (const [level, routes] of openingTrail.entries()) {
   }));
 }
 
-export const TRAIL = [...openingTrail, ...laterActs.flatMap((act, index) => laterTrail(act, index + 1))];
+const trials = [
+  {
+    name: 'The Briar Infirmary',
+    trainer: 'Briar Keeper',
+    rule: 'The healer starts with Block and halves attack damage to its partner while it lives. Poison bypasses the ward.',
+    reward: 'thornbreak',
+    healthScale: 1.45,
+    moves: [
+      [['attack', 9], ['guard', 10], ['frailAttack', 12]],
+      [['mendRivals', 12], ['attack', 8], ['mendRivals', 16]],
+    ],
+  },
+  {
+    name: 'The Floodgate',
+    trainer: 'Floodgate Keeper',
+    rule: 'The less protected rival surges first. The one with more Block braces for a stronger surge next round.',
+    reward: 'undertow',
+    healthScale: 1.55,
+    openingBlock: (openingMove, step) => openingMove === 'guard' ? 32 + 12 * step : 12 + 3 * step,
+    moves: [
+      [['guard', 17], ['teamAttack', 20], ['attack', 13]],
+      [['teamAttack', 9], ['guard', 13], ['frailAttack', 12]],
+    ],
+  },
+  {
+    name: 'The War Grove',
+    trainer: 'Thorn Herald',
+    rule: 'Both rivals build permanent Strength. End the fight before their attacks grow.',
+    reward: 'lastWord',
+    healthScale: 1.65,
+    moves: [
+      [['rally', 8], ['attack', 19], ['rally', 7], ['frailAttack', 17]],
+      [['attack', 15], ['rally', 9], ['teamAttack', 15], ['rally', 7]],
+    ],
+  },
+];
+
+export const TRAIL = [...openingTrail, ...laterActs.flatMap((act, index) => laterTrail(act, index + 1))]
+  .map((routes, encounter) => {
+    const { actIndex, level } = trailPosition(encounter);
+    if (![5, 9, 13, 17].includes(level)) return routes;
+    const trial = trials[actIndex];
+    const { coOpHealth, enemies, goldPerEnemy } = routes[1];
+    const tactics = level % 8 === 1 ? trial.moves : [...trial.moves].reverse();
+    const healer = tactics.findIndex((moves) => moves[0][0] === 'mendRivals');
+    const step = Math.floor((level - 5) / 4);
+    return [...routes, {
+      id: 'trial',
+      name: trial.name,
+      trainer: trial.trainer,
+      subtitle: trial.rule,
+      difficulty: 'Trial',
+      trialReward: trial.reward,
+      coOpHealth: healer >= 0 ? 1 + 0.27 * step : coOpHealth,
+      goldPerEnemy,
+      enemies: enemies.map((enemy, slot) => ({
+        ...enemy,
+        hp: Math.ceil(enemy.hp * trial.healthScale),
+        openingBlock: slot === healer ? 13 + 4 * step : trial.openingBlock?.(tactics[slot][0][0], step),
+        ...(healer >= 0 && slot !== healer ? { briarHealer: healer } : {}),
+        moves: tactics[slot].map(([type, amount]) => [type, amount + step]),
+      })),
+    }];
+  });
 
 const openingMerchants = {
   3: { name: 'The Lantern Peddler', stock: [{ id: 'lunge', price: 6 }, { id: 'armor', price: 9 }, { id: 'circle', price: 13 }] },
@@ -553,9 +619,9 @@ const openingMerchants = {
 export const MERCHANTS = Object.fromEntries(ACTS.flatMap((_, actIndex) =>
   Object.entries(openingMerchants).map(([level, merchant]) => [
     actIndex * LEVELS_PER_ACT + Number(level),
-    actIndex === 0 ? merchant : {
-      name: actIndex === 1 ? 'The Reed Market' : 'The Briar Peddler',
-      stock: merchant.stock.map((item) => ({ ...item, price: item.price + 8 * actIndex })),
+    {
+      name: actIndex === 0 ? merchant.name : actIndex === 1 ? 'The Reed Market' : 'The Briar Peddler',
+      stock: merchant.stock.map((item) => ({ ...item, price: Math.max(15, item.price + 2 + 8 * actIndex) })),
     },
   ]),
 ));
@@ -570,9 +636,15 @@ export function rivalHealth(enemy, encounter, playerCount) {
   return Math.ceil(enemy.hp * (playerCount === 1 ? 0.7 : encounter.coOpHealth ?? 1));
 }
 
+export function briarHealer(state, rival) {
+  const healer = state.enemies[rival.briarHealer];
+  return healer?.hp > 0 ? healer : null;
+}
+
 export const BASE_CARDS = ['strike', 'guard', 'cover', 'mark', 'howl', 'expose', 'flurry', 'jab', 'brace', 'lunge', 'barricade'];
 export const STARTER_DECK = ['strike', 'strike', 'guard', 'cover', 'mark'];
 export const MAX_STARTING_COPIES = 2;
+export const MIN_RUN_DECK_SIZE = 5;
 export const CARD_UNLOCKS = {
   badger: ['armor', 'brittle'], raccoon: ['bite'], boar: ['cleave'], magpie: ['rush', 'circle'], owl: ['renew'], wolf: ['sharpen', 'crownfall'],
 };
@@ -595,6 +667,22 @@ export function getCardDescription(state, playerIndex, cardId) {
 
 export function canAffordCard(card, energy) {
   return card.cost === 'X' ? energy > 0 : card.cost <= energy;
+}
+
+export function canRemoveRunCard(deck, index) {
+  return Number.isInteger(index) && index >= 0 && index < deck.length &&
+    deck.length > MIN_RUN_DECK_SIZE && deck.some((id, other) => index !== other && CARDS[id].damage);
+}
+
+export const CARD_REMOVAL_PRICE = 30;
+
+function removeRunCard(state, playerIndex, cardIndex) {
+  const player = state.players[playerIndex];
+  if (!canRemoveRunCard(player.deck, cardIndex)) throw new Error(`Keep at least ${MIN_RUN_DECK_SIZE} cards and one attack in your deck.`);
+  if (state.gold < CARD_REMOVAL_PRICE) throw new Error('The pack needs 30 gold to remove a card.');
+  state.gold -= CARD_REMOVAL_PRICE;
+  const [id] = player.deck.splice(cardIndex, 1);
+  log(state, `${critterName(player)} removes ${CARDS[id].name} for ${CARD_REMOVAL_PRICE} gold.`);
 }
 
 function critterName(player) {
@@ -632,10 +720,13 @@ function drawHand(state, player) {
   }
 }
 
+const defensiveIntents = new Set(['guard', 'shadowWard', 'mendRivals', 'rally']);
+
 export function getEnemyIntent(state, encounter, enemyIndex, round) {
   const moves = encounter.enemies[enemyIndex].moves;
   const [type, amount] = moves[(round - 1) % moves.length];
-  const intent = { type, amount: state.players.length === 1 && !['guard', 'shadowWard'].includes(type) ? Math.ceil(amount * 0.7) : amount };
+  const base = defensiveIntents.has(type) ? amount : amount + (state.enemies?.[enemyIndex]?.strength ?? 0);
+  const intent = { type, amount: state.players.length === 1 && !defensiveIntents.has(type) ? Math.ceil(base * 0.7) : base };
   if (type === 'attack' || type === 'frailAttack' || type === 'crownCurse') {
     const preferred = (round - 1 + enemyIndex) % state.players.length;
     intent.target = state.players[preferred].hp > 0 ? preferred : 1 - preferred;
@@ -686,7 +777,8 @@ function beginEncounter(state) {
     hp: rivalHealth(enemy, encounter, state.players.length),
     maxHp: rivalHealth(enemy, encounter, state.players.length),
     gold: encounter.goldPerEnemy,
-    block: 0,
+    block: enemy.openingBlock ?? 0,
+    ...(enemy.briarHealer === undefined ? {} : { briarHealer: enemy.briarHealer }),
     marked: false,
     vulnerable: 0,
     frail: 0,
@@ -789,12 +881,15 @@ function finishEncounter(state) {
     return;
   }
   state.phase = 'reward';
-  state.hardReward = getEncounter(state).hardReward === true;
+  const encounter = getEncounter(state);
+  state.hardReward = encounter.hardReward === true;
   const available = TRAIL.slice(0, state.encounter + 1).flatMap((routes, level) =>
     routes.find(({ id }) => id === state.path[level]).enemies.flatMap((enemy) => CARD_UNLOCKS[enemy.animal] ?? []));
   state.rewardOptions = state.players.map(() => {
     const pool = [...new Set([...available, ...BASE_CARDS, 'spark', 'ward', 'thorns', 'moonmend', 'avalanche', 'sanctuary'])];
-    return [0, 2, 3].map((cost) => shuffle(state, pool.filter((id) => CARDS[id].cost === cost))[0]);
+    const offers = [0, 2, 3].map((cost) => shuffle(state, pool.filter((id) => CARDS[id].cost === cost))[0]);
+    if (encounter.trialReward) offers.push(encounter.trialReward);
+    return offers;
   });
   log(state, 'The pack prevails. Choose a level perk and take or skip a card for each critter.');
 }
@@ -854,11 +949,13 @@ function resolveCardEffect(state, player, card, target, attackerId = player.crit
     gainBlock(player, stolen);
     enemy.marked = false;
     const multiplier = matchup(CRITTERS[attackerId].type, CRITTERS[enemy.animal].type);
-    const dealt = hit(enemy, typedDamage(damage, CRITTERS[attackerId].type, CRITTERS[enemy.animal].type), card.pierce);
+    const typed = typedDamage(damage, CRITTERS[attackerId].type, CRITTERS[enemy.animal].type);
+    const warded = briarHealer(state, enemy);
+    const dealt = hit(enemy, warded ? Math.floor(typed / 2) : typed, card.pierce);
     state.lastAttacker = player.id;
     state.lastTarget = target;
     state.bondTriggered ||= bond;
-    log(state, `${enemy.name} takes ${dealt} damage${bond ? ' with a Bond Strike' : ''}${multiplier > 1 ? ' (super effective)' : multiplier < 1 ? ' (resisted)' : ''}.`);
+    log(state, `${enemy.name} takes ${dealt} damage${bond ? ' with a Bond Strike' : ''}${multiplier > 1 ? ' (super effective)' : multiplier < 1 ? ' (resisted)' : ''}${warded ? ' with Briar Ward' : ''}.`);
     if (bond && !state.bondWardUsed) {
       state.bondWardUsed = true;
       const ward = HARD_PERKS.bondWard.block * state.players.filter((member) => member.hardPerk === 'bondWard').length;
@@ -921,6 +1018,16 @@ function finishTurn(state, playerIndex) {
     if (type === 'guard') {
       const gained = gainBlock(enemy, amount);
       log(state, `${enemy.name} raises ${gained} Block.`);
+    } else if (type === 'mendRivals') {
+      for (const rival of state.enemies) {
+        if (rival === enemy || rival.hp === 0 || rival.hp === rival.maxHp) continue;
+        const before = rival.hp;
+        heal(rival, amount);
+        log(state, `${enemy.name} mends ${rival.name} for ${rival.hp - before} HP.`);
+      }
+    } else if (type === 'rally') {
+      enemy.strength = (enemy.strength ?? 0) + amount;
+      log(state, `${enemy.name} rallies and gains ${amount} Strength.`);
     } else if (type === 'shadowWard') {
       const gained = gainBlock(enemy, amount);
       heal(enemy, 8);
@@ -1038,7 +1145,9 @@ function useCamp(state, action) {
     if (id.endsWith('+') || !CARDS[`${id}+`]) throw new Error('Choose a card that has not been upgraded.');
     player.deck[index] = `${id}+`;
     log(state, `${critterName(player)} upgrades ${CARDS[id].name}.`);
-  } else throw new Error('Choose to heal or upgrade a card.');
+  } else if (action.choice === 'remove') {
+    removeRunCard(state, action.player, action.cardIndex);
+  } else throw new Error('Choose to heal, upgrade, or remove a card.');
   state.campChoices[action.player] = action.choice;
   if (state.campChoices.every(Boolean)) state.phase = 'route';
 }
@@ -1062,10 +1171,14 @@ export function applyAction(state, action) {
     useCamp(next, action);
     return next;
   }
-  if (action.type === 'route' || action.type === 'buy' || action.type === 'leaveShop') {
+  if (action.type === 'route' || action.type === 'buy' || action.type === 'removeCard' || action.type === 'leaveShop') {
     const next = structuredClone(state);
     if (action.type === 'route') chooseRoute(next, action);
     else if (action.type === 'buy') buyCard(next, action);
+    else if (action.type === 'removeCard') {
+      if (state.phase !== 'shop') throw new Error('Visit a merchant to remove cards.');
+      removeRunCard(next, action.player, action.cardIndex);
+    }
     else {
       if (state.phase !== 'shop' || action.player !== 0) throw new Error('Player 1 leads the pack back to the trail.');
       next.phase = 'route';

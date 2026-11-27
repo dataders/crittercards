@@ -464,6 +464,9 @@ button.route-option:hover:not(:disabled) { border-color: var(--lime); background
 .trail-rung .route-option { position: relative; z-index: 1; }
 .trail-rung .route-hard .route-tag { color: var(--coral); }
 .trail-rung .route-hard { border-color: #a3634f; }
+.trail-rung .route-trial { grid-column: 1 / -1; border-color: #8d7541; }
+.route-trial .route-tag, .route-prize { color: var(--gold); }
+.route-prize { font-weight: 700; }
 .trail-rung .route-option.is-future { opacity: .7; }
 .merchant-detour { position: relative; z-index: 2; max-width: 22rem; margin: 1.15rem auto 0; }
 .merchant-detour::before, .merchant-detour::after { content: ''; position: absolute; left: 50%; height: .8rem; border-left: 2px dashed var(--gold); }
@@ -474,11 +477,10 @@ button.route-option:hover:not(:disabled) { border-color: var(--lime); background
 .route-camp .route-tag { color: #ffbc7b; }
 .camp-panel > section { padding-top: 1rem; border-top: 1px solid var(--line); }
 .camp-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: .65rem; margin-top: .8rem; }
-.camp-card { display: grid; gap: .4rem; padding: .8rem; text-align: left; border: 1px solid var(--line); border-radius: .6rem; background: var(--forest-deep); color: var(--paper); }
-.camp-card:hover:not(:disabled) { border-color: var(--lime); }
-.camp-card:disabled { opacity: .55; }
+.camp-card { display: grid; grid-template-rows: auto auto 1fr auto; gap: .4rem; padding: .8rem; text-align: left; border: 1px solid var(--line); border-radius: .6rem; background: var(--forest-deep); color: var(--paper); }
 .camp-card span { font-size: .85rem; }
 .camp-improvement { color: var(--lime); }
+.camp-card-actions { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .35rem; }
 .shop-item h2 { font-size: 1.35rem; }
 .shop-item > p:not(.route-tag) { font-size: .92rem; }
 .shop-buy { display: grid; gap: .4rem; }

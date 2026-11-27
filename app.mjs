@@ -1,8 +1,8 @@
 import {
   COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, STARTER_DECK, MAX_STARTING_COPIES, FRAIL_BLOCK_LOSS,
   ENCOUNTERS, TRAIL, MERCHANTS, CAMPS, LEVEL_PERKS, HARD_PERKS, TYPES, matchup, COMPANION_ABILITIES, getCompanionDescription, createRun, applyAction, getEncounter,
-  ACTS, LEVELS_PER_ACT, trailPosition, hardPerkOptions, getEnemyIntent, rivalHealth,
-  getCardDescription, validateStartingDeck, canAffordCard,
+  ACTS, LEVELS_PER_ACT, trailPosition, hardPerkOptions, getEnemyIntent, rivalHealth, briarHealer,
+  getCardDescription, validateStartingDeck, canAffordCard, canRemoveRunCard, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE,
 } from './game.mjs';
 import { createRoom, findPublicMatch, isTerminalRoomError, joinRoom, resumeRoom } from './transport.mjs';
 
@@ -395,9 +395,13 @@ function allyCard(player, seat, state) {
 
 function intentLabel(intent, enemy, state) {
   if (!intent) return '';
-  if (enemy.poison >= enemy.hp) return 'Poison will defeat this rival before it acts';
   if (intent.type === 'guard') return `Gains ${Math.max(0, intent.amount - (enemy.frail ? FRAIL_BLOCK_LOSS : 0))} Block`;
   if (intent.type === 'shadowWard') return `Shadow Ward · gains ${Math.max(0, intent.amount - (enemy.frail ? FRAIL_BLOCK_LOSS : 0))} Block and heals 8`;
+  if (intent.type === 'mendRivals') {
+    const ally = state.enemies.find((rival) => rival !== enemy && rival.hp > 0);
+    return ally ? `Mends ${ally.name} for up to ${intent.amount} HP` : 'No other rival to mend';
+  }
+  if (intent.type === 'rally') return `Rallies · gains ${intent.amount} Strength for this fight`;
   const damage = (seat) => Math.floor(intent.amount * matchup(CRITTERS[enemy.animal].type, CRITTERS[state.players[seat].critterId].type));
   if (intent.type === 'eclipse' || intent.type === 'teamAttack') {
     const hits = state.players.filter((player) => player.hp > 0).map((player) => `P${player.id + 1} for ${damage(player.id)}`).join(', ');
@@ -410,6 +414,7 @@ function intentLabel(intent, enemy, state) {
 
 function enemyCard(enemy, index, state) {
   const selected = ui.target === index;
+  const healer = briarHealer(state, enemy);
   const bondTarget = state.players.length > 1 && state.lastTarget === index && state.lastAttacker !== state.activePlayer && !state.bondTriggered;
   const multiplier = matchup(CRITTERS[state.players[state.activePlayer].critterId].type, CRITTERS[enemy.animal].type);
   const effectiveness = multiplier > 1 ? 'Super effective · ×1.5' : multiplier < 1 ? 'Resisted · ×0.75' : 'Normal damage';
@@ -421,6 +426,8 @@ function enemyCard(enemy, index, state) {
       ${health(enemy)}
       ${effects(enemy)}
       ${enemy.hp > 0 ? `<span class="type-matchup">Your attacks: ${effectiveness}</span>` : ''}
+      ${enemy.hp > 0 && healer ? `<span class="type-matchup">Briar Ward from ${escape(healer.name)} · half attack damage</span>` : ''}
+      ${enemy.hp > 0 && enemy.poison >= enemy.hp ? '<span class="type-matchup">Poison is lethal at current HP</span>' : ''}
       <span class="intent">${enemy.hp <= 0 ? 'Defeated' : escape(intentLabel(enemy.intent, enemy, state))}</span>
     </span>
   </button>`;
@@ -463,15 +470,17 @@ function trailMap(state) {
         <div class="route-options">
           ${routes.map((route) => {
             const totalGold = route.goldPerEnemy * route.enemies.length;
-            const health = route.enemies.map((enemy) => `${enemy.name} ${rivalHealth(enemy, route, state.players.length)} HP`).join(' · ');
+            const health = route.enemies.map((enemy) => `${enemy.name} ${rivalHealth(enemy, route, state.players.length)} HP${enemy.openingBlock ? ` + ${enemy.openingBlock} Block` : ''}`).join(' · ');
             const preview = route.hardReward ? `
               <span class="route-danger">Choose a run-long perk · ${hardPerkOptions(state.players.length).map((perk) => escape(perk.name)).join(' · ')}</span>
               ${route.enemies.map((enemy, index) => `<span class="route-stats">${escape(enemy.name)} (${escape(TYPES[CRITTERS[enemy.animal].type].name)}) · ${escape(intentLabel(getEnemyIntent(state, route, index, 1), enemy, state))}</span>`).join('')}` : '';
             const details = `<span class="route-tag">${escape(route.difficulty)} · ${totalGold} gold total</span>
               <strong>${escape(route.name)}</strong><span>${escape(route.subtitle)}</span>
               <span class="route-stats">${escape(health)}</span>
+              ${route.trialReward ? `<span class="route-prize">Draft offer for each player · ${escape(CARDS[route.trialReward].name)}</span>` : ''}
+              ${current && route.trialReward ? `<span class="route-stats">${escape(CARDS[route.trialReward].description)}</span>` : ''}
               ${route.goldPerEnemy > 8 ? '<span class="route-danger">Stronger attacks · triple gold</span>' : ''}${preview}`;
-            const routeClass = route.goldPerEnemy > 8 ? 'route-hard' : 'route-standard';
+            const routeClass = route.trialReward ? 'route-trial' : route.goldPerEnemy > 8 ? 'route-hard' : 'route-standard';
             return current ? `<button type="button" class="route-option ${routeClass}" data-do="route" data-id="${route.id}" ${canLead ? '' : 'disabled'}>${details}</button>` :
               `<div class="route-option ${routeClass} ${picked === route.id ? 'is-cleared' : 'is-future'}">${details}${picked === route.id ? '<span class="route-tag">Cleared</span>' : ''}</div>`;
           }).join('')}
@@ -479,12 +488,13 @@ function trailMap(state) {
         ${merchant ? `<div class="merchant-detour">${current && !visited ? `<button type="button" class="route-option route-merchant" data-do="route" data-id="merchant" ${canLead ? '' : 'disabled'}>
             <span class="route-tag">Merchant · optional stop</span><strong>${escape(merchant.name)}</strong><span>Spend gold on cards, then pick a fight on this level.</span>
           </button>` : `<div class="route-option route-merchant ${visited ? 'is-cleared' : 'is-future'}"><span class="route-tag">Merchant${visited ? ' · visited' : ' · optional stop'}</span><strong>${escape(merchant.name)}</strong><span>Returns to the same level.</span></div>`}</div>` : ''}
-        ${camp ? `<div class="merchant-detour">${current && !campVisited ? `<button type="button" class="route-option route-camp" data-do="route" data-id="camp" ${canLead ? '' : 'disabled'}><span class="route-tag">Camp · optional stop</span><strong>Campfire</strong><span>Heal 30% of max HP or upgrade a card.</span></button>` : `<div class="route-option route-camp ${campVisited ? 'is-cleared' : 'is-future'}"><span class="route-tag">Camp${campVisited ? ' · visited' : ' · optional stop'}</span><strong>Campfire</strong><span>Heal or upgrade, then return to this level.</span></div>`}</div>` : ''}
+        ${camp ? `<div class="merchant-detour">${current && !campVisited ? `<button type="button" class="route-option route-camp" data-do="route" data-id="camp" ${canLead ? '' : 'disabled'}><span class="route-tag">Camp · optional stop</span><strong>Campfire</strong><span>Heal 30% of max HP, upgrade a card, or remove a card.</span></button>` : `<div class="route-option route-camp ${campVisited ? 'is-cleared' : 'is-future'}"><span class="route-tag">Camp${campVisited ? ' · visited' : ' · optional stop'}</span><strong>Campfire</strong><span>Heal or tune your deck, then return to this level.</span></div>`}</div>` : ''}
       </li>`;
     }).join('')}</ol>`;
 }
 
 function campScreen(state) {
+  const outcomes = { heal: 'Rested', upgrade: 'Card upgraded', remove: 'Card removed' };
   return `<section class="battle-head"><div><p class="eyebrow">${trailLocation(state.encounter)} · Camp</p><h1>Rest by the fire</h1></div>${purse(state)}</section>
     <div class="reward-panel camp-panel"><p>Each familiar chooses one. Your choice lasts for this run.</p>
       ${state.players.map((player, seat) => {
@@ -492,17 +502,22 @@ function campScreen(state) {
         const recovered = Math.min(player.maxHp - player.hp, Math.ceil(player.maxHp * 0.3));
         const critter = CRITTERS[player.critterId];
         return `<section><div class="section-heading"><h2>${escape(critter.name)} · ${playerName(seat)}</h2><span class="muted">${player.hp} / ${player.maxHp} HP</span></div>
-          ${state.campChoices[seat] ? `<p class="collection-status">${state.campChoices[seat] === 'heal' ? 'Rested' : 'Card upgraded'} · waiting for the pack.</p>` : `
-            <p>Heal ${recovered} HP, or select one card below to upgrade it once.</p>
+          ${state.campChoices[seat] ? `<p class="collection-status">${outcomes[state.campChoices[seat]]} · waiting for the pack.</p>` : `
+            <p>Heal ${recovered} HP, upgrade a card, or remove a card for ${CARD_REMOVAL_PRICE} gold. Keep at least ${MIN_RUN_DECK_SIZE} cards and one attack.</p>
             ${button(`Heal ${recovered} HP`, 'camp-heal', { style: 'primary', disabled: !enabled, data: `data-seat="${seat}"` })}
             <div class="camp-cards">${player.deck.map((id, index) => {
               const card = CARDS[id];
               const improved = CARDS[`${id}+`];
-              return `<button type="button" class="camp-card" data-do="camp-upgrade" data-seat="${seat}" data-index="${index}" ${!enabled || !improved ? 'disabled' : ''}>
-                <strong>${escape(card.name)}${improved ? ` → ${escape(improved.name)}` : ' · upgraded'}</strong>
+              const controls = `data-seat="${seat}" data-index="${index}"`;
+              return `<article class="camp-card">
+                <strong>${escape(card.name)}</strong>
                 <span>${escape(getCardDescription(state, seat, id))}</span>
-                ${improved ? `<span class="camp-improvement">After · ${escape(getCardDescription(state, seat, improved.id))}</span>` : ''}
-              </button>`;
+                ${improved ? `<span class="camp-improvement">Upgrade · ${escape(getCardDescription(state, seat, improved.id))}</span>` : '<span class="muted">Already upgraded</span>'}
+                <div class="camp-card-actions">
+                  ${button('Upgrade', 'camp-upgrade', { disabled: !enabled || !improved, data: `${controls} aria-label="Upgrade ${escape(card.name)}"` })}
+                  ${button(`Remove · ${CARD_REMOVAL_PRICE} gold`, 'camp-remove', { disabled: !enabled || state.gold < CARD_REMOVAL_PRICE || !canRemoveRunCard(player.deck, index), data: `${controls} aria-label="Remove ${escape(card.name)} for ${CARD_REMOVAL_PRICE} gold"` })}
+                </div>
+              </article>`;
             }).join('')}</div>`}
         </section>`;
       }).join('')}
@@ -528,7 +543,10 @@ function merchantShop(state) {
             })).join('')}</div>`}
         </article>`;
       }).join('')}</div>
-      ${state.soldCards.length ? `<p class="status-line" role="status">${escape(state.log[0])}</p>` : ''}
+      <h2>Remove a card · ${CARD_REMOVAL_PRICE} gold</h2>
+      <p class="muted">Remove a card from your deck for this run. Keep at least ${MIN_RUN_DECK_SIZE} cards and one attack.</p>
+      ${state.players.filter(({ id: seat }) => !ui.room || ui.room.seat === seat).map((player) => `<section><h3>${escape(CRITTERS[player.critterId].name)} · ${playerName(player.id)}</h3><div class="camp-cards">${player.deck.map((id, index) => `<article class="camp-card"><strong>${escape(CARDS[id].name)}</strong><span>${escape(getCardDescription(state, player.id, id))}</span>${button(`Remove · ${CARD_REMOVAL_PRICE} gold`, 'shop-remove', { disabled: ui.pending || state.gold < CARD_REMOVAL_PRICE || !canRemoveRunCard(player.deck, index), data: `data-seat="${player.id}" data-index="${index}" aria-label="Remove ${escape(CARDS[id].name)} for ${CARD_REMOVAL_PRICE} gold"` })}</article>`).join('')}</div></section>`).join('')}
+      ${state.log.length ? `<p class="status-line" role="status">${escape(state.log[0])}</p>` : ''}
       <div class="turn-actions">${button('Return to the trail', 'leave-shop', { style: 'primary', disabled: !canLead })}${ui.room?.seat === 1 ? '<span class="muted">Player 1 leads the pack back to the trail.</span>' : ''}</div>
     </section>`;
 }
@@ -602,9 +620,11 @@ function rewardPerkChoices(perks, action, seat, selected, enabled) {
 
 function rewards(state) {
   const { actIndex, bossLevel } = trailPosition(state.encounter);
+  const trialReward = getEncounter(state)?.trialReward;
   return `
     <section class="battle-head"><div><p class="eyebrow">${bossLevel ? `Act ${actIndex + 1} cleared` : 'Trainer defeated'}</p><h1>Level up your familiars</h1></div>${purse(state)}</section>
     ${bossLevel ? `<p class="status-line">The pack recovers to full health before entering ${escape(ACTS[actIndex + 1].name)}.</p>` : ''}
+    ${trialReward ? `<p class="status-line">Trial cleared. Each player can draft ${escape(CARDS[trialReward].name)} as their card reward.</p>` : ''}
     ${recruitment()}
     ${cardReveal()}
     <div class="reward-panel">
@@ -867,8 +887,10 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'route') return dispatch({ type: 'route', player: 0, routeId: id });
   if (action === 'buy') return dispatch({ type: 'buy', player: seat, cardId: id });
+  if (action === 'shop-remove') return dispatch({ type: 'removeCard', player: seat, cardIndex: index });
   if (action === 'camp-heal') return dispatch({ type: 'camp', player: seat, choice: 'heal' });
   if (action === 'camp-upgrade') return dispatch({ type: 'camp', player: seat, choice: 'upgrade', cardIndex: index });
+  if (action === 'camp-remove') return dispatch({ type: 'camp', player: seat, choice: 'remove', cardIndex: index });
   if (action === 'leave-shop') return dispatch({ type: 'leaveShop', player: 0 });
   if (action === 'target') ui.target = index;
   if (action === 'companion-strike') return dispatch({ type: 'companionStrike', player: seat, target: ui.target });
