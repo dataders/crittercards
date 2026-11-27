@@ -41,6 +41,13 @@
     <main class="game-main" id="game"></main>
   </div>
   <audio id="soundtrack" preload="none" loop></audio>
+  <dialog id="battle-deck" aria-labelledby="battle-deck-title">
+    <div class="battle-deck-content">
+      <div class="section-heading"><h2 id="battle-deck-title">Your deck</h2><form method="dialog"><button class="button button-ghost">Close</button></form></div>
+      <p class="muted">All cards in this deck for the current run, including cards in your hand, draw pile, and discard pile.</p>
+      <div id="battle-deck-cards" class="battle-deck-cards"></div>
+    </div>
+  </dialog>
   <dialog id="rules" aria-labelledby="rules-title" aria-describedby="tutorial-progress">
     <div class="lobby-panel tutorial">
       <div class="tutorial-top"><span class="eyebrow">The Hollow Trail</span><span id="tutorial-progress" class="muted" aria-live="polite"></span></div>

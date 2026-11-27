@@ -12,6 +12,7 @@ const soundtrack = document.querySelector('#soundtrack');
 const musicToggle = document.querySelector('#music-toggle');
 const rules = document.querySelector('#rules');
 const shareDialog = document.querySelector('#share-dialog');
+const battleDeck = document.querySelector('#battle-deck');
 const shareLink = document.querySelector('#share-link');
 const shareApps = document.querySelector('#share-apps');
 const shareStatus = document.querySelector('#share-status');
@@ -668,6 +669,7 @@ function combat(state) {
           ${companion ? button(`${escape(companion.name)} · ${player.companionUsed ? 'Used' : 'Free companion move'}`, 'companion-strike', { disabled: !enabled || !companionReady, data: `data-seat="${seat}" data-aim="${escape(companion.name)}" aria-pressed="false" aria-describedby="attack-instructions"` }) : ''}
           <span class="hand-counts">${player.drawPile.length} draw · ${player.discardPile.length} discard · ${escape(TYPES[CRITTERS[player.critterId].type].name)}</span>
         </div>
+        <div class="turn-actions">${state.players.map((member, index) => button(`View ${escape(CRITTERS[member.critterId].name)}’s deck (${member.deck.length})`, 'view-battle-deck', { data: `data-seat="${index}"` })).join('')} </div>
     </section>
   </div>`;
 }
@@ -1021,6 +1023,18 @@ document.addEventListener('click', async (event) => {
   const seat = Number(control.dataset.seat);
   const index = Number(control.dataset.index);
   const state = ui.room ? ui.room.state : ui.run;
+  if (action === 'view-battle-deck' && state?.phase === 'combat' && state.players[seat]) {
+    const player = state.players[seat];
+    const counts = new Map();
+    for (const cardId of player.deck) counts.set(cardId, (counts.get(cardId) ?? 0) + 1);
+    document.querySelector('#battle-deck-title').textContent = `${CRITTERS[player.critterId].name}’s deck · ${player.deck.length} cards`;
+    document.querySelector('#battle-deck-cards').innerHTML = [...counts].map(([cardId, count]) => {
+      const card = CARDS[cardId];
+      return `<article class="battle-deck-card"><strong>${escape(card.name)}${count > 1 ? ` × ${count}` : ''}</strong><span>${escape(card.cost)} energy · ${escape(card.type)}</span><p>${escape(getCardDescription(state, seat, cardId))}</p></article>`;
+    }).join('');
+    battleDeck.showModal();
+    return;
+  }
   if (control.hasAttribute('data-aim')) {
     if (aimedMove === control) return cancelAim();
     const firstRival = game.querySelector(livingRival);

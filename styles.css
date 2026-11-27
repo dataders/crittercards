@@ -417,6 +417,11 @@ dialog {
   box-shadow: 0 1.5rem 4rem #050b08a8;
 }
 dialog::backdrop { background: #07120cca; }
+.battle-deck-content { padding: clamp(1rem, 4vw, 1.5rem); }
+.battle-deck-content .section-heading { margin-top: 0; }
+.battle-deck-cards { display: grid; gap: .65rem; margin-top: 1rem; }
+.battle-deck-card { display: grid; gap: .25rem; padding: .75rem; border: 1px solid var(--line); border-radius: .6rem; background: var(--forest-deep); }
+.battle-deck-card span { color: var(--lime); font-size: .85rem; }
 .tutorial { gap: 1.15rem; padding: clamp(1.25rem, 4vw, 2rem); }
 .tutorial-top { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
 .tutorial h2 { font-size: clamp(2rem, 5vw, 2.8rem); }
