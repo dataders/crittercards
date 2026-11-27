@@ -178,6 +178,7 @@ function lobby() {
     </section>
     <div class="lobby-panel">
       <div class="mode-picker" aria-label="Play mode">
+        ${button('Single player', 'solo', { style: ui.mode === 'solo' ? 'primary' : 'secondary', data: `aria-pressed="${ui.mode === 'solo'}"` })}
         ${button('Share a screen', 'local', { style: ui.mode === 'local' ? 'primary' : 'secondary', data: `aria-pressed="${ui.mode === 'local'}"` })}
         ${button('Play with a room code', 'online', { style: ui.mode === 'online' ? 'primary' : 'secondary', data: `aria-pressed="${ui.mode === 'online'}"` })}
       </div>
@@ -195,16 +196,16 @@ function lobby() {
           ${button('Copy invite', 'invite')}
           <span class="muted">${room.joined.every(Boolean) ? 'Both players joined' : 'Waiting for Player 2'} · You are ${playerName(room.seat)}</span>
         </div>` : ''}
-      ${ui.mode === 'local' || room ? `
+      ${ui.mode !== 'online' || room ? `
         <p class="collection-status"><strong>${collectionCount()} / ${Object.keys(CRITTERS).length}</strong> creatures recruited</p>
-        ${room ? '' : `<div class="seat-picker" aria-label="Choose whose creature to edit">${[0, 1].map((seat) => button(
+        ${room || ui.mode === 'solo' ? '' : `<div class="seat-picker" aria-label="Choose whose creature to edit">${[0, 1].map((seat) => button(
           `${playerName(seat)} · ${escape(CRITTERS[picks[seat]]?.name ?? 'Choose animal')}`, 'seat', { data: `data-seat="${seat}" aria-pressed="${ui.pickSeat === seat}"` }
         )).join('')}</div>`}
         ${roster(seat, picks, !ui.pending)}
         ${deckBuilder(seat, picks[seat], room)}
         <div class="turn-actions">
-          ${!room && !picks[1 - seat] ? button(`Choose for ${playerName(1 - seat)}`, 'seat', { data: `data-seat="${1 - seat}"` }) : ''}
-          ${!room || room.seat === 0 ? button('Begin the trail', 'start', { style: 'primary', disabled: ui.pending || !picks.every(Boolean) || (room && !room.ready.every(Boolean)) }) : ''}
+          ${!room && ui.mode !== 'solo' && !picks[1 - seat] ? button(`Choose for ${playerName(1 - seat)}`, 'seat', { data: `data-seat="${1 - seat}"` }) : ''}
+          ${!room || room.seat === 0 ? button('Begin the trail', 'start', { style: 'primary', disabled: ui.pending || !(ui.mode === 'solo' ? picks[0] : picks.every(Boolean)) || (room && !room.ready.every(Boolean)) }) : ''}
           ${room ? `<span class="muted">${room.ready.filter(Boolean).length} of 2 decks confirmed</span>` : ''}
         </div>
       ` : ''}
@@ -248,7 +249,7 @@ function intentLabel(intent, enemy) {
 
 function enemyCard(enemy, index, state) {
   const selected = ui.target === index;
-  const bondTarget = state.lastTarget === index && state.lastAttacker !== state.activePlayer && !state.bondTriggered;
+  const bondTarget = state.players.length > 1 && state.lastTarget === index && state.lastAttacker !== state.activePlayer && !state.bondTriggered;
   return `<button class="unit-card ${selected ? 'is-target selected-target' : ''} ${enemy.hp <= 0 ? 'is-defeated' : ''}" type="button" data-do="target" data-index="${index}" aria-pressed="${selected}" ${enemy.hp <= 0 ? 'disabled' : ''}>
     ${art(enemy.animal, 'unit-art')}
     <span class="unit-info">
@@ -364,7 +365,7 @@ function combat(state) {
       <div class="hand-heading"><h2>${escape(CRITTERS[player.critterId].name)}’s hand</h2>
         <span class="hand-counts">${player.drawPile.length} draw · ${player.discardPile.length} discard</span></div>
       <div class="hand-grid">${player.hand.map((id, index) => actionCard(state, seat, id, index, enabled && canAffordCard(CARDS[id], player.energy))).join('') || '<p class="muted">No cards left in hand.</p>'}</div>
-      ${other.hp > 0 && other.hand.length ? `<div class="secondary-hand"><strong>${escape(CRITTERS[other.critterId].name)}’s hand</strong> · ${other.hand.map((id) => escape(CARDS[id].name)).join(', ')}</div>` : ''}
+      ${other?.hp > 0 && other.hand.length ? `<div class="secondary-hand"><strong>${escape(CRITTERS[other.critterId].name)}’s hand</strong> · ${other.hand.map((id) => escape(CARDS[id].name)).join(', ')}</div>` : ''}
     </section>`;
 }
 
@@ -391,7 +392,7 @@ function rewards(state) {
         return `<section>
           <div class="section-heading"><h2>${escape(critter.name)} · ${playerName(seat)}</h2><span class="muted">${saved ? 'Ready' : `Level ${player.level} to ${player.level + 1}`}</span></div>
           ${saved ? `<p>Learned ${escape(CARDS[saved].name)} and chose ${escape(LEVEL_PERKS[player.perks.at(-1)]?.name)}.</p>` : `
-            <p class="muted">Choose one perk and one card, then confirm your upgrade. Both players must confirm to continue.</p>
+            <p class="muted">Choose one perk and one card, then confirm your upgrade.${state.players.length > 1 ? ' Both players must confirm to continue.' : ''}</p>
             <h3 class="reward-label">1. Choose a perk</h3>
             <div class="level-options" aria-label="Level-up perk">${Object.values(LEVEL_PERKS).map((perk) =>
               `<button type="button" class="level-choice" data-do="perk" data-seat="${seat}" data-id="${escape(perk.id)}" aria-pressed="${ui.perks[seat] === perk.id}" ${enabled ? '' : 'disabled'}><strong>${escape(perk.name)}</strong><span>${escape(perk.description)}</span></button>`).join('')}</div>
@@ -528,6 +529,7 @@ document.addEventListener('click', async (event) => {
   ui.notice = '';
   if (action === 'home' && state && !['victory', 'defeat'].includes(state.phase) && !confirm('Leave this run and return to creature selection?')) return;
   if (action === 'home' || action === 'local') { home(); return; }
+  if (action === 'solo') { home('solo'); ui.pickSeat = 0; render(); return; }
   if (action === 'online') ui.mode = 'online';
   if (action === 'seat') ui.pickSeat = seat;
   if (action === 'filter') ui.filter = id;
@@ -550,7 +552,7 @@ document.addEventListener('click', async (event) => {
   if (action === 'edit-deck') return dispatch({ type: 'deck', cards: null });
   if (action === 'start') {
     if (ui.room) return dispatch({ type: 'start' });
-    ui.run = createRun(ui.picks, Date.now(), ui.startingDecks);
+    ui.run = createRun(ui.mode === 'solo' ? ui.picks.slice(0, 1) : ui.picks, Date.now(), ui.mode === 'solo' ? ui.startingDecks.slice(0, 1) : ui.startingDecks);
     acceptState(ui.run, null);
   }
   if (action === 'route') return dispatch({ type: 'route', player: 0, routeId: id });

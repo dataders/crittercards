@@ -38,6 +38,12 @@ export const CARDS = {
   flurry: { id: 'flurry', name: 'Wild Flurry', cost: 'X', type: 'attack', target: 'enemy', damage: 4 },
   circle: { id: 'circle', name: 'Thorn Circle', cost: 'X', type: 'support', target: 'none', block: 3, allyBlock: 4 },
   crownfall: { id: 'crownfall', name: 'Crownfall', cost: 3, type: 'attack', target: 'enemy', damage: 24, allyBlock: 5 },
+  spark: { id: 'spark', name: 'Ember Spark', cost: 0, type: 'attack', target: 'enemy', damage: 3 },
+  ward: { id: 'ward', name: 'Little Ward', cost: 0, type: 'support', target: 'none', allyBlock: 3 },
+  thorns: { id: 'thorns', name: 'Thorn Rush', cost: 2, type: 'attack', target: 'enemy', damage: 11, block: 5 },
+  moonmend: { id: 'moonmend', name: 'Moon Mend', cost: 2, type: 'support', target: 'none', heal: 5, allyHeal: 6, allyBlock: 4 },
+  avalanche: { id: 'avalanche', name: 'Stonefall', cost: 3, type: 'attack', target: 'enemy', damage: 22, block: 5 },
+  sanctuary: { id: 'sanctuary', name: 'Forest Sanctuary', cost: 3, type: 'support', target: 'none', block: 15, allyBlock: 15, allyHeal: 4 },
 };
 
 export const CRITTER_UNLOCKS = {
@@ -333,9 +339,9 @@ function setIntent(state, enemy, enemyIndex) {
   }
   const moves = getEncounter(state).enemies[enemyIndex].moves;
   const [type, amount] = moves[(state.round - 1) % moves.length];
-  enemy.intent = { type, amount };
+  enemy.intent = { type, amount: state.players.length === 1 && type !== 'guard' ? Math.ceil(amount * 0.7) : amount };
   if (type === 'attack' || type === 'frailAttack') {
-    const preferred = (state.round - 1 + enemyIndex) % 2;
+    const preferred = (state.round - 1 + enemyIndex) % state.players.length;
     enemy.intent.target = state.players[preferred].hp > 0 ? preferred : 1 - preferred;
   }
 }
@@ -364,14 +370,14 @@ function beginEncounter(state) {
   const encounter = getEncounter(state);
   state.phase = 'combat';
   state.round = 1;
-  state.rewardOptions = [[], []];
-  state.rewardPicks = [null, null];
+  state.rewardOptions = state.players.map(() => []);
+  state.rewardPicks = state.players.map(() => null);
   state.enemies = encounter.enemies.map((enemy) => ({
     id: enemy.animal,
     name: enemy.name,
     animal: enemy.animal,
-    hp: enemy.hp,
-    maxHp: enemy.hp,
+    hp: state.players.length === 1 ? Math.ceil(enemy.hp * 0.7) : enemy.hp,
+    maxHp: state.players.length === 1 ? Math.ceil(enemy.hp * 0.7) : enemy.hp,
     gold: encounter.goldPerEnemy,
     block: 0,
     marked: false,
@@ -392,12 +398,12 @@ function beginEncounter(state) {
   beginRound(state);
 }
 
-export function createRun(critterIds, seed = Date.now(), startingDecks = [STARTER_DECK, STARTER_DECK]) {
-  if (!Array.isArray(critterIds) || critterIds.length !== 2 ||
+export function createRun(critterIds, seed = Date.now(), startingDecks = critterIds.map(() => STARTER_DECK)) {
+  if (!Array.isArray(critterIds) || ![1, 2].includes(critterIds.length) ||
       [...critterIds].some((id) => typeof id !== 'string' || !Object.hasOwn(CRITTERS, id))) {
     throw new Error('Choose a critter for each player.');
   }
-  if (!Array.isArray(startingDecks) || startingDecks.length !== 2) throw new Error('Build a deck for each player.');
+  if (!Array.isArray(startingDecks) || startingDecks.length !== critterIds.length) throw new Error('Build a deck for each player.');
   for (const cards of startingDecks) validateStartingDeck(cards);
   const players = critterIds.map((critterId, id) => {
     const critter = CRITTERS[critterId];
@@ -460,8 +466,8 @@ function finishEncounter(state) {
   const available = ENCOUNTERS.slice(0, state.encounter + 1).flatMap((encounter) =>
     encounter.enemies.flatMap((enemy) => CARD_UNLOCKS[enemy.animal]));
   state.rewardOptions = state.players.map(() => {
-    const draft = shuffle(state, available).slice(0, 3);
-    return [...draft, ...shuffle(state, BASE_CARDS).slice(0, 3 - draft.length)];
+    const pool = [...new Set([...available, ...BASE_CARDS, 'spark', 'ward', 'thorns', 'moonmend', 'avalanche', 'sanctuary'])];
+    return [0, 2, 3].map((cost) => shuffle(state, pool.filter((id) => CARDS[id].cost === cost))[0]);
   });
   log(state, 'The pack prevails. Choose a card and a level perk for each critter.');
 }
@@ -498,10 +504,10 @@ function playCard(state, action) {
 }
 
 function resolveCardEffect(state, player, card, target) {
-  const ally = state.players[1 - player.id];
+  const ally = state.players[1 - player.id] ?? player;
   const enemy = state.enemies[target];
   if (card.damage) {
-    const bond = !state.bondTriggered && state.lastAttacker === ally.id && state.lastTarget === target;
+    const bond = ally !== player && !state.bondTriggered && state.lastAttacker === ally.id && state.lastTarget === target;
     const woundedBonus = enemy.hp <= enemy.maxHp / 2 ? card.woundedBonus ?? 0 : 0;
     const damage = card.damage + player.attackBonus + player.strength + woundedBonus + (enemy.marked ? MARK_DAMAGE : 0) + (bond ? BOND_DAMAGE : 0);
     const stolen = Math.min(enemy.block, card.stealBlock ?? 0);
@@ -543,7 +549,7 @@ function finishTurn(state, playerIndex) {
   player.hand = [];
   player.energy = 0;
 
-  if (playerIndex === 0 && state.players[1].hp > 0) {
+  if (playerIndex === 0 && state.players[1]?.hp > 0) {
     startTurn(state, 1);
     return;
   }
@@ -558,7 +564,7 @@ function finishTurn(state, playerIndex) {
     } else if (type === 'teamAttack') {
       state.players.forEach((teammate) => enemyAttack(state, enemy, teammate, amount));
     } else {
-      const victim = state.players[target].hp > 0 ? target : 1 - target;
+      const victim = state.players[target]?.hp > 0 ? target : state.players.findIndex((unit) => unit.hp > 0);
       const defender = state.players[victim];
       enemyAttack(state, enemy, defender, amount);
       if (type === 'frailAttack' && defender.hp > 0) {
@@ -566,12 +572,12 @@ function finishTurn(state, playerIndex) {
         log(state, `${critterName(defender)} becomes Frail.`);
       }
     }
-  }
 
-  if (state.players.every((teammate) => teammate.hp === 0)) {
-    state.phase = 'defeat';
-    log(state, 'The woods claim the pack.');
-    return;
+    if (state.players.every((teammate) => teammate.hp === 0)) {
+      state.phase = 'defeat';
+      log(state, 'The woods claim the pack.');
+      return;
+    }
   }
   state.round += 1;
   beginRound(state);
@@ -635,7 +641,7 @@ function buyCard(state, { player, cardId }) {
 }
 
 export function applyAction(state, action) {
-  if (!action || (action.player !== 0 && action.player !== 1)) throw new Error('Choose a valid player.');
+  if (!action || !Number.isInteger(action.player) || !state.players[action.player]) throw new Error('Choose a valid player.');
   if (action.type === 'route' || action.type === 'buy' || action.type === 'leaveShop') {
     const next = structuredClone(state);
     if (action.type === 'route') chooseRoute(next, action);

@@ -6,6 +6,7 @@ A two-player deckbuilding roguelite set in a dark mythic woodland. Each player b
 
 Run `node server.mjs` with Node 22 or newer, then open [localhost:4173](http://localhost:4173). There are no packages to install.
 
+- **Single player.** Choose one familiar and build its deck. Ally effects apply to your own familiar, and rivals have reduced health and attack damage.
 - **Share a screen.** Pick a familiar and build a deck for each player, then choose **Begin the trail**. Take turns using the same controls. One person can also play both hands.
 - **Play with a room code.** Open the game in two browser tabs or on two devices that can reach the same server. The host creates a room, the guest joins by code, and each player picks a creature and confirms a deck. For devices on the same trusted network, start with `HOST=0.0.0.0 node server.mjs` and use the host machine’s LAN address on both devices.
 
@@ -22,6 +23,10 @@ The trail has three levels with a choice of two fights at every level. Steady ro
 Optional merchants at levels 2 and 3 sell cards from different inventories. Gold is shared and each purchase goes into one player’s deck for the current run. Visit each merchant once, then return to choose a fight on that level. In room play, Player 1 chooses routes and each player buys for their own deck.
 
 Room state lives in one server process and expires after six hours of inactivity. A reload can recover your seat in the same tab while the room still exists. Restarting the process clears the rooms. Collection progress is saved in the browser and stays with that browser.
+
+## Tests
+
+Run `node --test` from the repository root. The tests drive game actions directly in Node.
 
 ## Roadmap
 
