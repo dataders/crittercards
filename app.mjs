@@ -1,9 +1,14 @@
 import {
-  COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, STARTER_DECK, MAX_STARTING_COPIES, FRAIL_BLOCK_LOSS,
-  ENCOUNTERS, TRAIL, MERCHANTS, CAMPS, LEVEL_PERKS, HARD_PERKS, TYPES, matchup, COMPANION_ABILITIES, getCompanionDescription, createRun, applyAction, getEncounter,
-  ACTS, LEVELS_PER_ACT, trailPosition, hardPerkOptions, getEnemyIntent, rivalHealth, briarHealer, FLOODGATE_RECOIL_PERCENT,
-  getCardDescription, validateStartingDeck, canAffordCard, canRemoveRunCard, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE,
+  COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, STARTER_DECK, MAX_STARTING_COPIES,
+  ENCOUNTERS, TRAIL, MERCHANTS, CAMPS, LEVEL_PERKS, HARD_PERKS, TYPES, COMPANION_ABILITIES, getCompanionDescription, createRun, applyAction, getEncounter,
+  ACTS, LEVELS_PER_ACT, trailPosition, hardPerkOptions, getEnemyIntent, rivalHealth,
+  getCardDescription, validateStartingDeck, canRemoveRunCard, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE,
 } from './game.mjs';
+import { createCombatInput } from './combat-input.mjs';
+import { createAudioController } from './audio.mjs';
+import { readStorage, savedRewardChoices, savedRunStatus, saveKey, writeStorage } from './storage.mjs';
+import { actionCard, art, battleCardViews, button, cardReveal, combat, escape, playerName, progress, purse, trailLocation } from './views.mjs';
+import { captureViewState, restoreViewState, setupSelect } from './view-state.mjs';
 import { createRoom, findPublicMatch, isTerminalRoomError, joinRoom, resumeRoom, recoverRoom } from './transport.mjs';
 
 const game = document.querySelector('#game');
@@ -38,77 +43,13 @@ const progressKey = 'crittercards.progress.v1';
 const cardKey = 'crittercards.cards.v1';
 const roomKey = 'crittercards.room.v1';
 const tutorialKey = 'crittercards.tutorial.v1';
-const saveKey = 'crittercards.save.v1';
-const musicKey = 'crittercards.music.v1';
 const areaScenes = [
   { id: 'hollow', image: 'hollow-battle.webp', alt: 'Moonlit pines and a ruined stone arch', description: 'Follow the fireflies through old pines toward a moonlit stone arch.' },
   { id: 'canopy', image: 'drowned-canopy-battle.webp', alt: 'A flooded willow woodland with lights reflected in the water', description: 'Cross the flooded willows where lanterns glow beneath the mist.' },
   { id: 'court', image: 'thorn-court-battle.webp', alt: 'A ruined forest court surrounded by blackthorn', description: 'Enter a ruined court where blackthorn curls around the stones.' },
 ];
 const starterIds = [...Object.keys(COUSINS), 'fox', 'hare'];
-const playerName = (seat) => `Player ${seat + 1}`;
-const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-})[char]);
-const button = (label, action, { style = 'secondary', disabled = false, data = '' } = {}) =>
-  `<button type="button" class="button button-${style}" data-do="${action}" ${data} ${disabled ? 'disabled' : ''}>${label}</button>`;
-
-function readStorage(storage, key, fallback) {
-  try { return JSON.parse(storage.getItem(key)) ?? fallback; } catch { return fallback; }
-}
-
-function writeStorage(storage, key, value) {
-  try {
-    if (value === null) storage.removeItem(key);
-    else storage.setItem(key, JSON.stringify(value));
-  } catch {
-    // The current game remains playable when storage is unavailable.
-  }
-}
-
-let musicEnabled = readStorage(localStorage, musicKey, true);
-const actSoundtracks = [
-  {
-    trail: ['footsteps-under-black-pines', 'Footsteps Under Black Pines'],
-    boss: ['ash-regents-eclipse', 'The Ash Regent’s Eclipse'],
-  },
-  {
-    trail: ['lanterns-below-the-water', 'Lanterns Below the Water'],
-    boss: ['mire-matron-rises', 'The Mire Matron Rises'],
-  },
-  {
-    trail: ['an-empty-court', 'An Empty Court'],
-    boss: ['thorn-sovereigns-hunt', 'The Thorn Sovereign’s Hunt'],
-  },
-];
-
-function updateMusicToggle() {
-  musicToggle.setAttribute('aria-pressed', String(!soundtrack.paused && !soundtrack.error));
-}
-
-function playSoundtrack() {
-  soundtrack.play().catch(updateMusicToggle);
-}
-
-function syncSoundtrack(state) {
-  const { actIndex, bossLevel } = trailPosition(state?.encounter ?? 0);
-  const tracks = actSoundtracks[actIndex];
-  const [file, title] = state?.phase === 'combat' && bossLevel ? tracks.boss : tracks.trail;
-  const source = `assets/${file}.mp3`;
-  if (soundtrack.getAttribute('src') === source) return;
-  const resume = musicEnabled && !soundtrack.paused;
-  musicToggle.title = title;
-  soundtrack.src = source;
-  if (resume) playSoundtrack();
-}
-
-function startMusic(state) {
-  syncSoundtrack(state);
-  if (musicEnabled && soundtrack.paused) playSoundtrack();
-}
-
-soundtrack.volume = 0.55;
-for (const event of ['play', 'pause', 'error']) soundtrack.addEventListener(event, updateMusicToggle);
+const { startMusic, syncSoundtrack, toggle: toggleMusic, pause: pauseMusic } = createAudioController(soundtrack, musicToggle, localStorage);
 
 function showTutorialStep(index) {
   tutorialStep = index;
@@ -228,17 +169,10 @@ const ui = {
   joinCode: invite,
   savedRunOrigin: null,
 };
-let attackDrag;
-let aimedMove;
-let suppressDragClick = false;
 let presentedBattle;
 let lastCardPlay;
-const battleCardViews = {
-  deck: { key: 'deck', label: 'deck', summary: 'All cards in this deck, including your hand, draw pile, and discard pile.' },
-  draw: { key: 'drawPile', label: 'draw pile', summary: 'Cards available to draw, listed by name.' },
-  discard: { key: 'discardPile', label: 'discard pile', summary: 'Cards here are shuffled back into the draw pile when you need to draw and it is empty.' },
-};
 let battleCardsView;
+let runToolsMarkup;
 
 function unlockRecruits(state) {
   if (!state) return;
@@ -266,7 +200,7 @@ function unlockCards(state) {
   if (!state) return;
   // Earlier encounters count as wins even if an online tab skipped their snapshots.
   const defeated = TRAIL.slice(0, state.encounter).flatMap((routes, level) =>
-    routes.find(({ id }) => id === state.path[level]).enemies.map(({ animal }) => animal));
+    routes.find(({ id }) => id === state.path[level])?.enemies.map(({ animal }) => animal) ?? []);
   defeated.push(...state.enemies.filter((enemy) => enemy.hp === 0).map(({ animal }) => animal));
   for (const id of defeated.flatMap((animal) => CARD_UNLOCKS[animal] ?? [])) {
     if (knownCards.has(id)) continue;
@@ -281,10 +215,6 @@ function recruitmentHint(id) {
   if (kind === 'encounter') return ['Beat the first trainer', 'Beat the second trainer', 'Clear Act 1'][count - 1];
   if (kind === 'clears') return `Defeat ${count} act bosses`;
   return `Win ${count} fights total`;
-}
-
-function art(animal, className, fallback = animal) {
-  return `<span class="${className}"><img src="assets/${escape(animal)}.webp" alt="" width="384" height="512" ${className === 'critter-art' ? 'loading="lazy"' : ''}><span class="art-fallback" hidden aria-hidden="true">${escape(fallback)}</span></span>`;
 }
 
 function collectionCount() {
@@ -332,7 +262,7 @@ function roster(seat, picks, enabled, companions, setupActions) {
       </section>` : ''}
       <h3>Recruited familiars</h3>
       <div class="critter-grid">${creatures.filter(({ id }) => collection.has(id)).map(animalCard).join('')}</div>
-      <details class="creature-library" ${ui.showCreatures ? 'open' : ''}><summary>Creature collection · ${collectionCount()} / ${Object.keys(CRITTER_UNLOCKS).length} recruited</summary>
+      <details class="creature-library" data-view-state="creature-library" ${ui.showCreatures ? 'open' : ''}><summary>Creature collection · ${collectionCount()} / ${Object.keys(CRITTER_UNLOCKS).length} recruited</summary>
       <div class="roster-filters" aria-label="Filter creatures">
         ${[['all', 'All creatures'], ['owned', 'Recruited'], ['locked', 'Unrecruited']].map(([id, label]) =>
           button(label, 'filter', { data: `data-id="${id}" aria-pressed="${ui.filter === id}"` })).join('')}
@@ -358,7 +288,7 @@ function deckBuilder(seat, critterId, room) {
         const full = cards.filter((entry, slot) => slot !== index && entry === cardId).length >= MAX_STARTING_COPIES;
         return `<option value="${cardId}" ${cardId === id ? 'selected' : ''} ${full ? 'disabled' : ''}>${escape(CARDS[cardId].name)} · ${CARDS[cardId].cost} energy</option>`;
       }).join('')}</select><span class="muted">${escape(CARDS[id].description)}</span></label>`).join('')}</div>
-    <details class="deck-library" ${ui.showLibrary ? 'open' : ''}><summary>Card library and unlocks</summary>
+    <details class="deck-library" data-view-state="deck-library" ${ui.showLibrary ? 'open' : ''}><summary>Card library and unlocks</summary>
       <ul>${cardLibrary.map((id) => {
         const rival = ENCOUNTERS.flatMap((entry) => entry.enemies).find(({ animal }) => CARD_UNLOCKS[animal]?.includes(id));
         return `<li><strong>${escape(CARDS[id].name)}</strong> · ${knownCards.has(id) ? escape(CARDS[id].description) : `Defeat ${escape(rival?.name)} to unlock.`}</li>`;
@@ -370,7 +300,7 @@ function deckBuilder(seat, critterId, room) {
 
 function lobby() {
   const room = ui.room;
-  const saved = !room ? readStorage(localStorage, saveKey, null)?.state : null;
+  const { saved, corrupt } = !room ? savedRunStatus(localStorage) : {};
   const showingSetup = ui.showSetup || room;
   const modes = `<div class="mode-picker" aria-label="Play mode">
     ${[['Single player', 'solo'], ['Share a screen', 'local'], ['Play with a room code', 'online']].map(([label, mode]) => {
@@ -383,6 +313,7 @@ function lobby() {
     <img class="hero-art" src="assets/hollow-trail.webp" alt="">
     <div class="hero-copy"><h1>The Hollow Trail</h1>
       ${saved ? button('Continue saved game', 'continue', { style: 'primary' }) : ''}
+      ${corrupt ? `<div class="save-panel"><p>This saved game could not be loaded.</p>${button('Clear saved game', 'clear-save')}</div>` : ''}
       ${modes}
     </div>
   </section>`;
@@ -406,9 +337,9 @@ function lobby() {
             <button type="submit" class="button button-secondary" ${ui.pending ? 'disabled' : ''}>Join room</button>
           </form>
         </div>
-        <details><summary>Restore a room after a restart</summary>
+        <details data-view-state="restore-room"><summary>Restore a room after a restart</summary>
           <p>Player 1: paste your private recovery code. If Player 2 already joined, they can reload their original tab to reconnect. Otherwise, they can join with the usual room code.</p>
-          <form id="recover-form" class="form-row"><label class="field">Recovery code<textarea name="recoveryCode" required></textarea></label><button type="submit" class="button button-secondary" ${ui.pending ? 'disabled' : ''}>Restore room</button></form>
+          <form id="recover-form" class="form-row"><label class="field">Recovery code<textarea name="recoveryCode" data-view-field="restore-code" required></textarea></label><button type="submit" class="button button-secondary" ${ui.pending ? 'disabled' : ''}>Restore room</button></form>
         </details>` : ''}
       ${room ? `
         <div class="form-row">
@@ -427,106 +358,6 @@ function lobby() {
         </section>
       ` : ''}
     </div>`;
-}
-
-function health(unit) {
-  return `<span class="health-label">
-    <span><span class="combat-metric-label">HP</span> <strong>${unit.hp}/${unit.maxHp}</strong></span>
-    ${unit.block ? `<span><span class="combat-metric-label">Block</span> <strong>${unit.block}</strong></span>` : ''}
-  </span>
-    <span class="health-bar" aria-hidden="true"><span style="width:${Math.max(0, unit.hp / unit.maxHp * 100)}%"></span></span>`;
-}
-
-function effects(unit) {
-  if (!unit.strength && !unit.vulnerable && !unit.frail && !unit.poison) return '';
-  return `<span class="unit-effects">
-    ${unit.strength ? `<span class="effect-strength" title="Adds damage to every attack this fight">Strength +${unit.strength}</span>` : ''}
-    ${unit.vulnerable ? `<span class="effect-vulnerable" title="Takes 50% more damage from the next hit per stack">Vulnerable ${unit.vulnerable}</span>` : ''}
-    ${unit.frail ? `<span class="effect-frail" title="Gains ${FRAIL_BLOCK_LOSS} less Block the next time it gains Block per stack">Frail ${unit.frail}</span>` : ''}
-    ${unit.poison ? `<span class="effect-poison" title="Loses this much HP before acting, then Poison drops by 1">Poison ${unit.poison}</span>` : ''}
-  </span>`;
-}
-
-function allyCard(player, seat, state) {
-  const critter = CRITTERS[player.critterId];
-  return `<div class="unit-card ${state.activePlayer === seat ? 'is-active' : ''} ${player.hp <= 0 ? 'is-defeated' : ''}">
-    ${art(critter.id, 'unit-art', critter.name)}
-    <div class="unit-info">
-      <span class="combat-label">${playerName(seat)} · Lv. ${player.level} · ${escape(TYPES[critter.type].name)}</span>
-      <strong class="unit-name">${escape(critter.name)}</strong>
-      ${health(player)}
-      ${effects(player)}
-      ${player.hardPerk ? `<span class="unit-meta" title="${escape(HARD_PERKS[player.hardPerk].description)}">${escape(HARD_PERKS[player.hardPerk].name)}</span>` : ''}
-      <span class="unit-meta">${player.hp <= 0 ? 'Fainted' : `${player.energy} energy`}</span>
-      ${player.companionId ? `<span class="unit-meta">With ${escape(CRITTERS[player.companionId].name)} · ${escape(TYPES[CRITTERS[player.companionId].type].name)} companion</span>` : ''}
-    </div>
-  </div>`;
-}
-
-function intentLabel(intent, enemy, state) {
-  if (!intent) return '';
-  if (intent.type === 'guard') return `Gains ${Math.max(0, intent.amount - (enemy.frail ? FRAIL_BLOCK_LOSS : 0))} Block`;
-  if (intent.type === 'shadowWard') return `Shadow Ward · gains ${Math.max(0, intent.amount - (enemy.frail ? FRAIL_BLOCK_LOSS : 0))} Block and heals 8`;
-  if (intent.type === 'mendRivals') {
-    const ally = state.enemies.find((rival) => rival !== enemy && rival.hp > 0);
-    return ally ? `Mends ${ally.name} for up to ${intent.amount} HP` : 'No other rival to mend';
-  }
-  if (intent.type === 'rally') return `Rallies · gains ${intent.amount} Strength for this fight`;
-  if (intent.type === 'spentSurge') return 'Opening Surge spent';
-  if (intent.type === 'brokenGuard') return 'Guard broken · skips its action';
-  const name = (seat) => `${CRITTERS[state.players[seat].critterId].name}${state.players.length > 1 ? ` (P${seat + 1})` : ''}`;
-  const damage = (seat) => Math.floor(intent.amount * matchup(CRITTERS[enemy.animal].type, CRITTERS[state.players[seat].critterId].type));
-  if (['eclipse', 'teamAttack', 'openingSurge'].includes(intent.type)) {
-    const hits = state.players.filter((player) => player.hp > 0).map((player) => `${name(player.id)} for ${damage(player.id)}`).join(', ');
-    if (intent.type === 'openingSurge') {
-      const count = intent.attacksRemaining;
-      const timing = count === 1 ? 'the next attack' : `the next ${count} attacks`;
-      const rush = count === 2 ? 'Aim both attacks here' : intent.focusedAttacks === 1 ? 'Aim the next attack here' : '';
-      const recoil = rush ? ` ${rush}. If nobody fully blocks, recoil deals ${FLOODGATE_RECOIL_PERCENT}% max HP to both rivals through Block.` : '';
-      return `Opening Surge · hits ${hits} after ${timing} or at round end. Fully block one hit to strip rival Block and make them Vulnerable.${recoil}`;
-    }
-    return `${intent.type === 'eclipse' ? 'Eclipse · ' : ''}Hits ${hits}${intent.type === 'eclipse' ? ' and applies Vulnerable' : ''}`;
-  }
-  const victim = state.players[intent.target]?.hp > 0 ? intent.target : state.players.findIndex((player) => player.hp > 0);
-  if (intent.type === 'crownCurse') return `Crown Curse · hits ${name(victim)} for ${damage(victim)}, applies Frail and Vulnerable`;
-  return `Hits ${name(victim)} for ${damage(victim)}${intent.type === 'frailAttack' ? ' and applies Frail' : ''}`;
-}
-
-function enemyCard(enemy, index, state) {
-  const alive = enemy.hp > 0;
-  const healer = briarHealer(state, enemy);
-  const bondTarget = state.players.length > 1 && state.lastTarget === index && state.lastAttacker !== state.activePlayer && !state.bondTriggered;
-  const multiplier = matchup(CRITTERS[state.players[state.activePlayer].critterId].type, CRITTERS[enemy.animal].type);
-  const effectiveness = multiplier > 1 ? 'Super effective · ×1.5' : multiplier < 1 ? 'Resisted · ×0.75' : 'Normal damage';
-  return `<button class="unit-card rival-card ${alive ? '' : 'is-defeated'}" type="button" data-do="target" data-index="${index}" tabindex="-1" ${alive ? '' : 'disabled'}>
-    ${art(enemy.animal, 'unit-art')}
-    <span class="unit-info">
-      ${alive ? '<span class="rival-aim-label" aria-hidden="true"></span>' : '<span class="target-label">Defeated</span>'}
-      <strong class="unit-name">${escape(enemy.name)}</strong>
-      <span class="combat-label">${escape(TYPES[CRITTERS[enemy.animal].type].name)} · ${bondTarget ? 'Bond Strike ready' : enemy.marked ? 'Marked' : enemy.boss ? (state.encounter === TRAIL.length - 1 ? 'Final boss' : 'Act boss') : 'Rival creature'}</span>
-      <span class="rival-vitals">${health(enemy)}</span>
-      ${alive && enemy.intent ? `<span class="intent rival-intent" data-intent="${escape(enemy.intent.type)}"><strong>Next move</strong><span>${escape(intentLabel(enemy.intent, enemy, state))}</span></span>` : ''}
-      ${effects(enemy)}
-      ${alive ? `<span class="type-matchup">Your attacks · ${effectiveness}</span>
-        ${healer ? `<span class="type-matchup">Briar Ward from ${escape(healer.name)} · half attack damage</span>` : ''}
-        ${enemy.poison >= enemy.hp ? '<span class="type-matchup">Poison is lethal at current HP</span>' : ''}` : ''}
-    </span>
-  </button>`;
-}
-
-function trailLocation(encounter) {
-  const { actIndex, level } = trailPosition(encounter);
-  return `Act ${actIndex + 1} · Level ${level} of ${LEVELS_PER_ACT}`;
-}
-
-function progress(state) {
-  const { actIndex, level } = trailPosition(state.encounter);
-  return `<ol class="progress-track" aria-label="Campaign progress">${ACTS.map((_, index) =>
-    `<li class="${index < actIndex ? 'is-complete' : ''}" ${index === actIndex ? 'aria-current="step"' : ''}>Act ${index + 1}${index < actIndex ? ' · Cleared' : index === actIndex ? ` · ${level}/${LEVELS_PER_ACT}` : ''}</li>`).join('')}</ol>`;
-}
-
-function purse(state) {
-  return `<span class="gold-counter" aria-label="Shared wallet, ${state.gold} gold"><span aria-hidden="true">✦</span> ${state.gold} gold</span>`;
 }
 
 function trailMap(state) {
@@ -549,7 +380,7 @@ function trailMap(state) {
     ${progress(state)}
     ${ui.room?.seat === 1 ? '<p class="muted trail-wait">Player 1 chooses the next stop.</p>' : ''}
     <ol class="trail-ladder current-route" aria-label="Current route" start="${currentIndex + 1}">${renderLevel(actRoutes[currentIndex], currentIndex)}</ol>
-    <details class="campaign-map"><summary>Act map</summary><ol class="act-levels">${actRoutes.map((_, index) => {
+    <details class="campaign-map" data-view-state="campaign-map"><summary>Act map</summary><ol class="act-levels">${actRoutes.map((_, index) => {
       const level = first + index;
       const route = actRoutes[index].find(({ id }) => id === state.path[level]);
       return `<li ${level === state.encounter ? 'aria-current="step"' : ''}><strong>${index + 1}</strong> <span>${route ? escape(route.name) : level === state.encounter ? 'Current level' : index === LEVELS_PER_ACT - 1 ? escape(act.boss) : 'Ahead'}</span></li>`;
@@ -650,98 +481,9 @@ function merchantShop(state) {
     </section>`;
 }
 
-function actionCard(state, seat, cardId, index, enabled, draft = false) {
-  const card = CARDS[cardId];
-  const active = draft && ui.drafts[seat] === cardId;
-  const energyLabel = card.cost === 'X' ? 'X energy, spends all remaining energy' : `${card.cost} energy`;
-  const aim = !draft && card.target === 'enemy' ? `data-aim="${escape(card.name)}" aria-pressed="false" aria-describedby="attack-instructions"` : '';
-  const blockDrag = !draft && card.target === 'none' && (card.block || card.allyBlock);
-  const block = blockDrag ? `data-block-drag="${escape(card.name)}" aria-describedby="attack-instructions"` : '';
-  return `<button type="button" class="play-card card-${escape(card.type)}" data-do="${draft ? 'draft-pick' : 'play'}" data-seat="${seat}" data-id="${escape(cardId)}" data-index="${index}" ${aim} ${block} ${draft ? `aria-pressed="${active}"` : ''} ${enabled ? '' : 'disabled'}>
-    <span class="card-cost" aria-label="${energyLabel}">${card.cost}</span>
-    <span class="card-type">${active ? '✓ Selected · ' : ''}${blockDrag ? 'Block · Tap to play' : escape(card.type)}</span>
-    <strong class="card-title">${escape(card.name)}</strong>
-    <span class="card-effect">${escape(getCardDescription(state, seat, cardId))}</span>
-  </button>`;
-}
-
-function combatPile(kind, label, count, seat) {
-  return `<button type="button" class="combat-pile" data-do="view-battle-deck" data-id="${kind}" data-seat="${seat}" data-pile="${kind}" aria-haspopup="dialog" aria-label="View ${label.toLowerCase()} pile, ${count} ${count === 1 ? 'card' : 'cards'}">
-    <span class="pile-stack" aria-hidden="true">${count}</span><span>${label}</span>
-  </button>`;
-}
-
-function combat(state) {
-  const seat = state.activePlayer;
-  const player = state.players[seat];
-  const waitingSeat = ui.room && ui.room.seat !== seat ? ui.room.seat : null;
-  const canAct = !ui.room || ui.room.seat === seat;
-  const enabled = canAct && !ui.pending;
-  const entry = getEncounter(state);
-  const other = state.players[1 - seat];
-  const name = CRITTERS[player.critterId].name;
-  const companionReady = player.companionId && !player.companionUsed;
-  const companion = COMPANION_ABILITIES[player.companionId];
-  const playableCards = player.hand.filter((id) => canAffordCard(CARDS[id], player.energy));
-  const canAim = companionReady || playableCards.some((id) => CARDS[id].target === 'enemy');
-  const canTap = playableCards.some((id) => CARDS[id].target !== 'enemy');
-  const turnTitle = ui.room ? canAct ? `Your turn as ${name}` : `Waiting for ${name}` : `${name}’s turn`;
-  const next = seat === 0 && other?.hp > 0 ? `${CRITTERS[other.critterId].name} goes next.` : 'The rivals act next.';
-  return `<div class="combat-screen" data-turn="${state.round}:${seat}">
-    <header class="fight-heading">
-      <div><p class="eyebrow">Act ${trailPosition(state.encounter).actIndex + 1} · Round ${state.round}</p><h1>${escape(entry.name)}</h1></div>
-      <details class="combat-info"><summary class="button button-ghost">Battle info</summary>
-        <div class="combat-info-panel">
-          ${progress(state)}${purse(state)}
-          <h2>Your team</h2><div class="combat-row">${state.players.map((unit, index) => allyCard(unit, index, state)).join('')}</div>
-          ${state.players.filter((unit) => unit.companionId).map((unit) => `<div class="companion-battle">${art(unit.companionId, 'companion-art')}<span><strong>${escape(CRITTERS[unit.companionId].name)} · ${escape(COMPANION_ABILITIES[unit.companionId].name)}</strong><br>${escape(TYPES[CRITTERS[unit.companionId].type].name)} type · ${escape(getCompanionDescription(unit.companionId, unit.attackBonus + unit.strength))}</span></div>`).join('')}
-          ${other?.hp > 0 && other.hand.length ? `<p class="secondary-hand"><strong>${escape(CRITTERS[other.critterId].name)}’s hand</strong> · ${other.hand.map((id) => escape(CARDS[id].name)).join(', ')}</p>` : ''}
-          <div class="battle-log"><h2>Battle log</h2><ol>${state.log.slice(0, 4).map((row) => `<li>${escape(row)}</li>`).join('')}</ol></div>
-        </div>
-      </details>
-    </header>
-    <div class="arena-scroll" tabindex="0" aria-label="Battle arena">
-      <section class="battlefield" aria-labelledby="rival-heading">
-      ${cardReveal()}
-      <div class="rival-heading"><h2 id="rival-heading">Rivals</h2><p id="aim-status" role="status"></p></div>
-      <div class="combat-row">${state.enemies.map((enemy, index) => enemyCard(enemy, index, state)).join('')}</div>
-      </section>
-    </div>
-    <section class="hand-panel" aria-labelledby="turn-heading" tabindex="-1">
-        <div class="hand-heading" data-block-drop>
-          ${art(player.critterId, 'hud-portrait', name)}
-          <div class="hud-familiar"><h2 id="turn-heading">${escape(turnTitle)}</h2><span class="turn-details">${player.hp}/${player.maxHp} HP${player.block ? ` · ${player.block} Block` : ''}</span></div>
-          <span class="turn-energy" role="group" aria-label="${player.energy} energy available"><span class="combat-metric-label" aria-hidden="true">Energy</span><strong aria-hidden="true">${player.energy}</strong></span>
-          <div class="hand-pagination" aria-label="Scroll hand">
-            ${button('‹', 'hand-scroll', { data: 'data-index="-1" aria-label="Previous cards"' })}${button('›', 'hand-scroll', { data: 'data-index="1" aria-label="Next cards"' })}
-          </div>
-          ${button('End turn', 'end', { style: 'primary', disabled: !enabled, data: `data-seat="${seat}" title="${escape(next)}"` })}
-        </div>
-        <div class="hud-instructions"><p class="turn-instructions" id="attack-instructions">${!canAct ? 'You can look at the rivals while you wait.' : [canAim && 'Drag a targeted move onto a rival, or tap it to aim.', canTap && 'Tap untargeted moves. You can also drag Block cards onto your familiar.'].filter(Boolean).join(' ') || 'End your turn when you’re ready.'}</p>${button('Cancel aim', 'cancel-aim', { data: 'hidden' })}</div>
-        <div class="card-table">
-          ${combatPile('draw', 'Draw', player.drawPile.length, seat)}
-          <div class="hand-grid combat-hand" aria-label="Hand">${player.hand.map((id, index) => actionCard(state, seat, id, index, enabled && canAffordCard(CARDS[id], player.energy))).join('') || '<p class="muted">No cards left in hand.</p>'}</div>
-          ${combatPile('discard', 'Discard', player.discardPile.length, seat)}
-        </div>
-        <div class="turn-actions combat-actions">
-          ${companion ? button(`${escape(companion.name)} · ${player.companionUsed ? 'Used' : 'Free companion move'}`, 'companion-strike', { disabled: !enabled || !companionReady, data: `data-seat="${seat}" data-aim="${escape(companion.name)}" aria-pressed="false" aria-describedby="attack-instructions"` }) : ''}
-          <span class="hand-counts">${escape(TYPES[CRITTERS[player.critterId].type].name)} type</span>
-        </div>
-        <div class="turn-actions combat-deck-actions">${state.players.map((member, index) => button(`View ${escape(CRITTERS[member.critterId].name)}’s deck (${member.deck.length})`, 'view-battle-deck', { data: `data-seat="${index}" data-id="deck" aria-haspopup="dialog"` })).join('')}
-          ${waitingSeat === null ? '' : ['draw', 'discard'].map((kind) => button(`Your ${battleCardViews[kind].label}`, 'view-battle-deck', { data: `data-seat="${waitingSeat}" data-id="${kind}" aria-haspopup="dialog"` })).join('')}
-        </div>
-    </section>
-  </div>`;
-}
-
 function recruitment() {
   if (!ui.recruits.length) return '';
   return `<div class="recruit-banner" role="status"><strong>New recruits</strong><span>${ui.recruits.map((id) => `${escape(CRITTERS[id].name)} the ${escape(CRITTERS[id].animal)}`).join(' · ')}. Play them on your next trail.</span></div>`;
-}
-
-function cardReveal() {
-  if (!ui.newCards.length) return '';
-  return `<div class="recruit-banner" role="status"><strong>Cards unlocked</strong><span>${ui.newCards.map((id) => escape(CARDS[id].name)).join(' · ')}. Add them to starting decks on future trails.</span></div>`;
 }
 
 function rewardPerkChoices(perks, action, seat, selected, enabled) {
@@ -757,7 +499,7 @@ function rewards(state) {
     ${bossLevel ? `<p class="status-line">The pack recovers to full health before entering ${escape(ACTS[actIndex + 1].name)}.</p>` : ''}
     ${trialReward ? `<p class="status-line">Trial cleared. Each player can draft ${escape(CARDS[trialReward].name)} as their card reward.</p>` : ''}
     ${recruitment()}
-    ${cardReveal()}
+    ${cardReveal(ui.newCards)}
     <div class="reward-panel">
       ${state.players.map((player, seat) => {
         const critter = CRITTERS[player.critterId];
@@ -773,7 +515,7 @@ function rewards(state) {
             <h3 class="reward-label">1. Choose a perk</h3>
             <div class="level-options" aria-label="Level-up perk">${rewardPerkChoices(Object.values(LEVEL_PERKS), 'perk', seat, ui.perks[seat], enabled)}</div>
             <h3 class="reward-label">2. Take or skip a card</h3>
-            <div class="hand-grid">${state.rewardOptions[seat].map((id, index) => actionCard(state, seat, id, index, enabled, true)).join('')}</div>
+            <div class="hand-grid">${state.rewardOptions[seat].map((id, index) => actionCard(state, seat, id, index, enabled, true, ui.drafts[seat])).join('')}</div>
             <div class="turn-actions">${button('Skip card', 'draft-pick', { disabled: !enabled, data: `data-seat="${seat}" data-id="skip" aria-pressed="${ui.drafts[seat] === 'skip'}"` })}</div>
             ${state.hardReward ? `<h3 class="reward-label">3. Choose a Hard route perk</h3>
               <div class="level-options" aria-label="Hard route perk">${rewardPerkChoices(hardPerkOptions(state.players.length), 'hard-perk', seat, ui.hardPerks[seat], enabled)}</div>` : ''}
@@ -792,7 +534,7 @@ function conclusion(state) {
     <h1>${won ? 'The Hollow Crown falls' : 'The woods close in'}</h1>
     <p>${won ? `Your party defeated ${escape(ACTS.at(-1).boss)} and cleared all ${TRAIL.length} levels.` : `The pack fell in ${trailLocation(state.encounter)}. Recruits you found on this run are still in your collection.`}</p>
     ${recruitment()}
-    ${cardReveal()}
+    ${cardReveal(ui.newCards)}
     <p class="collection-status"><strong>${collectionCount()} / ${Object.keys(CRITTER_UNLOCKS).length}</strong> creatures recruited</p>
     ${button('Back to title', 'home', { style: 'primary' })}
   </section>`;
@@ -899,10 +641,10 @@ function render() {
   const handLeft = game.querySelector('.combat-hand')?.scrollLeft ?? 0;
   const previousBattle = game.querySelector('.combat-screen');
   const previousTurn = previousBattle?.dataset.turn;
-  const battleInfoOpen = game.querySelector('.combat-info')?.open;
   const previous = document.activeElement;
   const hadBattleFocus = previousBattle?.contains(previous);
-  const focusedBattleInfo = previous?.matches('.combat-info summary');
+  const gameView = captureViewState(game);
+  const toolsView = captureViewState(runTools);
   const focusInRunTools = runTools.contains(previous);
   const focusInCollection = previous?.closest('.creature-library');
   const focus = previous?.dataset.do ? ['do', 'seat', 'id', 'index'].map((key) => previous.dataset[key]) : null;
@@ -915,28 +657,33 @@ function render() {
   else delete document.body.dataset.battleArea;
   syncSoundtrack(state);
   const messages = `<div class="feedback" aria-live="polite">${ui.error ? `<p class="error-line" role="alert">${escape(ui.error)}</p>` : ''}${ui.notice ? `<p class="status-line">${escape(ui.notice)}</p>` : ''}</div>`;
-  const runScenes = { route: trailMap, camp: campScreen, shop: merchantShop, combat, reward: rewards, victory: conclusion, defeat: conclusion };
+  const runScenes = { route: trailMap, camp: campScreen, shop: merchantShop, combat: (state) => combat(state, ui), reward: rewards, victory: conclusion, defeat: conclusion };
   const scene = state ? runScenes[state.phase](state) : ui.reconnect
     ? `<section class="lobby-panel"><h1>Reconnect to room ${escape(ui.reconnect.code)}</h1><p>The room is not available yet. If the server restarted, Player 1 can restore it with their recovery code. Your seat is saved in this tab.</p><div class="turn-actions">${button('Retry connection', 'retry-room', { style: 'primary', disabled: ui.pending })}${button('Return to setup', 'forget-room', { disabled: ui.pending })}</div></section>`
     : lobby();
   const saveControl = state && !['victory', 'defeat'].includes(state.phase)
     ? `<div class="save-controls">${button('Save game', 'save', { disabled: ui.pending })}<span class="muted">Saved in this browser${ui.room ? ' · resumes on one screen' : ''}</span></div>` : '';
-  runTools.innerHTML = saveControl + (state ? recoveryControls(ui.room) : '');
+  const nextToolsMarkup = saveControl + (state ? recoveryControls(ui.room) : '');
+  if (nextToolsMarkup !== runToolsMarkup) {
+    runTools.innerHTML = nextToolsMarkup;
+    runToolsMarkup = nextToolsMarkup;
+  }
   game.innerHTML = `${messages}<div class="game-stage" data-scene="${state?.phase ?? 'lobby'}">${scene}</div>`;
+  const focusedGameField = restoreViewState(game, gameView);
+  const focusedToolsField = restoreViewState(runTools, toolsView);
   if (!ui.scrollToTop) {
     game.querySelector('.game-stage').scrollTop = stageTop;
     if (state?.phase === 'combat') {
       game.querySelector('.arena-scroll').scrollTop = arenaTop;
-      game.querySelector('.combat-info').open = battleInfoOpen;
       if (game.querySelector('.combat-screen').dataset.turn === previousTurn) game.querySelector('.combat-hand').scrollLeft = handLeft;
     }
   }
   ui.scrollToTop = false;
   if (!document.querySelector('dialog[open]')) {
-    let equivalent = focusedBattleInfo ? game.querySelector('.combat-info summary') : null;
+    let equivalent = focusedToolsField ?? focusedGameField;
     if (focus) {
       const focusRoot = focusInRunTools ? runTools : focusInCollection ? game.querySelector('.creature-library') : game;
-      equivalent = [...(focusRoot?.querySelectorAll('[data-do]:not(:disabled):not([hidden])') ?? [])].find((node) =>
+      equivalent ??= [...(focusRoot?.querySelectorAll('[data-do]:not(:disabled):not([hidden])') ?? [])].find((node) =>
         ['do', 'seat', 'id', 'index'].every((key, i) => node.dataset[key] === focus[i]) && node.tabIndex >= 0);
     }
     if (equivalent) equivalent.focus({ preventScroll: true });
@@ -979,14 +726,28 @@ function attachRoom(room) {
   ui.savedRunOrigin = null;
   if (room.deck) ui.startingDecks[room.seat] = [...room.deck];
   let latestState = room.state;
+  let deferredRender;
   writeStorage(sessionStorage, roomKey, { code: room.code, token: room.token });
   acceptState(latestState, null);
+
+  function renderRoomUpdate() {
+    clearTimeout(deferredRender);
+    if (ui.room !== room) return;
+    const field = document.activeElement;
+    if (!room.state && game.contains(field) && field.matches(setupSelect)) {
+      // Keep the element mounted while the native picker has focus.
+      deferredRender = setTimeout(renderRoomUpdate, 250);
+      return;
+    }
+    render();
+  }
+
   ui.stopWatching = room.watch(() => {
     if (ui.room !== room) return;
     acceptState(room.state, latestState);
     latestState = room.state;
     ui.error = '';
-    render();
+    renderRoomUpdate();
   }, (error) => {
     if (ui.room !== room) return;
     if (waitingForPublicMatch(room) && isTerminalRoomError(error)) {
@@ -1010,7 +771,7 @@ function attachRoom(room) {
 
 function recoveryControls(room) {
   if (!room || room.seat !== 0 || !room.recoveryCode) return '';
-  return `<details><summary>Private room recovery code</summary><p>Save this code somewhere safe after your latest move. If the server restarts, Player 1 can restore the room with it. Anyone with this code can control both seats, so do not share it publicly.</p><label class="field">Recovery code<textarea readonly rows="3">${escape(room.recoveryCode)}</textarea></label>${button('Copy recovery code', 'copy-recovery')}</details>`;
+  return `<details data-view-state="private-recovery"><summary>Private room recovery code</summary><p>Save this code somewhere safe after your latest move. If the server restarts, Player 1 can restore the room with it. Anyone with this code can control both seats, so do not share it publicly.</p><label class="field">Recovery code<textarea readonly rows="3" data-view-field="private-code">${escape(room.recoveryCode)}</textarea></label>${button('Copy recovery code', 'copy-recovery')}</details>`;
 }
 
 async function runRemote(operation) {
@@ -1076,125 +837,7 @@ function playCombatMove(control, target) {
   return dispatch(action);
 }
 
-const livingRival = '[data-do="target"]:not(:disabled)';
-
-function setAimedMove(control) {
-  if (aimedMove === control) return;
-  aimedMove?.setAttribute('aria-pressed', 'false');
-  aimedMove = control;
-  const aiming = Boolean(control);
-  control?.setAttribute('aria-pressed', 'true');
-  game.classList.toggle('is-choosing-target', aiming);
-  game.querySelector('#aim-status').textContent = aiming ? `${control.dataset.aim} selected. Choose a highlighted rival.` : '';
-  game.querySelector('[data-do="cancel-aim"]').hidden = !aiming;
-  for (const rival of game.querySelectorAll(livingRival)) rival.tabIndex = aiming ? 0 : -1;
-}
-
-function cancelAim() {
-  const source = aimedMove ?? attackDrag?.source;
-  clearAttackDrag();
-  setAimedMove();
-  source?.focus();
-}
-
-function combatDropTarget(drag, x, y) {
-  return document.elementFromPoint(x, y)?.closest(drag.targeted ? livingRival : '[data-block-drop]');
-}
-
-function clearAttackDrag() {
-  if (!attackDrag) return;
-  const { source, pointerId, preview, dropTarget, frame } = attackDrag;
-  attackDrag = undefined;
-  cancelAnimationFrame(frame);
-  preview?.remove();
-  dropTarget?.classList.remove('is-drop-target');
-  source.classList.remove('is-aiming');
-  game.classList.remove('is-drag-aiming', 'is-drag-blocking');
-  if (source.hasPointerCapture(pointerId)) source.releasePointerCapture(pointerId);
-}
-
-function drawAttackDrag() {
-  const drag = attackDrag;
-  const { scrollPane } = drag;
-  const { top, bottom, height } = scrollPane.getBoundingClientRect();
-  if (drag.targeted && drag.y >= top && drag.y <= bottom) {
-    const edge = Math.min(48, height / 4);
-    const scrollDistance = Math.min(0, drag.y - top - edge) + Math.max(0, drag.y - bottom + edge);
-    if (scrollDistance) scrollPane.scrollTop += Math.sign(scrollDistance) * Math.min(14, Math.abs(scrollDistance) / 3);
-  }
-  const dropTarget = combatDropTarget(drag, drag.x, drag.y);
-  if (dropTarget !== drag.dropTarget) {
-    drag.dropTarget?.classList.remove('is-drop-target');
-    dropTarget?.classList.add('is-drop-target');
-    drag.dropTarget = dropTarget;
-  }
-  const halfWidth = drag.preview.offsetWidth / 2;
-  drag.preview.style.left = `${Math.max(halfWidth, Math.min(drag.x, window.innerWidth - halfWidth))}px`;
-  drag.preview.style.top = `${drag.y}px`;
-  drag.preview.classList.toggle('is-below-pointer', drag.y < drag.preview.offsetHeight + 12);
-  drag.frame = requestAnimationFrame(drawAttackDrag);
-}
-
-window.addEventListener('pointerdown', (event) => {
-  if (event.isPrimary && event.button === 0) suppressDragClick = false;
-}, true);
-
-window.addEventListener('click', (event) => {
-  if (!suppressDragClick || event.detail === 0) return;
-  suppressDragClick = false;
-  event.preventDefault();
-  event.stopImmediatePropagation();
-}, true);
-
-game.addEventListener('pointerdown', (event) => {
-  const source = event.target.closest(':is([data-aim], [data-block-drag]):not(:disabled)');
-  if (!source || !event.isPrimary || event.button !== 0 || attackDrag) return;
-  const { pointerId, clientX: x, clientY: y } = event;
-  const stage = source.closest('.game-stage');
-  const scrollPane = getComputedStyle(stage).overflowY === 'auto' ? stage : game.querySelector('.arena-scroll');
-  attackDrag = { source, scrollPane, targeted: source.hasAttribute('data-aim'), pointerId, startX: x, startY: y, x, y };
-  source.setPointerCapture(pointerId);
-});
-
-window.addEventListener('pointermove', (event) => {
-  const drag = attackDrag;
-  if (drag?.pointerId !== event.pointerId) return;
-  drag.x = event.clientX;
-  drag.y = event.clientY;
-  if (drag.preview || Math.hypot(drag.x - drag.startX, drag.y - drag.startY) < 8) return;
-  suppressDragClick = true;
-  setAimedMove();
-  drag.preview = document.createElement('div');
-  drag.preview.className = 'attack-preview';
-  drag.preview.setAttribute('aria-hidden', 'true');
-  drag.preview.textContent = drag.source.dataset.aim ?? drag.source.dataset.blockDrag;
-  document.body.append(drag.preview);
-  drag.source.classList.add('is-aiming');
-  game.classList.add(drag.targeted ? 'is-drag-aiming' : 'is-drag-blocking');
-  drawAttackDrag();
-});
-
-window.addEventListener('pointerup', (event) => {
-  const drag = attackDrag;
-  if (drag?.pointerId !== event.pointerId) return;
-  const target = drag.preview && combatDropTarget(drag, event.clientX, event.clientY);
-  clearAttackDrag();
-  if (target) playCombatMove(drag.source, drag.targeted ? Number(target.dataset.index) : undefined);
-});
-
-window.addEventListener('pointercancel', (event) => {
-  if (attackDrag?.pointerId === event.pointerId) clearAttackDrag();
-});
-window.addEventListener('lostpointercapture', (event) => {
-  if (attackDrag?.pointerId === event.pointerId && attackDrag.source === event.target) clearAttackDrag();
-});
-window.addEventListener('blur', clearAttackDrag);
-
-window.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || (!aimedMove && !attackDrag?.preview)) return;
-  event.preventDefault();
-  cancelAim();
-});
+const { clearAttackDrag, setAimedMove, selectTarget } = createCombatInput(game, playCombatMove);
 
 function renderBattleCards(state) {
   const { seat, kind } = battleCardsView;
@@ -1244,36 +887,16 @@ document.addEventListener('click', async (event) => {
     battleDeck.scrollTop = 0;
     return;
   }
-  if (control.hasAttribute('data-aim')) {
-    if (aimedMove === control) return cancelAim();
-    const firstRival = game.querySelector(livingRival);
-    if (!firstRival) return;
-    setAimedMove(control);
-    if (event.detail === 0) firstRival.focus();
-    else firstRival.closest('.battlefield').scrollIntoView({ block: 'nearest' });
-    return;
+  if (control.hasAttribute('data-aim') || action === 'cancel-aim' || action === 'target') {
+    return selectTarget(control, event.detail, index);
   }
-  if (action === 'cancel-aim') return cancelAim();
   if (action === 'hand-scroll') {
     const hand = game.querySelector('.combat-hand');
     hand.scrollBy({ left: index * hand.clientWidth * .75 });
     return;
   }
-  if (action === 'target') {
-    if (!aimedMove) return;
-    const source = aimedMove;
-    setAimedMove();
-    if (event.detail === 0) source.focus({ preventScroll: true });
-    return playCombatMove(source, index);
-  }
-  if (action === 'open-soundtrack') { soundtrack.pause(); return; }
-  if (action === 'music') {
-    musicEnabled = soundtrack.paused;
-    writeStorage(localStorage, musicKey, musicEnabled);
-    if (musicEnabled) startMusic(state);
-    else soundtrack.pause();
-    return;
-  }
+  if (action === 'open-soundtrack') { pauseMusic(); return; }
+  if (action === 'music') { toggleMusic(state); return; }
   if (action === 'companion-strike' || action === 'play') return playCombatMove(control);
   if (state && game.contains(control)) startMusic(state);
   if (action === 'share-game') { openShare(); return; }
@@ -1315,9 +938,16 @@ document.addEventListener('click', async (event) => {
     render();
     return;
   }
+  if (action === 'clear-save') {
+    if (!savedRunStatus(localStorage).corrupt) return;
+    ui.error = '';
+    if (!writeStorage(localStorage, saveKey, null)) ui.error = 'Could not clear the saved game in this browser.';
+    render();
+    return;
+  }
   if (action === 'continue') {
-    const saved = readStorage(localStorage, saveKey, null);
-    if (!saved || saved.version !== 1 || !saved.state || !Array.isArray(saved.state.players) || !['route', 'combat', 'camp', 'shop', 'reward'].includes(saved.state.phase)) {
+    const { saved } = savedRunStatus(localStorage);
+    if (!saved) {
       ui.error = 'This saved game could not be loaded.';
       render();
       return;
@@ -1327,10 +957,8 @@ document.addEventListener('click', async (event) => {
     ui.room = null;
     ui.run = saved.state;
     ui.mode = saved.state.players.length === 1 ? 'solo' : 'local';
-    ui.savedRunOrigin = saved.origin;
-    ui.perks = Array.isArray(saved.perks) ? saved.perks : [null, null];
-    ui.hardPerks = Array.isArray(saved.hardPerks) ? saved.hardPerks : [null, null];
-    ui.drafts = Array.isArray(saved.drafts) ? saved.drafts : [null, null];
+    ui.savedRunOrigin = typeof saved.origin === 'string' ? saved.origin : 'local';
+    Object.assign(ui, savedRewardChoices(saved));
     ui.scrollToTop = true;
     ui.notice = 'Saved game loaded.';
     startMusic(ui.run);
@@ -1455,8 +1083,9 @@ game.addEventListener('error', (event) => {
 
 render();
 const savedRoom = readStorage(sessionStorage, roomKey, null);
+const { saved: availableSave, corrupt: corruptSave } = savedRunStatus(localStorage);
 if (!invite && !savedRoom && !readStorage(localStorage, tutorialKey, false) &&
-    !readStorage(localStorage, saveKey, null) && !readStorage(localStorage, collectionKey, null)) {
+    !availableSave && !corruptSave && !readStorage(localStorage, collectionKey, null)) {
   openTutorial();
 }
 if (savedRoom && (!invite || invite === savedRoom.code)) {

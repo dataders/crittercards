@@ -3,6 +3,8 @@ import { Readable } from 'node:stream';
 import test from 'node:test';
 
 import { createGameServer } from '../server.mjs';
+import { recoverRoom, resumeRoom } from '../transport.mjs';
+
 
 function createClient() {
   // Exercise the HTTP handler without opening a socket during node --test.
@@ -32,8 +34,17 @@ const cancelQueue = (request, room, revision = room.revision) => request(`${room
   body: { revision, action: { type: 'cancelMatch' } },
 });
 
-test('private recovery code restores both players and game after a server restart', async () => {
+function useRecoverySecret(t) {
+  const previous = process.env.ROOM_RECOVERY_SECRET;
   process.env.ROOM_RECOVERY_SECRET = 'test-only-signing-key-never-use-in-production';
+  t.after(() => {
+    if (previous === undefined) delete process.env.ROOM_RECOVERY_SECRET;
+    else process.env.ROOM_RECOVERY_SECRET = previous;
+  });
+}
+
+test('private recovery code restores both players and game after a server restart', async (t) => {
+  useRecoverySecret(t);
   const firstServer = createClient();
   const host = (await firstServer('/api/rooms', { body: {} })).body;
   const path = roomPath(host);
@@ -127,4 +138,49 @@ test('only authenticated host polls extend the short public waiting lifetime', a
 
   now += 45000;
   assert.equal((await readRoom(request, waiting)).status, 200);
+});
+
+test('a reloaded guest can resume with the original ticket after the host restores', async (t) => {
+  useRecoverySecret(t);
+  const original = createClient();
+  const host = (await original('/api/rooms', { body: { critterId: 'fox' } })).body;
+  const { body: guest } = await original(`${roomPath(host)}/join`, { body: { critterId: 'hare' } });
+  const { body: backup } = await readRoom(original, host);
+  const restarted = createClient();
+  t.mock.method(globalThis, 'fetch', async (path, { headers, body }) => {
+    const result = await restarted(path, {
+      token: headers.Authorization?.slice('Bearer '.length),
+      body: body === undefined ? undefined : JSON.parse(body),
+    });
+    return Response.json(result.body, { status: result.status });
+  });
+
+  await assert.rejects(resumeRoom(guest.code, guest.token), { status: 404 });
+  const restored = await recoverRoom(backup.recoveryCode);
+  assert.equal(restored.revision, backup.revision);
+  const resumed = await resumeRoom(guest.code, guest.token);
+  assert.equal(resumed.seat, 1);
+  assert.equal(resumed.revision, restored.revision);
+  assert.deepEqual(resumed.picks, ['fox', 'hare']);
+});
+
+test('unchanged recovery codes are reused and an expired room can be restored', async (t) => {
+  useRecoverySecret(t);
+  let now = 1;
+  t.mock.method(Date, 'now', () => now);
+  const request = createClient();
+  const { body: waiting } = await enterQueue(request);
+  now += 40000;
+  const { body: refreshed } = await readRoom(request, waiting);
+  assert.equal(refreshed.revision, waiting.revision);
+  assert.equal(refreshed.recoveryCode, waiting.recoveryCode);
+
+  now += 45000;
+  const restore = await request('/api/rooms/recover', { body: { recoveryCode: waiting.recoveryCode } });
+  assert.equal(restore.status, 200);
+  assert.equal(restore.body.code, waiting.code);
+  const { body: guest } = await request(`${roomPath(waiting)}/join`, { body: { critterId: 'hare' } });
+  assert.ok(guest.revision > refreshed.revision);
+  const { body: matched } = await readRoom(request, waiting);
+  assert.notEqual(matched.recoveryCode, restore.body.recoveryCode);
 });

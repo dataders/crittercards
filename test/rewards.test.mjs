@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyAction, createRun } from '../game.mjs';
+import { applyAction, CARDS, createRun } from '../game.mjs';
 
 const route = (state, routeId = 'steady') => applyAction(state, { type: 'route', player: 0, routeId });
 const draft = (state, choices = {}) => applyAction(state, { type: 'draft', player: 0, perkId: 'fang', ...choices });
 const play = (state, player, target = 0) => applyAction(state, { type: 'play', player, cardIndex: 0, target });
 const end = (state, player) => applyAction(state, { type: 'endTurn', player });
 
-function win(critterIds, encounter, routeId) {
-  const run = createRun(critterIds, 40);
+function win(critterIds, encounter, routeId, seed = 40) {
+  const run = createRun(critterIds, seed);
   run.encounter = encounter;
   run.path = Array(encounter).fill('steady');
   const battle = route(run, routeId);
@@ -77,4 +77,18 @@ test('both co-op perk choices count and Bond Ward triggers once per fight', () =
   battle = play(end(play(battle, 0), 0), 1);
   assert.equal(battle.bondTriggered, true);
   assert.deepEqual(battle.players.map(({ block }) => block), [0, 0]);
+});
+
+test('reward offers retain each established slot and add draftable one- or X-cost cards', () => {
+  const bonusOffers = new Set();
+  for (let seed = 0; seed < 64; seed += 1) {
+    const won = win(['fox'], 0, 'steady', seed);
+    const [offers] = won.rewardOptions;
+    assert.deepEqual(offers.slice(0, 3).map((id) => CARDS[id].cost), [0, 2, 3]);
+    assert.equal(offers.length, 4);
+    assert.ok([1, 'X'].includes(CARDS[offers[3]].cost));
+    assert.ok(draft(won, { cardId: offers[3] }).players[0].deck.includes(offers[3]));
+    bonusOffers.add(offers[3]);
+  }
+  assert.deepEqual(new Set([...bonusOffers].map((id) => CARDS[id].cost)), new Set([1, 'X']));
 });

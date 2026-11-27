@@ -1,7 +1,8 @@
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { open } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { resolve } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { gzipSync, gunzipSync } from 'node:zlib';
 
@@ -10,12 +11,15 @@ import { applyAction, createRun, COUSINS, CRITTERS, STARTER_DECK, validateStarti
 const roomLifetime = 6 * 60 * 60 * 1000;
 const publicWaitLifetime = 45 * 1000;
 const roomCapacity = 300;
+const jsonLimit = 65536;
+const cachedRecoveryCodes = new WeakMap();
 const codeAlphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 const hourSoundtrackFile = 'crittercards-faster-soundtrack-one-hour.mp3';
 const hourSoundtrackDownload = `/downloads/${hourSoundtrackFile}`;
 const enchantedWoodsAlbum = '/assets/crittercards-enchanted-woods-album.zip';
 const staticFiles = new Set([
   '/index.html', '/soundtrack.html', '/styles.css', '/app.mjs', '/game.mjs', '/transport.mjs',
+  '/audio.mjs', '/combat-input.mjs', '/data.mjs', '/storage.mjs', '/view-state.mjs', '/views.mjs',
   '/assets/crittercards-soundtrack.zip', enchantedWoodsAlbum,
 ]);
 const assetPath = /^\/assets\/(?:[\w-]+\/)*[\w.-]+\.(?:avif|gif|ico|jpe?g|mp3|png|svg|webp|woff2)$/i;
@@ -33,11 +37,12 @@ class RequestError extends Error {
   }
 }
 
-function sendJson(response, status, data) {
+function sendJson(response, status, data, headers = {}) {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
+    ...headers,
   });
   response.end(JSON.stringify(data));
 }
@@ -47,13 +52,15 @@ async function readJson(request) {
     throw new RequestError(415, 'Send a JSON request.');
   }
 
+  if (Number(request.headers['content-length']) > jsonLimit) throw new RequestError(413, 'Request is too large.');
   const chunks = [];
   let bytes = 0;
-  for await (const chunk of request) {
+  // Leave the socket open long enough to send the 413 response, then close it.
+  for await (const chunk of request.iterator({ destroyOnReturn: false })) {
     bytes += chunk.length;
-    if (bytes <= 65536) chunks.push(chunk);
+    if (bytes > jsonLimit) throw new RequestError(413, 'Request is too large.');
+    chunks.push(chunk);
   }
-  if (bytes > 65536) throw new RequestError(413, 'Request is too large.');
 
   let data;
   try {
@@ -84,6 +91,12 @@ function isExpired(room, now) {
   return now - room.updatedAt >= lifetime;
 }
 
+function pruneExpiredRooms(rooms, now) {
+  for (const [code, room] of rooms) {
+    if (isExpired(room, now)) rooms.delete(code);
+  }
+}
+
 function createRoom(rooms, { critterId, publicMatch, now }) {
   const code = newRoomCode(rooms);
   const token = randomBytes(32).toString('base64url');
@@ -111,9 +124,13 @@ function joinRoom(room, critterId, now) {
 function signedRecoveryCode(room) {
   const secret = process.env.ROOM_RECOVERY_SECRET;
   if (!secret) return undefined;
+  const cached = cachedRecoveryCodes.get(room);
+  if (cached?.revision === room.revision && cached.secret === secret) return cached.code;
   const payload = gzipSync(JSON.stringify(room)).toString('base64url');
   const signature = createHmac('sha256', secret).update(payload).digest('base64url');
-  return `CR2-${payload}.${signature}`;
+  const code = `CR2-${payload}.${signature}`;
+  cachedRecoveryCodes.set(room, { revision: room.revision, secret, code });
+  return code;
 }
 
 function snapshot(room, seat) {
@@ -149,9 +166,11 @@ function recoverRoom(rooms, recoveryCode) {
       !Number.isSafeInteger(room.revision) || room.revision < 0 || (room.state !== null && typeof room.state !== 'object')) {
     throw new RequestError(400, 'Invalid recovery code.');
   }
+  const now = Date.now();
+  pruneExpiredRooms(rooms, now);
   if (rooms.has(room.code)) throw new RequestError(409, 'This room is already active.');
   if (rooms.size >= roomCapacity) throw new RequestError(503, 'All rooms are currently in use.');
-  room.updatedAt = Date.now();
+  room.updatedAt = now;
   rooms.set(room.code, room);
   return { ...snapshot(room, 0), token: room.tokens[0] };
 }
@@ -228,45 +247,59 @@ async function serveStatic(request, response, pathname) {
     throw new RequestError(404, 'Page not found.');
   }
 
-  let data;
+  let file;
   try {
-    data = await readFile(new URL(`.${path}`, import.meta.url));
-  } catch (error) {
-    if (error.code === 'ENOENT') throw new RequestError(404, 'Page not found.');
-    throw error;
-  }
+    file = await open(new URL(`.${path}`, import.meta.url), 'r');
+    const details = await file.stat();
+    if (!details.isFile()) throw new RequestError(404, 'Page not found.');
+    const { size } = details;
+    const etag = `W/"${size.toString(16)}-${Math.trunc(details.mtimeMs).toString(16)}"`;
+    const lastModified = details.mtime.toUTCString();
+    const headers = {
+      'Content-Type': types[path.split('.').at(-1).toLowerCase()],
+      'Content-Length': size,
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'no-cache',
+      ETag: etag,
+      'Last-Modified': lastModified,
+      'Accept-Ranges': 'bytes',
+    };
+    if (download || path === enchantedWoodsAlbum) {
+      headers['Content-Disposition'] = `attachment; filename="${path.split('/').at(-1)}"`;
+    }
+    const validators = request.headers['if-none-match']?.split(',').map((value) => value.trim().replace(/^W\//, ''));
+    if (validators?.some((value) => value === '*' || value === etag.slice(2))) {
+      delete headers['Content-Length'];
+      response.writeHead(304, headers).end();
+      return;
+    }
 
-  const headers = {
-    'Content-Type': types[path.split('.').at(-1).toLowerCase()],
-    'Content-Length': data.length,
-    'X-Content-Type-Options': 'nosniff',
-    'Cache-Control': 'no-cache',
-  };
-  if (download || path === enchantedWoodsAlbum) {
-    headers['Content-Disposition'] = `attachment; filename="${path.split('/').at(-1)}"`;
-  }
-  if (headers['Content-Type'] === 'audio/mpeg') {
-    headers['Accept-Ranges'] = 'bytes';
-    const range = request.method === 'GET' && /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
+    const ifRange = request.headers['if-range'];
+    const range = request.method === 'GET' && (!ifRange || ifRange === lastModified) &&
+      /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
+    let status = 200;
+    let byteRange;
     if (range && (range[1] || range[2])) {
-      const size = data.length;
       const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
       const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
       if (start > end) {
-        response.writeHead(416, { 'Content-Range': `bytes */${size}`, 'Content-Length': 0 });
-        response.end();
+        response.writeHead(416, { ...headers, 'Content-Range': `bytes */${size}`, 'Content-Length': 0 }).end();
         return;
       }
-      data = data.subarray(start, end + 1);
+      status = 206;
+      byteRange = { start, end };
       headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
-      headers['Content-Length'] = data.length;
-      response.writeHead(206, headers);
-      response.end(data);
-      return;
+      headers['Content-Length'] = end - start + 1;
     }
+    response.writeHead(status, headers);
+    if (request.method === 'HEAD') response.end();
+    else await pipeline(file.createReadStream(byteRange), response);
+  } catch (error) {
+    if (error.code === 'ENOENT') throw new RequestError(404, 'Page not found.');
+    if (!response.destroyed) throw error;
+  } finally {
+    await file?.close();
   }
-  response.writeHead(200, headers);
-  response.end(request.method === 'HEAD' ? undefined : data);
 }
 
 export function createGameServer() {
@@ -291,9 +324,7 @@ export function createGameServer() {
         if (critterId !== null) validateCritter(critterId);
 
         const now = Date.now();
-        for (const [code, room] of rooms) {
-          if (isExpired(room, now)) rooms.delete(code);
-        }
+        pruneExpiredRooms(rooms, now);
         if (publicMatch) {
           const waitingRoom = [...rooms.values()].find(isWaitingForPublicMatch);
           if (waitingRoom) {
@@ -353,7 +384,8 @@ export function createGameServer() {
     } catch (error) {
       if (response.destroyed) return;
       if (error instanceof RequestError) {
-        sendJson(response, error.status, { message: error.message });
+        const headers = error.status === 413 ? { Connection: 'close' } : {};
+        sendJson(response, error.status, { message: error.message }, headers);
         return;
       }
       console.error(error);

@@ -473,3 +473,24 @@ test('Briar Ward halves piercing attacks, drops with the healer, and lets Poison
   assert.equal(nextRound.enemies[patient].hp, 0);
   assert.ok(nextRound.enemies[healer].hp > 0);
 });
+
+test('an X-cost attack that reaches the surger counts once toward Floodgate recoil', () => {
+  const run = createRun(['fox'], 23);
+  run.encounter = 24;
+  run.path = Array(run.encounter).fill('steady');
+  const battle = applyAction(run, { type: 'route', player: 0, routeId: 'trial' });
+  const surger = battle.enemies.findIndex(({ intent }) => intent.type === 'openingSurge');
+  const bracing = 1 - surger;
+  Object.assign(battle.enemies[bracing], { hp: 1, block: 0 });
+  battle.enemies[surger].block = 100;
+
+  battle.players[0].hand = ['flurry', 'jab'];
+  const play = (state, target) => applyAction(state, { type: 'play', player: 0, cardIndex: 0, target });
+  const first = play(battle, bracing);
+  assert.equal(first.enemies[bracing].hp, 0);
+  assert.equal(first.enemies[surger].intent.attacksRemaining, 1);
+  assert.equal(first.enemies[surger].intent.focusedAttacks, 1);
+  const second = play(first, surger);
+  assert.equal(second.enemies[surger].intent.type, 'spentSurge');
+  assert.equal(second.enemies[surger].hp, first.enemies[surger].hp - Math.ceil(first.enemies[surger].maxHp * 0.35));
+});
