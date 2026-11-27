@@ -692,3 +692,15 @@ body:not([data-battle-area])::before {
     url('assets/creepy-woods.webp') center 48% / cover no-repeat;
   pointer-events: none;
 }
+
+.setup-actions {
+  position: sticky;
+  z-index: 2;
+  top: .15rem;
+  margin-block: .65rem;
+  padding: .35rem;
+  border: 1px solid var(--line);
+  border-radius: .45rem;
+  background: var(--forest-deep);
+}
+.setup-actions h3 { margin-inline-end: auto; }

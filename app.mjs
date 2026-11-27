@@ -261,15 +261,17 @@ function rosterCard(critter, seat, picks, enabled) {
   </button>`;
 }
 
-function roster(seat, picks, enabled, companions) {
+function roster(seat, picks, enabled, companions, setupActions) {
   const creatures = Object.values(CRITTERS).filter(({ id, animal }) =>
     animal && (ui.filter === 'all' || collection.has(id) === (ui.filter === 'owned')));
   const cousin = Object.hasOwn(COUSINS, picks[seat] ?? '');
   return `
-    <section aria-label="${playerName(seat)} character selection">
       <div class="section-heading"><h2>${playerName(seat)}</h2><span class="muted">${enabled ? 'Choose a character' : picks[seat] ? 'Character chosen' : 'Waiting to choose'}</span></div>
       <p class="type-key">Type strengths · Ember beats Grove · Grove beats Tide · Tide beats Stone · Stone beats Ember</p>
-      <h3>The four cousins</h3>
+      <div class="turn-actions setup-actions">
+        <h3>The four cousins</h3>
+        ${setupActions}
+      </div>
       <div class="critter-grid cousin-roster">
         ${Object.values(COUSINS).map((critter) => rosterCard(critter, seat, picks, enabled)).join('')}
       </div>
@@ -288,8 +290,7 @@ function roster(seat, picks, enabled, companions) {
       </div>
       <div class="critter-grid" aria-label="Creature collection">
         ${creatures.map((critter) => cousin ? `<div class="familiar-option">${rosterCard(critter, seat, picks, enabled)}${button(companions[seat] === critter.id ? '✓ Companion selected' : 'Choose as companion', 'pick-companion', { disabled: !enabled || !collection.has(critter.id), data: `data-seat="${seat}" data-id="${escape(critter.id)}" aria-label="Choose ${escape(critter.name)} as companion" aria-pressed="${companions[seat] === critter.id}"` })}</div>` : rosterCard(critter, seat, picks, enabled)).join('') || '<p class="muted">No creatures in this view.</p>'}
-      </div>
-    </section>`;
+      </div>`;
 }
 
 function deckBuilder(seat, critterId, room) {
@@ -323,6 +324,10 @@ function lobby() {
   const seat = room?.seat ?? ui.pickSeat;
   const companions = room?.companions ?? ui.companions;
   const companionNeeded = (index) => Object.hasOwn(COUSINS, picks[index] ?? '') && !companions[index];
+  const setupActions = `
+    ${!room || room.seat === 0 ? button('Begin the trail', 'start', { style: 'primary', disabled: ui.pending || !(ui.mode === 'solo' ? picks[0] : picks.every(Boolean)) || (ui.mode === 'solo' ? companionNeeded(0) : picks.some((_, index) => companionNeeded(index))) || (room && !room.ready.every(Boolean)) }) : ''}
+    ${!room && ui.mode !== 'solo' && !picks[1 - seat] ? button(`Choose for ${playerName(1 - seat)}`, 'seat', { data: `data-seat="${1 - seat}"` }) : ''}
+    ${room ? `<span class="muted">${room.ready.filter(Boolean).length} of 2 decks confirmed</span>` : ''}`;
   return `
     <section class="hero">
       <img class="hero-art" src="assets/hollow-trail.webp" alt="">
@@ -364,13 +369,10 @@ function lobby() {
         ${room || ui.mode === 'solo' ? '' : `<div class="seat-picker" aria-label="Choose whose character to edit">${[0, 1].map((seat) => button(
           `${playerName(seat)} · ${escape(CRITTERS[picks[seat]]?.name ?? 'Choose character')}`, 'seat', { data: `data-seat="${seat}" aria-pressed="${ui.pickSeat === seat}"` }
         )).join('')}</div>`}
-        ${roster(seat, picks, !ui.pending, companions)}
-        ${deckBuilder(seat, picks[seat], room)}
-        <div class="turn-actions">
-          ${!room && ui.mode !== 'solo' && !picks[1 - seat] ? button(`Choose for ${playerName(1 - seat)}`, 'seat', { data: `data-seat="${1 - seat}"` }) : ''}
-          ${!room || room.seat === 0 ? button('Begin the trail', 'start', { style: 'primary', disabled: ui.pending || !(ui.mode === 'solo' ? picks[0] : picks.every(Boolean)) || (ui.mode === 'solo' ? companionNeeded(0) : picks.some((_, index) => companionNeeded(index))) || (room && !room.ready.every(Boolean)) }) : ''}
-          ${room ? `<span class="muted">${room.ready.filter(Boolean).length} of 2 decks confirmed</span>` : ''}
-        </div>
+        <section aria-label="${playerName(seat)} character selection">
+          ${roster(seat, picks, !ui.pending, companions, setupActions)}
+          ${deckBuilder(seat, picks[seat], room)}
+        </section>
       ` : ''}
     </div>`;
 }
