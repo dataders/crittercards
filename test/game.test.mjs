@@ -334,7 +334,7 @@ test('act trials change enemy tactics and offer their featured card to both play
   }
 });
 
-test('Floodgate counts attacks across seats, lets Block resolve first, and surges only once', () => {
+test('Floodgate counts attacks across seats and a full block breaks the other rival’s guard', () => {
   const run = createRun(['hudson', 'alba'], 23, undefined, ['hare', 'fox']);
   run.encounter = 24;
   const battle = applyAction(run, { type: 'route', player: 0, routeId: 'trial' });
@@ -352,12 +352,36 @@ test('Floodgate counts attacks across seats, lets Block resolve first, and surge
   const hp = battle.players.map(({ hp }) => hp);
   const unblocked = applyAction(resumed, strike);
   assert.ok(unblocked.players.every((p, i) => p.hp < hp[i]));
+  assert.equal(unblocked.enemies[target].intent.type, 'guard');
   const blocked = applyAction(braced, strike);
   assert.ok(blocked.players.every((p, i) => p.hp > unblocked.players[i].hp));
   assert.equal(blocked.enemies[surger].intent.type, 'spentSurge');
+  assert.equal(blocked.enemies[surger].block, 0);
+  assert.equal(blocked.enemies[surger].vulnerable, 1);
+  assert.equal(blocked.enemies[target].intent.type, 'brokenGuard');
+  assert.equal(blocked.enemies[target].block, 0);
+  assert.equal(blocked.enemies[target].vulnerable, 1);
   const nextRound = applyAction(blocked, { type: 'endTurn', player: 1 });
   assert.equal(nextRound.round, 2);
   assert.deepEqual(nextRound.players.map(({ hp }) => hp), blocked.players.map(({ hp }) => hp));
+  assert.equal(nextRound.enemies[target].block, 0);
+  assert.equal(nextRound.enemies[target].vulnerable, 1);
+});
+
+test('a blocked end-of-round surge breaks guard on either side of the enemy turn order', () => {
+  for (const encounter of [24, 28]) {
+    const run = createRun(['fox'], 23);
+    run.encounter = encounter;
+    const battle = applyAction(run, { type: 'route', player: 0, routeId: 'trial' });
+    const bracing = battle.enemies.findIndex(({ intent }) => intent.type === 'guard');
+    battle.players[0].hand = ['guard', 'guard'];
+    const play = (state) => applyAction(state, { type: 'play', player: 0, cardIndex: 0 });
+    const nextRound = applyAction(play(play(battle)), { type: 'endTurn', player: 0 });
+    assert.equal(nextRound.players[0].hp, battle.players[0].hp);
+    assert.equal(nextRound.enemies[bracing].block, 0);
+    assert.equal(nextRound.enemies[bracing].vulnerable, 1);
+    assert.equal(nextRound.enemies[bracing].intent.type, 'teamAttack');
+  }
 });
 
 test('the second attack can cancel Opening Surge, or the surge can force an early handoff', () => {
@@ -374,6 +398,7 @@ test('the second attack can cancel Opening Surge, or the surge can force an earl
   const killed = play(vulnerable, surger);
   assert.equal(killed.enemies[surger].hp, 0);
   assert.deepEqual(killed.players.map(({ hp }) => hp), battle.players.map(({ hp }) => hp));
+  assert.equal(killed.enemies[1 - surger].intent.type, 'guard');
 
   warned.players[0].hp = 1;
   const handoff = play(warned, 1 - surger);

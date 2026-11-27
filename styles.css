@@ -240,12 +240,12 @@ img.critter-art { height: auto; }
   color: var(--paper);
   text-align: left;
 }
-.unit-card.is-active, .unit-card.is-target, .unit-card[aria-pressed='true'], button.unit-card:hover:not(:disabled) { border-color: var(--lime); box-shadow: inset 0 0 0 1px var(--lime); }
-.rival-card { border-color: #9b795e; background: #302a24; }
-.rival-card.is-target { outline: 2px solid var(--lime); outline-offset: 1px; }
+.unit-card.is-active { border-color: var(--lime); box-shadow: inset 0 0 0 1px var(--lime); }
+.rival-card { border-color: #9b795e; background: #302a24; cursor: default; }
+.is-drag-aiming .rival-card:not(:disabled), .is-keyboard-aiming .rival-card:not(:disabled) { border-color: var(--lime); }
+.rival-card.is-drop-target { outline: 3px solid var(--lime); outline-offset: 2px; }
 .rival-card .unit-name { font-size: clamp(1.2rem, 2.5vw, 1.65rem); }
 .target-label { width: fit-content; padding: .15rem .45rem; border-radius: .3rem; background: #46382d; color: var(--paper); font-size: .75rem; font-weight: 700; }
-.is-target .target-label { background: var(--lime); color: var(--forest-deep); }
 .unit-card.is-defeated { filter: saturate(.35); opacity: .5; }
 .unit-art { position: relative; display: grid; place-items: center; width: 34%; min-width: 3.4rem; min-height: 7rem; flex: none; overflow: hidden; background: #374d34; font-size: 2rem; }
 .unit-art img { position: absolute; inset: 0; }
@@ -288,6 +288,21 @@ img.unit-art { width: 34%; }
 }
 .play-card:hover:not(:disabled), .play-card[aria-pressed='true'] { transform: translateY(-3px); box-shadow: 0 0 0 2px var(--lime), 0 .6rem 1rem #070f0b9c; }
 .play-card:disabled { opacity: .55; }
+[data-aim]:not(:disabled) { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+[data-aim].is-aiming { opacity: .7; cursor: grabbing; }
+.attack-preview {
+  position: fixed;
+  z-index: 20;
+  transform: translate(-50%, calc(-100% - 12px));
+  max-width: 14rem;
+  padding: .35rem .65rem;
+  border: 1px solid var(--forest-deep);
+  border-radius: .4rem;
+  background: var(--lime);
+  color: var(--forest-deep);
+  font-weight: 700;
+  pointer-events: none;
+}
 .card-attack { --card-accent: #a85e42; --card-ink: #713827; }
 .card-support { --card-accent: #548984; --card-ink: #235a55; }
 .card-cost { display: grid; place-items: center; width: 1.55rem; height: 1.55rem; border-radius: 50%; background: var(--card-ink, #2c4930); color: var(--paper); font-weight: 700; }

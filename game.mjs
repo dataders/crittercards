@@ -560,7 +560,7 @@ const trials = [
   {
     name: 'The Floodgate',
     trainer: 'Floodgate Keeper',
-    rule: 'The lightly shielded rival surges after two attacks or at round end. Attack cards and companion strikes each count once. Block first or defeat the surging rival. Its partner braces for a bigger surge in round 2.',
+    rule: 'The lightly shielded rival surges after two attacks or at round end. Attack cards and companion strikes each count once. If any familiar fully blocks their hit, both rivals lose Block and become Vulnerable. The bracing rival skips its guard.',
     reward: 'undertow',
     healthScale: 1.55,
     openingBlock: (openingMove, step) => openingMove === 'guard' ? 32 + 12 * step : 12 + 3 * step,
@@ -1006,9 +1006,22 @@ function enemyAttack(state, enemy, player, amount) {
 }
 
 function openingSurge(state, enemy) {
-  for (const player of state.players) enemyAttack(state, enemy, player, enemy.intent.amount);
+  let fullyBlocked = false;
+  for (const player of state.players) {
+    const { hp, block } = player;
+    enemyAttack(state, enemy, player, enemy.intent.amount);
+    fullyBlocked ||= player.hp === hp && player.block < block;
+  }
   enemy.intent = { type: 'spentSurge' };
   log(state, `${enemy.name} unleashes Opening Surge.`);
+  if (!fullyBlocked) return;
+  for (const rival of state.enemies) {
+    if (rival.hp === 0) continue;
+    rival.block = 0;
+    rival.vulnerable += 1;
+    if (rival.intent?.type === 'guard') rival.intent = { type: 'brokenGuard' };
+  }
+  log(state, 'The blocked surge strips rival Block and leaves the rivals Vulnerable.');
 }
 
 function checkPackDefeat(state) {
@@ -1056,7 +1069,7 @@ function finishTurn(state, playerIndex) {
     }
     enemy.block = 0;
     const { type, amount, target } = enemy.intent;
-    if (type === 'spentSurge') continue;
+    if (type === 'spentSurge' || type === 'brokenGuard') continue;
     if (type === 'guard') {
       const gained = gainBlock(enemy, amount);
       log(state, `${enemy.name} raises ${gained} Block.`);

@@ -10,6 +10,8 @@ const roomLifetime = 6 * 60 * 60 * 1000;
 const publicWaitLifetime = 45 * 1000;
 const roomCapacity = 300;
 const codeAlphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+const hourSoundtrackFile = 'crittercards-faster-soundtrack-one-hour.mp3';
+const hourSoundtrackDownload = `/downloads/${hourSoundtrackFile}`;
 const staticFiles = new Set([
   '/index.html', '/soundtrack.html', '/styles.css', '/app.mjs', '/game.mjs', '/transport.mjs',
   '/assets/crittercards-soundtrack.zip',
@@ -185,7 +187,8 @@ function takeAction(room, seat, action) {
 }
 
 async function serveStatic(request, response, pathname) {
-  const path = pathname === '/' ? '/index.html' : pathname;
+  const download = pathname === hourSoundtrackDownload;
+  const path = download ? `/assets/${hourSoundtrackFile}` : pathname === '/' ? '/index.html' : pathname;
   if (!['GET', 'HEAD'].includes(request.method) || (!staticFiles.has(path) && !assetPath.test(path))) {
     throw new RequestError(404, 'Page not found.');
   }
@@ -204,6 +207,7 @@ async function serveStatic(request, response, pathname) {
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-cache',
   };
+  if (download) headers['Content-Disposition'] = `attachment; filename="${hourSoundtrackFile}"`;
   if (headers['Content-Type'] === 'audio/mpeg') {
     headers['Accept-Ranges'] = 'bytes';
     const range = request.method === 'GET' && /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
