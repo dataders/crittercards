@@ -629,18 +629,36 @@ const trials = [
     name: 'The Briar Infirmary',
     trainer: 'Briar Keeper',
     rule: 'The healer starts with Block and halves attack damage to its partner while it lives. Poison bypasses the ward.',
-    reward: 'thornbreak',
+    rewards: ['thornbreak', 'thorns', 'sharpen', 'starwell'],
     healthScale: 1.45,
     moves: [
       [['attack', 9], ['guard', 10], ['frailAttack', 12]],
       [['mendRivals', 12], ['attack', 8], ['mendRivals', 16]],
     ],
+    variants: {
+      13: {
+        name: 'The Roused Infirmary',
+        rule: 'The healer’s Briar Ward halves attack damage to its partner while the partner builds Strength. Poison bypasses the ward.',
+        moves: [
+          [['rally', 5], ['attack', 16], ['frailAttack', 12]],
+          [['mendRivals', 12], ['guard', 10], ['mendRivals', 16]],
+        ],
+      },
+      17: {
+        name: 'The Splinter Infirmary',
+        rule: 'The warded rival opens with Frail, then makes a heavy attack. The healer keeps up Briar Ward. Poison bypasses the ward.',
+        moves: [
+          [['frailAttack', 13], ['attack', 19], ['guard', 10]],
+          [['mendRivals', 12], ['attack', 8], ['mendRivals', 16]],
+        ],
+      },
+    },
   },
   {
     name: 'The Floodgate',
     trainer: 'Floodgate Keeper',
     rule: `The lightly shielded rival surges after two attacks or at round end. Fully block one hit to strip both rivals’ Block and make them Vulnerable. Aim both attacks at the surging rival. If nobody fully blocks, the recoil deals ${FLOODGATE_RECOIL_PERCENT}% max HP to both rivals through Block.`,
-    reward: 'undertow',
+    rewards: ['undertow'],
     healthScale: 1.55,
     openingBlock: (openingMove, step) => openingMove === 'guard' ? 32 + 12 * step : 12 + 3 * step,
     moves: [
@@ -652,7 +670,7 @@ const trials = [
     name: 'The War Grove',
     trainer: 'Thorn Herald',
     rule: 'Both rivals build permanent Strength. End the fight before their attacks grow.',
-    reward: 'lastWord',
+    rewards: ['lastWord'],
     healthScale: 1.65,
     moves: [
       [['rally', 8], ['attack', 19], ['rally', 7], ['frailAttack', 17]],
@@ -667,16 +685,18 @@ export const TRAIL = [...openingTrail, ...laterActs.flatMap((act, index) => late
     if (![5, 9, 13, 17].includes(level)) return routes;
     const trial = trials[actIndex];
     const { coOpHealth, enemies, goldPerEnemy } = routes[1];
-    const tactics = level % 8 === 1 ? trial.moves : [...trial.moves].reverse();
+    const variant = trial.variants?.[level];
+    const moves = variant?.moves ?? trial.moves;
+    const tactics = level % 8 === 1 ? moves : [...moves].reverse();
     const healer = tactics.findIndex((moves) => moves[0][0] === 'mendRivals');
     const step = Math.floor((level - 5) / 4);
     return [...routes, {
       id: 'trial',
-      name: trial.name,
+      name: variant?.name ?? trial.name,
       trainer: trial.trainer,
-      subtitle: trial.rule,
+      subtitle: variant?.rule ?? trial.rule,
       difficulty: 'Trial',
-      trialReward: trial.reward,
+      trialReward: trial.rewards[step] ?? trial.rewards[0],
       coOpHealth: healer >= 0 ? 1 + 0.27 * step : coOpHealth,
       goldPerEnemy,
       enemies: enemies.map((enemy, slot) => ({

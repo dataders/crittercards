@@ -156,6 +156,7 @@ export function purse(state) {
 export function actionCard(state, seat, cardId, index, enabled, draft = false, selectedCard) {
   const card = CARDS[cardId];
   const active = draft && selectedCard === cardId;
+  const copies = draft ? state.players[seat].deck.filter((id) => id === cardId || id === cardId + '+').length : 0;
   const energyLabel = card.cost === 'X' ? 'X energy, spends all remaining energy' : `${card.cost} energy`;
   const aim = !draft && card.target === 'enemy' ? `data-aim="${escape(card.name)}" aria-pressed="false" aria-describedby="attack-instructions"` : '';
   const blockDrag = !draft && card.target === 'none' && (card.block || card.allyBlock);
@@ -167,6 +168,7 @@ export function actionCard(state, seat, cardId, index, enabled, draft = false, s
     ${draft ? '' : `<span class="card-emblem" aria-hidden="true">${emblem}</span>`}
     <strong class="card-title">${escape(card.name)}</strong>
     <span class="card-effect">${escape(getCardDescription(state, seat, cardId, { compact: !draft }))}</span>
+    ${copies ? `<span class="draft-card-copies">${copies} in deck</span>` : ''}
   </button>`;
 }
 

@@ -510,7 +510,8 @@ function rewardPerkChoices(perks, action, seat, selected, enabled) {
 
 function rewards(state) {
   const { actIndex, bossLevel } = trailPosition(state.encounter);
-  const trialReward = getEncounter(state)?.trialReward;
+  // The last offer is the featured card, including on reward screens saved before a prize rotation.
+  const trialReward = getEncounter(state)?.trialReward ? state.rewardOptions[0].at(-1) : null;
   const solo = state.players.length === 1;
   const unlockCount = ui.recruits.length + ui.newCards.length;
   return `

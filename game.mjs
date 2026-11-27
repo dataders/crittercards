@@ -284,18 +284,37 @@ function finishEncounter(state) {
   const available = TRAIL.slice(0, state.encounter + 1).flatMap((routes, level) =>
     routes.find(({ id }) => id === state.path[level]).enemies.flatMap((enemy) => CARD_UNLOCKS[enemy.animal] ?? []));
   const pool = [...new Set([...available, ...BASIC_CARDS, 'spark', 'ward', 'thorns', 'moonmend', 'avalanche', 'sanctuary'])];
-  state.rewardOptions = state.players.map(() => {
-    const offers = [0, 2, 3].map((cost) => shuffle(state, pool.filter((id) => CARDS[id].cost === cost))[0]);
-    if (encounter.trialReward) offers.push(encounter.trialReward);
-    return offers;
-  });
-  // Add a cheap or variable-cost option without changing the established run's shuffle sequence.
+  const { trialReward } = encounter;
+  const { actIndex, level, bossLevel } = trailPosition(state.encounter);
+  const useFlexibleSlot = actIndex === 0 && level >= 6 && level % 2 === 0 && !bossLevel;
+  state.rewardOptions = state.players.map(() =>
+    [0, 2, 3].map((cost) => shuffle(state, pool.filter((id) => CARDS[id].cost === cost))[0]));
+  // Keep extra draft rolls out of the main draw and shuffle sequence.
   const bonusRandom = { seed: state.seed };
-  const bonusPool = pool.filter((id) => [1, 'X'].includes(CARDS[id].cost) && id !== encounter.trialReward);
-  for (const offers of state.rewardOptions) {
-    offers.splice(3, 0, bonusPool[Math.floor(nextRandom(bonusRandom) * bonusPool.length)]);
-    if ((state.encounter + 1) % 4 === 0) {
+  const flexRandom = { seed: state.seed };
+  const bonusPool = pool.filter((id) => [1, 'X'].includes(CARDS[id].cost) && id !== trialReward);
+  for (const [seat, offers] of state.rewardOptions.entries()) {
+    const bonus = bonusPool[Math.floor(nextRandom(bonusRandom) * bonusPool.length)];
+    if (useFlexibleSlot) {
+      const deck = new Set(state.players[seat].deck.map((id) => id.replace(/\+$/, '')));
+      const middleActPool = level % 4 === 0 ? bonusPool : [...new Set([...bonusPool, ...ENERGY_CARDS])];
+      const options = middleActPool.filter((id) => CARDS[id].cost === (CARDS[bonus].cost === 'X' ? 1 : 'X'));
+      const newOptions = options.filter((id) => !deck.has(id));
+      const flexPool = newOptions.length ? newOptions : options;
+      if (flexPool.length) offers[2] = flexPool[Math.floor(nextRandom(flexRandom) * flexPool.length)];
+    }
+    offers.push(bonus);
+    if (level % 4 === 0) {
       offers.push(ENERGY_CARDS[Math.floor(nextRandom(bonusRandom) * ENERGY_CARDS.length)]);
+    }
+    if (trialReward) {
+      const duplicate = offers.indexOf(trialReward);
+      if (duplicate >= 0) {
+        const replacement = pool.find((id) => !offers.includes(id) && CARDS[id].cost === CARDS[trialReward].cost);
+        if (replacement) offers[duplicate] = replacement;
+        else offers.splice(duplicate, 1);
+      }
+      offers.push(trialReward);
     }
   }
   log(state, 'The pack prevails. Choose a level perk and take or skip a card for each critter.');

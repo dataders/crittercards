@@ -111,3 +111,59 @@ test('reward offers retain each established slot and add draftable one- or X-cos
   }
   assert.deepEqual(new Set([...bonusOffers].map((id) => CARDS[id].cost)), new Set([1, 'X']));
 });
+
+test('middle Act I drafts rotate the heavy slot and prefer a card missing from the deck', () => {
+  const winWithDeck = (level, extraCards = []) => {
+    const run = createRun(['fox'], 40);
+    run.encounter = level - 1;
+    run.path = Array(run.encounter).fill('steady');
+    const battle = route(run);
+    battle.players[0].deck.push(...extraCards);
+    battle.players[0].hand = ['strike', 'strike'];
+    for (const enemy of battle.enemies) {
+      enemy.hp = 1;
+      enemy.block = 0;
+    }
+    return play(play(battle, 0), 0, 1);
+  };
+  for (const level of [6, 8, 10, 12, 14, 16, 18]) {
+    const reward = winWithDeck(level);
+    const [offers] = reward.rewardOptions;
+    assert.equal(offers.length, level % 4 === 0 ? 5 : 4);
+    assert.deepEqual(new Set(offers.slice(2, 4).map((id) => CARDS[id].cost)), new Set([1, 'X']));
+    assert.equal(new Set(offers).size, offers.length);
+    assert.ok(draft(reward, { cardId: offers[2] }).players[0].deck.includes(offers[2]));
+  }
+  const [original] = winWithDeck(6).rewardOptions;
+  const [withUpgrade] = winWithDeck(6, [original[2] + '+']).rewardOptions;
+  assert.notEqual(withUpgrade[2], original[2]);
+  for (const level of [5, 7, 19, 20, 26]) {
+    assert.equal(CARDS[winWithDeck(level).rewardOptions[0][2]].cost, 3);
+  }
+});
+
+test('each Act I trial features one selectable prize matching its route preview', () => {
+  for (const [level, prize, pairedIntent] of [
+    [5, 'thornbreak', 'attack'], [9, 'thorns', 'attack'],
+    [13, 'sharpen', 'rally'], [17, 'starwell', 'frailAttack'],
+  ]) {
+    for (let seed = 0; seed < 16; seed++) {
+      const run = createRun(['fox'], seed);
+      run.encounter = level - 1;
+      run.path = Array(run.encounter).fill('steady');
+      const battle = route(run, 'trial');
+      assert.deepEqual(new Set(battle.enemies.map(({ intent }) => intent.type)), new Set(['mendRivals', pairedIntent]));
+      battle.players[0].hand = ['strike', 'strike'];
+      for (const enemy of battle.enemies) {
+        enemy.hp = 1;
+        enemy.block = 0;
+      }
+      const reward = play(play(battle, 0), 0, 1);
+      const [offers] = reward.rewardOptions;
+      assert.equal(offers.length, 5);
+      assert.equal(offers.at(-1), prize);
+      assert.equal(new Set(offers).size, offers.length);
+      assert.equal(draft(reward, { cardId: prize }).players[0].deck.at(-1), prize);
+    }
+  }
+});
