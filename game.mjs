@@ -544,6 +544,7 @@ for (const [level, routes] of openingTrail.entries()) {
 }
 
 const OPENING_SURGE_ATTACKS = 2;
+export const FLOODGATE_RECOIL_PERCENT = 35;
 
 const trials = [
   {
@@ -560,7 +561,7 @@ const trials = [
   {
     name: 'The Floodgate',
     trainer: 'Floodgate Keeper',
-    rule: 'The lightly shielded rival surges after two attacks or at round end. Attack cards and companion strikes each count once. If any familiar fully blocks their hit, both rivals lose Block and become Vulnerable. The bracing rival skips its guard.',
+    rule: `The lightly shielded rival surges after two attacks or at round end. Fully block one hit to strip both rivals’ Block and make them Vulnerable. Aim both attacks at the surging rival. If nobody fully blocks, the recoil deals ${FLOODGATE_RECOIL_PERCENT}% max HP to both rivals through Block.`,
     reward: 'undertow',
     healthScale: 1.55,
     openingBlock: (openingMove, step) => openingMove === 'guard' ? 32 + 12 * step : 12 + 3 * step,
@@ -937,7 +938,7 @@ function playCard(state, action) {
     }
     resolveCardEffect(state, player, card, target);
   }
-  if (card.damage) finishAttackAction(state, action.player);
+  if (card.damage) finishAttackAction(state, action);
 }
 
 function defeatEnemy(state, enemy) {
@@ -1014,7 +1015,7 @@ function openingSurge(state, enemy) {
   }
   enemy.intent = { type: 'spentSurge' };
   log(state, `${enemy.name} unleashes Opening Surge.`);
-  if (!fullyBlocked) return;
+  if (!fullyBlocked) return false;
   for (const rival of state.enemies) {
     if (rival.hp === 0) continue;
     rival.block = 0;
@@ -1022,6 +1023,7 @@ function openingSurge(state, enemy) {
     if (rival.intent?.type === 'guard') rival.intent = { type: 'brokenGuard' };
   }
   log(state, 'The blocked surge strips rival Block and leaves the rivals Vulnerable.');
+  return true;
 }
 
 function checkPackDefeat(state) {
@@ -1031,17 +1033,34 @@ function checkPackDefeat(state) {
   return true;
 }
 
-function finishAttackAction(state, playerIndex) {
+function resolveSurgeRecoil(state) {
+  for (const rival of state.enemies) {
+    if (rival.hp === 0) continue;
+    const damage = Math.min(rival.hp, Math.ceil(rival.maxHp * FLOODGATE_RECOIL_PERCENT / 100));
+    rival.hp -= damage;
+    log(state, `Surge recoil costs ${rival.name} ${damage} HP.`);
+    if (rival.hp === 0) defeatEnemy(state, rival);
+  }
+}
+
+function finishAttackAction(state, { player: playerIndex, target }) {
   if (state.enemies.every(({ hp }) => hp === 0)) {
     finishEncounter(state);
     return;
   }
   const surger = state.enemies.find(({ intent }) => intent?.type === 'openingSurge');
   if (!surger) return;
+  if (state.enemies[target] === surger) {
+    surger.intent.focusedAttacks = (surger.intent.focusedAttacks ?? 0) + 1;
+  }
   surger.intent.attacksRemaining -= 1;
   if (surger.intent.attacksRemaining > 0) return;
-  openingSurge(state, surger);
-  if (!checkPackDefeat(state) && state.players[playerIndex].hp === 0) finishTurn(state, playerIndex);
+  const pressedSurger = surger.intent.focusedAttacks === OPENING_SURGE_ATTACKS;
+  const blocked = openingSurge(state, surger);
+  if (checkPackDefeat(state)) return;
+  if (!blocked && pressedSurger) resolveSurgeRecoil(state);
+  if (state.enemies.every(({ hp }) => hp === 0)) finishEncounter(state);
+  else if (state.players[playerIndex].hp === 0) finishTurn(state, playerIndex);
 }
 
 function finishTurn(state, playerIndex) {
@@ -1257,7 +1276,7 @@ export function applyAction(state, action) {
     const ability = COMPANION_ABILITIES[player.companionId];
     log(next, `${CRITTERS[player.companionId].name} uses ${ability.name} alongside ${critterName(player)}.`);
     resolveCardEffect(next, player, ability, action.target, player.companionId);
-    finishAttackAction(next, action.player);
+    finishAttackAction(next, action);
   } else finishTurn(next, action.player);
   return next;
 }

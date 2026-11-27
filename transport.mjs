@@ -120,7 +120,3 @@ export async function joinRoom(code, critterId) {
 export async function resumeRoom(code, token) {
   return connect({ ...await request(roomPath(code), { token }), token });
 }
-
-export async function recoverRoom(recoveryCode) {
-  return connect(await request('/api/rooms/recover', { method: 'POST', data: { recoveryCode: recoveryCode.trim() } }));
-}

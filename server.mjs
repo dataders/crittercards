@@ -3,7 +3,6 @@ import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gzipSync, gunzipSync } from 'node:zlib';
 
 import { applyAction, createRun, COUSINS, CRITTERS, STARTER_DECK, validateStartingDeck } from './game.mjs';
 
@@ -50,9 +49,9 @@ async function readJson(request) {
   let bytes = 0;
   for await (const chunk of request) {
     bytes += chunk.length;
-    if (bytes <= 65536) chunks.push(chunk);
+    if (bytes <= 4096) chunks.push(chunk);
   }
-  if (bytes > 65536) throw new RequestError(413, 'Request is too large.');
+  if (bytes > 4096) throw new RequestError(413, 'Request is too large.');
 
   let data;
   try {
@@ -119,26 +118,7 @@ function snapshot(room, seat) {
     companions: room.companions,
     deck: room.decks[seat],
     ready: room.decks.map(Boolean),
-    ...(seat === 0 ? { recoveryCode: `CR1-${gzipSync(JSON.stringify(room)).toString('base64url')}` } : {}),
   };
-}
-
-function recoverRoom(rooms, recoveryCode) {
-  if (typeof recoveryCode !== 'string' || !/^CR1-[\w-]+$/.test(recoveryCode)) throw new RequestError(400, 'Invalid recovery code.');
-  let room;
-  try { room = JSON.parse(gunzipSync(Buffer.from(recoveryCode.slice(4), 'base64url'), { maxOutputLength: 262144 }).toString('utf8')); }
-  catch { throw new RequestError(400, 'Invalid recovery code.'); }
-  if (!room || !/^[A-Z2-9]{6}$/.test(room.code) || !Array.isArray(room.tokens) || room.tokens.length !== 2 ||
-      typeof room.tokens[0] !== 'string' || !room.tokens.every((token) => token === null || /^[\w-]{43}$/.test(token)) ||
-      !Array.isArray(room.picks) || !Array.isArray(room.decks) || !Array.isArray(room.companions) ||
-      !Number.isSafeInteger(room.revision) || room.revision < 0 || (room.state !== null && typeof room.state !== 'object')) {
-    throw new RequestError(400, 'Invalid recovery code.');
-  }
-  if (rooms.has(room.code)) throw new RequestError(409, 'This room is already active.');
-  if (rooms.size >= roomCapacity) throw new RequestError(503, 'All rooms are currently in use.');
-  room.updatedAt = Date.now();
-  rooms.set(room.code, room);
-  return { ...snapshot(room, 0), token: room.tokens[0] };
 }
 
 function authenticate(room, request) {
@@ -264,11 +244,6 @@ export function createGameServer() {
       }
 
       const publicMatch = pathname === '/api/matchmaking';
-      if (request.method === 'POST' && pathname === '/api/rooms/recover') {
-        const { recoveryCode } = await readJson(request);
-        sendJson(response, 200, recoverRoom(rooms, recoveryCode));
-        return;
-      }
       if (request.method === 'POST' && (pathname === '/api/rooms' || publicMatch)) {
         const { critterId = null } = await readJson(request);
         if (critterId !== null) validateCritter(critterId);

@@ -412,6 +412,38 @@ test('the second attack can cancel Opening Surge, or the surge can force an earl
   assert.equal(play(warned, 1 - surger).phase, 'defeat');
 });
 
+test('rushing the surger turns an unblocked surge into recoil that bypasses rival Block', () => {
+  const run = createRun(['fox'], 23);
+  run.encounter = 24;
+  run.path = Array(run.encounter).fill('steady');
+  const battle = applyAction(run, { type: 'route', player: 0, routeId: 'trial' });
+  const surger = battle.enemies.findIndex(({ intent }) => intent.type === 'openingSurge');
+  const bracing = 1 - surger;
+  battle.players[0].hand = ['jab', 'jab', 'barricade'];
+  const attack = (state, target) => applyAction(state, { type: 'play', player: 0, cardIndex: 0, target });
+  const first = attack(battle, surger);
+  const resumed = JSON.parse(JSON.stringify(first));
+  const rushed = attack(resumed, surger);
+  assert.ok(rushed.players[0].hp < battle.players[0].hp);
+  assert.equal(rushed.enemies[bracing].hp, battle.enemies[bracing].hp - Math.ceil(battle.enemies[bracing].maxHp * 0.35));
+  assert.equal(rushed.enemies[bracing].block, battle.enemies[bracing].block);
+  assert.equal(rushed.enemies[bracing].intent.type, 'guard');
+  assert.equal(attack(first, bracing).enemies[bracing].hp, battle.enemies[bracing].hp);
+
+  const defended = applyAction(first, { type: 'play', player: 0, cardIndex: 1 });
+  const countered = attack(defended, surger);
+  assert.equal(countered.players[0].hp, battle.players[0].hp);
+  assert.equal(countered.enemies[bracing].hp, battle.enemies[bracing].hp);
+  assert.equal(countered.enemies[bracing].intent.type, 'brokenGuard');
+
+  const finisher = structuredClone(first);
+  finisher.enemies[surger].hp = 10;
+  finisher.enemies[bracing].hp = 1;
+  const cleared = attack(finisher, surger);
+  assert.equal(cleared.phase, 'reward');
+  assert.equal(cleared.gold, battle.gold + battle.enemies.reduce((gold, rival) => gold + rival.gold, 0));
+});
+
 test('Briar Ward halves piercing attacks, drops with the healer, and lets Poison through', () => {
   const run = createRun(['fox'], 12);
   run.encounter = 8;
