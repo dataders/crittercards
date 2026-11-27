@@ -226,7 +226,19 @@ test('all three acts have 20 levels and only the last boss ends the campaign', (
     assert.equal(run.players[0].deck[0], 'strike+');
     assert.equal(run.players[0].hardPerk, 'bondWard');
     assert.equal(run.players[0].attackBonus, 1);
-    assert.equal(run.gold, 16);
+    assert.equal(run.gold, 8);
+  }
+});
+
+test('later shops cost more and hard fights keep their triple gold reward', () => {
+  assert.equal(MERCHANTS[3].stock[0].price, 15);
+  assert.ok(MERCHANTS[18].stock[0].price > MERCHANTS[7].stock[0].price);
+  assert.ok(MERCHANTS[43].stock[0].price > MERCHANTS[23].stock[0].price);
+  assert.equal(TRAIL[6][0].goldPerEnemy, 8);
+  assert.equal(TRAIL[7][0].goldPerEnemy, 4);
+  for (const routes of TRAIL) {
+    const hard = routes.find((route) => route.difficulty === 'Hard' || route.difficulty === 'Hard boss');
+    if (hard) assert.equal(hard.goldPerEnemy, routes[0].goldPerEnemy * 3);
   }
 });
 
@@ -256,7 +268,7 @@ test('act trials change enemy tactics and offer their featured card to both play
       trial = finishRound(trial);
       assert.equal(trial.enemies[patient].hp, wardedHp + 12);
     } else if (act === 1) {
-      assert.deepEqual(trial.enemies.map(({ intent }) => intent.type).sort(), ['guard', 'teamAttack']);
+      assert.deepEqual(trial.enemies.map(({ intent }) => intent.type).sort(), ['guard', 'openingSurge']);
       const bracing = trial.enemies.findIndex(({ intent }) => intent.type === 'guard');
       const surging = 1 - bracing;
       const { block: openingBlock, intent: guard } = trial.enemies[bracing];
@@ -268,6 +280,7 @@ test('act trials change enemy tactics and offer their featured card to both play
       assert.equal(trial.enemies[bracing].block, guard.amount);
       assert.equal(trial.enemies[surging].intent.type, 'guard');
       assert.equal(trial.enemies[surging].block, 0);
+      assert.ok(trial.log.some((entry) => entry.includes('unleashes Opening Surge')));
     } else {
       const rallying = trial.enemies.findIndex(({ intent }) => intent.type === 'rally');
       trial = finishRound(trial);
@@ -289,6 +302,57 @@ test('act trials change enemy tactics and offer their featured card to both play
     assert.ok(skipped.players[0].deck.includes(cardId));
     assert.ok(!skipped.players[1].deck.includes(cardId));
   }
+});
+
+test('Floodgate counts attacks across seats, lets Block resolve first, and surges only once', () => {
+  const run = createRun(['hudson', 'alba'], 23, undefined, ['hare', 'fox']);
+  run.encounter = 24;
+  const battle = applyAction(run, { type: 'route', player: 0, routeId: 'trial' });
+  const surger = battle.enemies.findIndex(({ intent }) => intent.type === 'openingSurge');
+  const target = 1 - surger;
+  battle.players[0].hand = ['flurry'];
+  battle.players[1].hand = ['barricade'];
+  const attack = applyAction(battle, { type: 'play', player: 0, cardIndex: 0, target });
+  assert.equal(attack.enemies[surger].intent.attacksRemaining, 1);
+  const handoff = applyAction(attack, { type: 'endTurn', player: 0 });
+  const resumed = JSON.parse(JSON.stringify(handoff));
+  const braced = applyAction(resumed, { type: 'play', player: 1, cardIndex: 0 });
+  assert.equal(braced.enemies[surger].intent.attacksRemaining, 1);
+  const strike = { type: 'companionStrike', player: 1, target };
+  const hp = battle.players.map(({ hp }) => hp);
+  const unblocked = applyAction(resumed, strike);
+  assert.ok(unblocked.players.every((p, i) => p.hp < hp[i]));
+  const blocked = applyAction(braced, strike);
+  assert.ok(blocked.players.every((p, i) => p.hp > unblocked.players[i].hp));
+  assert.equal(blocked.enemies[surger].intent.type, 'spentSurge');
+  const nextRound = applyAction(blocked, { type: 'endTurn', player: 1 });
+  assert.equal(nextRound.round, 2);
+  assert.deepEqual(nextRound.players.map(({ hp }) => hp), blocked.players.map(({ hp }) => hp));
+});
+
+test('the second attack can cancel Opening Surge, or the surge can force an early handoff', () => {
+  const run = createRun(['fox', 'hare'], 23);
+  run.encounter = 24;
+  const battle = applyAction(run, { type: 'route', player: 0, routeId: 'trial' });
+  const surger = battle.enemies.findIndex(({ intent }) => intent.type === 'openingSurge');
+  battle.players[0].hand = ['jab', 'jab'];
+  const play = (state, target) => applyAction(state, { type: 'play', player: 0, cardIndex: 0, target });
+  const warned = play(battle, 1 - surger);
+
+  const vulnerable = structuredClone(warned);
+  Object.assign(vulnerable.enemies[surger], { hp: 1, block: 0 });
+  const killed = play(vulnerable, surger);
+  assert.equal(killed.enemies[surger].hp, 0);
+  assert.deepEqual(killed.players.map(({ hp }) => hp), battle.players.map(({ hp }) => hp));
+
+  warned.players[0].hp = 1;
+  const handoff = play(warned, 1 - surger);
+  assert.equal(handoff.players[0].hp, 0);
+  assert.equal(handoff.activePlayer, 1);
+  assert.equal(handoff.round, 1);
+
+  warned.players[1].hp = 1;
+  assert.equal(play(warned, 1 - surger).phase, 'defeat');
 });
 
 test('Briar Ward halves piercing attacks, drops with the healer, and lets Poison through', () => {

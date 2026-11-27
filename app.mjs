@@ -402,9 +402,15 @@ function intentLabel(intent, enemy, state) {
     return ally ? `Mends ${ally.name} for up to ${intent.amount} HP` : 'No other rival to mend';
   }
   if (intent.type === 'rally') return `Rallies · gains ${intent.amount} Strength for this fight`;
+  if (intent.type === 'spentSurge') return 'Opening Surge spent';
   const damage = (seat) => Math.floor(intent.amount * matchup(CRITTERS[enemy.animal].type, CRITTERS[state.players[seat].critterId].type));
-  if (intent.type === 'eclipse' || intent.type === 'teamAttack') {
+  if (['eclipse', 'teamAttack', 'openingSurge'].includes(intent.type)) {
     const hits = state.players.filter((player) => player.hp > 0).map((player) => `P${player.id + 1} for ${damage(player.id)}`).join(', ');
+    if (intent.type === 'openingSurge') {
+      const count = intent.attacksRemaining;
+      const timing = count === 1 ? 'the next attack' : `the next ${count} attacks`;
+      return `Opening Surge · hits ${hits} after ${timing} or at round end`;
+    }
     return `${intent.type === 'eclipse' ? 'Eclipse · ' : ''}Hits ${hits}${intent.type === 'eclipse' ? ' and applies Vulnerable' : ''}`;
   }
   const victim = state.players[intent.target]?.hp > 0 ? intent.target : state.players.findIndex((player) => player.hp > 0);

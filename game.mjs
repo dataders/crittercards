@@ -543,6 +543,8 @@ for (const [level, routes] of openingTrail.entries()) {
   }));
 }
 
+const OPENING_SURGE_ATTACKS = 2;
+
 const trials = [
   {
     name: 'The Briar Infirmary',
@@ -558,13 +560,13 @@ const trials = [
   {
     name: 'The Floodgate',
     trainer: 'Floodgate Keeper',
-    rule: 'The less protected rival surges first. The one with more Block braces for a stronger surge next round.',
+    rule: 'The lightly shielded rival surges after two attacks or at round end. Attack cards and companion strikes each count once. Block first or defeat the surging rival. Its partner braces for a bigger surge in round 2.',
     reward: 'undertow',
     healthScale: 1.55,
     openingBlock: (openingMove, step) => openingMove === 'guard' ? 32 + 12 * step : 12 + 3 * step,
     moves: [
       [['guard', 17], ['teamAttack', 20], ['attack', 13]],
-      [['teamAttack', 9], ['guard', 13], ['frailAttack', 12]],
+      [['openingSurge', 9], ['guard', 13], ['frailAttack', 12]],
     ],
   },
   {
@@ -606,7 +608,10 @@ export const TRAIL = [...openingTrail, ...laterActs.flatMap((act, index) => late
         moves: tactics[slot].map(([type, amount]) => [type, amount + step]),
       })),
     }];
-  });
+  }).map((routes, encounter) => routes.map((route) => ({
+    ...route,
+    goldPerEnemy: encounter >= 7 ? route.goldPerEnemy / 2 : route.goldPerEnemy,
+  })));
 
 const openingMerchants = {
   3: { name: 'The Lantern Peddler', stock: [{ id: 'lunge', price: 6 }, { id: 'armor', price: 9 }, { id: 'circle', price: 13 }] },
@@ -621,7 +626,7 @@ export const MERCHANTS = Object.fromEntries(ACTS.flatMap((_, actIndex) =>
     actIndex * LEVELS_PER_ACT + Number(level),
     {
       name: actIndex === 0 ? merchant.name : actIndex === 1 ? 'The Reed Market' : 'The Briar Peddler',
-      stock: merchant.stock.map((item) => ({ ...item, price: Math.max(15, item.price + 2 + 8 * actIndex) })),
+      stock: merchant.stock.map((item) => ({ ...item, price: Math.max(15, item.price + 2 + 16 * actIndex + 4 * Math.floor(Number(level) / 4)) })),
     },
   ]),
 ));
@@ -732,9 +737,11 @@ const defensiveIntents = new Set(['guard', 'shadowWard', 'mendRivals', 'rally'])
 
 export function getEnemyIntent(state, encounter, enemyIndex, round) {
   const moves = encounter.enemies[enemyIndex].moves;
-  const [type, amount] = moves[(round - 1) % moves.length];
+  const [move, amount] = moves[(round - 1) % moves.length];
+  const type = move === 'openingSurge' && round > 1 ? 'teamAttack' : move;
   const base = defensiveIntents.has(type) ? amount : amount + (state.enemies?.[enemyIndex]?.strength ?? 0);
   const intent = { type, amount: state.players.length === 1 && !defensiveIntents.has(type) ? Math.ceil(base * 0.7) : base };
+  if (type === 'openingSurge') intent.attacksRemaining = OPENING_SURGE_ATTACKS;
   if (type === 'attack' || type === 'frailAttack' || type === 'crownCurse') {
     const preferred = (round - 1 + enemyIndex) % state.players.length;
     intent.target = state.players[preferred].hp > 0 ? preferred : 1 - preferred;
@@ -930,7 +937,7 @@ function playCard(state, action) {
     }
     resolveCardEffect(state, player, card, target);
   }
-  if (state.enemies.every((rival) => rival.hp === 0)) finishEncounter(state);
+  if (card.damage) finishAttackAction(state, action.player);
 }
 
 function defeatEnemy(state, enemy) {
@@ -998,6 +1005,32 @@ function enemyAttack(state, enemy, player, amount) {
   if (player.hp === 0) log(state, `${critterName(player)} is down.`);
 }
 
+function openingSurge(state, enemy) {
+  for (const player of state.players) enemyAttack(state, enemy, player, enemy.intent.amount);
+  enemy.intent = { type: 'spentSurge' };
+  log(state, `${enemy.name} unleashes Opening Surge.`);
+}
+
+function checkPackDefeat(state) {
+  if (state.players.some(({ hp }) => hp > 0)) return false;
+  state.phase = 'defeat';
+  log(state, 'The woods claim the pack.');
+  return true;
+}
+
+function finishAttackAction(state, playerIndex) {
+  if (state.enemies.every(({ hp }) => hp === 0)) {
+    finishEncounter(state);
+    return;
+  }
+  const surger = state.enemies.find(({ intent }) => intent?.type === 'openingSurge');
+  if (!surger) return;
+  surger.intent.attacksRemaining -= 1;
+  if (surger.intent.attacksRemaining > 0) return;
+  openingSurge(state, surger);
+  if (!checkPackDefeat(state) && state.players[playerIndex].hp === 0) finishTurn(state, playerIndex);
+}
+
 function finishTurn(state, playerIndex) {
   const player = state.players[playerIndex];
   player.discardPile.push(...player.hand);
@@ -1023,6 +1056,7 @@ function finishTurn(state, playerIndex) {
     }
     enemy.block = 0;
     const { type, amount, target } = enemy.intent;
+    if (type === 'spentSurge') continue;
     if (type === 'guard') {
       const gained = gainBlock(enemy, amount);
       log(state, `${enemy.name} raises ${gained} Block.`);
@@ -1048,6 +1082,8 @@ function finishTurn(state, playerIndex) {
       log(state, `${enemy.name} casts Eclipse, making surviving familiars Vulnerable.`);
     } else if (type === 'teamAttack') {
       state.players.forEach((teammate) => enemyAttack(state, enemy, teammate, amount));
+    } else if (type === 'openingSurge') {
+      openingSurge(state, enemy);
     } else {
       const victim = state.players[target]?.hp > 0 ? target : state.players.findIndex((unit) => unit.hp > 0);
       const defender = state.players[victim];
@@ -1059,11 +1095,7 @@ function finishTurn(state, playerIndex) {
       }
     }
 
-    if (state.players.every((teammate) => teammate.hp === 0)) {
-      state.phase = 'defeat';
-      log(state, 'The woods claim the pack.');
-      return;
-    }
+    if (checkPackDefeat(state)) return;
   }
   if (state.enemies.every((enemy) => enemy.hp === 0)) {
     finishEncounter(state);
@@ -1212,7 +1244,7 @@ export function applyAction(state, action) {
     const ability = COMPANION_ABILITIES[player.companionId];
     log(next, `${CRITTERS[player.companionId].name} uses ${ability.name} alongside ${critterName(player)}.`);
     resolveCardEffect(next, player, ability, action.target, player.companionId);
-    if (next.enemies.every((enemy) => enemy.hp === 0)) finishEncounter(next);
+    finishAttackAction(next, action.player);
   } else finishTurn(next, action.player);
   return next;
 }
