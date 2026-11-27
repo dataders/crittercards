@@ -5,7 +5,6 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { applyAction, createRun, COUSINS, CRITTERS, STARTER_DECK, validateStartingDeck } from './game.mjs';
-import { memoryRoomStore, postgresRoomStore } from './room-store.mjs';
 
 const roomLifetime = 6 * 60 * 60 * 1000;
 const publicWaitLifetime = 45 * 1000;
@@ -233,7 +232,8 @@ async function serveStatic(request, response, pathname) {
   response.end(request.method === 'HEAD' ? undefined : data);
 }
 
-export function createGameServer({ roomStore = process.env.DATABASE_URL ? postgresRoomStore(process.env.DATABASE_URL) : memoryRoomStore() } = {}) {
+export function createGameServer() {
+  const rooms = new Map();
 
   return createServer({ requestTimeout: 10000 }, async (request, response) => {
     try {
@@ -244,16 +244,8 @@ export function createGameServer({ roomStore = process.env.DATABASE_URL ? postgr
       }
 
       const publicMatch = pathname === '/api/matchmaking';
-      const isCreate = request.method === 'POST' && (pathname === '/api/rooms' || publicMatch);
-      const route = /^\/api\/rooms\/([A-Z2-9]{6})(?:\/(join|actions))?$/.exec(pathname);
-      if (!isCreate && !route) throw new RequestError(404, 'Room not found.');
-      const operation = route?.[2];
-      const isPost = request.method === 'POST' && Boolean(operation);
-      if (!isCreate && !isPost && !(request.method === 'GET' && !operation)) throw new RequestError(405, 'Method not allowed.');
-      const body = isCreate || isPost ? await readJson(request) : null;
-      const result = await roomStore.withRooms((rooms) => {
       if (request.method === 'POST' && (pathname === '/api/rooms' || publicMatch)) {
-        const { critterId = null } = body;
+        const { critterId = null } = await readJson(request);
         if (critterId !== null) validateCritter(critterId);
 
         const now = Date.now();
@@ -263,15 +255,25 @@ export function createGameServer({ roomStore = process.env.DATABASE_URL ? postgr
         if (publicMatch) {
           const waitingRoom = [...rooms.values()].find(isWaitingForPublicMatch);
           if (waitingRoom) {
-            return { status: 200, data: joinRoom(waitingRoom, critterId, now) };
+            sendJson(response, 200, joinRoom(waitingRoom, critterId, now));
+            return;
           }
         }
         if (rooms.size >= roomCapacity) throw new RequestError(503, 'All rooms are currently in use.');
 
-        return { status: 201, data: createRoom(rooms, { critterId, publicMatch, now }) };
+        sendJson(response, 201, createRoom(rooms, { critterId, publicMatch, now }));
+        return;
       }
 
-      const [, code] = route;
+      const route = /^\/api\/rooms\/([A-Z2-9]{6})(?:\/(join|actions))?$/.exec(pathname);
+      if (!route) throw new RequestError(404, 'Room not found.');
+
+      const [, code, operation] = route;
+      const isPost = request.method === 'POST' && Boolean(operation);
+      if (!isPost && !(request.method === 'GET' && !operation)) {
+        throw new RequestError(405, 'Method not allowed.');
+      }
+      const body = isPost ? await readJson(request) : null;
       const room = rooms.get(code);
       if (!room) throw new RequestError(404, 'Room not found.');
       const now = Date.now();
@@ -281,20 +283,23 @@ export function createGameServer({ roomStore = process.env.DATABASE_URL ? postgr
       }
 
       if (operation === 'join') {
-        return { status: 200, data: joinRoom(room, body.critterId ?? null, now) };
+        sendJson(response, 200, joinRoom(room, body.critterId ?? null, now));
+        return;
       }
 
       const seat = authenticate(room, request);
       if (operation === 'actions') {
         if (body.revision !== room.revision) {
-          return { status: 409, data: { message: 'The room changed. Review the update and try again.', snapshot: snapshot(room, seat) } };
+          sendJson(response, 409, { message: 'The room changed. Review the update and try again.', snapshot: snapshot(room, seat) });
+          return;
         }
         if (body.action?.type === 'cancelMatch') {
           if (seat !== 0 || !isWaitingForPublicMatch(room)) {
             throw new RequestError(409, 'This room is no longer waiting for a public match.');
           }
           rooms.delete(code);
-          return { status: 200, data: snapshot(room, seat) };
+          sendJson(response, 200, snapshot(room, seat));
+          return;
         }
         takeAction(room, seat, body.action);
         room.updatedAt = now;
@@ -302,9 +307,7 @@ export function createGameServer({ roomStore = process.env.DATABASE_URL ? postgr
       } else if (seat === 0 && isWaitingForPublicMatch(room)) {
         room.updatedAt = now;
       }
-      return { status: 200, data: snapshot(room, seat) };
-      });
-      sendJson(response, result.status, result.data);
+      sendJson(response, 200, snapshot(room, seat));
     } catch (error) {
       if (response.destroyed) return;
       if (error instanceof RequestError) {
