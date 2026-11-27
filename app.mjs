@@ -609,9 +609,11 @@ function actionCard(state, seat, cardId, index, enabled, draft = false) {
   const active = draft && ui.drafts[seat] === cardId;
   const energyLabel = card.cost === 'X' ? 'X energy, spends all remaining energy' : `${card.cost} energy`;
   const aim = !draft && card.target === 'enemy' ? `data-aim="${escape(card.name)}" aria-pressed="false" aria-describedby="attack-instructions"` : '';
-  return `<button type="button" class="play-card card-${escape(card.type)}" data-do="${draft ? 'draft-pick' : 'play'}" data-seat="${seat}" data-id="${escape(cardId)}" data-index="${index}" ${aim} ${draft ? `aria-pressed="${active}"` : ''} ${enabled ? '' : 'disabled'}>
+  const blockDrag = !draft && card.target === 'none' && (card.block || card.allyBlock);
+  const block = blockDrag ? `data-block-drag="${escape(card.name)}" aria-describedby="attack-instructions"` : '';
+  return `<button type="button" class="play-card card-${escape(card.type)}" data-do="${draft ? 'draft-pick' : 'play'}" data-seat="${seat}" data-id="${escape(cardId)}" data-index="${index}" ${aim} ${block} ${draft ? `aria-pressed="${active}"` : ''} ${enabled ? '' : 'disabled'}>
     <span class="card-cost" aria-label="${energyLabel}">${card.cost}</span>
-    <span class="card-type">${active ? '✓ Selected · ' : ''}${escape(card.type)}</span>
+    <span class="card-type">${active ? '✓ Selected · ' : ''}${blockDrag ? 'Block · Tap to play' : escape(card.type)}</span>
     <strong class="card-title">${escape(card.name)}</strong>
     <span class="card-effect">${escape(getCardDescription(state, seat, cardId))}</span>
   </button>`;
@@ -654,7 +656,7 @@ function combat(state) {
       </section>
     </div>
     <section class="hand-panel" aria-labelledby="turn-heading">
-        <div class="hand-heading">
+        <div class="hand-heading" data-block-drop>
           ${art(player.critterId, 'hud-portrait', name)}
           <div class="hud-familiar"><h2 id="turn-heading">${escape(turnTitle)}</h2><span class="turn-details">${player.hp}/${player.maxHp} HP${player.block ? ` · ${player.block} Block` : ''}</span></div>
           <span class="turn-energy" aria-label="Energy available">${player.energy} energy</span>
@@ -663,7 +665,7 @@ function combat(state) {
           </div>
           ${button('End turn', 'end', { style: 'primary', disabled: !enabled, data: `data-seat="${seat}" title="${escape(next)}"` })}
         </div>
-        <div class="hud-instructions"><p class="turn-instructions" id="attack-instructions">${!canAct ? 'You can look at the rivals while you wait.' : [canAim && 'Drag a move onto a rival, or tap it to aim.', canTap && 'Tap untargeted moves to play them.'].filter(Boolean).join(' ') || 'End your turn when you’re ready.'}</p>${button('Cancel aim', 'cancel-aim', { data: 'hidden' })}</div>
+        <div class="hud-instructions"><p class="turn-instructions" id="attack-instructions">${!canAct ? 'You can look at the rivals while you wait.' : [canAim && 'Drag a targeted move onto a rival, or tap it to aim.', canTap && 'Tap untargeted moves. You can also drag Block cards onto your familiar.'].filter(Boolean).join(' ') || 'End your turn when you’re ready.'}</p>${button('Cancel aim', 'cancel-aim', { data: 'hidden' })}</div>
         <div class="hand-grid combat-hand" aria-label="Hand">${player.hand.map((id, index) => actionCard(state, seat, id, index, enabled && canAffordCard(CARDS[id], player.energy))).join('') || '<p class="muted">No cards left in hand.</p>'}</div>
         <div class="turn-actions combat-actions">
           ${companion ? button(`${escape(companion.name)} · ${player.companionUsed ? 'Used' : 'Free companion move'}`, 'companion-strike', { disabled: !enabled || !companionReady, data: `data-seat="${seat}" data-aim="${escape(companion.name)}" aria-pressed="false" aria-describedby="attack-instructions"` }) : ''}
@@ -919,19 +921,19 @@ function cancelAim() {
   source?.focus();
 }
 
-function rivalAt(x, y) {
-  return document.elementFromPoint(x, y)?.closest(livingRival);
+function combatDropTarget(drag, x, y) {
+  return document.elementFromPoint(x, y)?.closest(drag.targeted ? livingRival : '[data-block-drop]');
 }
 
 function clearAttackDrag() {
   if (!attackDrag) return;
-  const { source, pointerId, preview, rival, frame } = attackDrag;
+  const { source, pointerId, preview, dropTarget, frame } = attackDrag;
   attackDrag = undefined;
   cancelAnimationFrame(frame);
   preview?.remove();
-  rival?.classList.remove('is-drop-target');
+  dropTarget?.classList.remove('is-drop-target');
   source.classList.remove('is-aiming');
-  game.classList.remove('is-drag-aiming');
+  game.classList.remove('is-drag-aiming', 'is-drag-blocking');
   if (source.hasPointerCapture(pointerId)) source.releasePointerCapture(pointerId);
 }
 
@@ -939,16 +941,16 @@ function drawAttackDrag() {
   const drag = attackDrag;
   const arena = game.querySelector('.arena-scroll');
   const { top, bottom, height } = arena.getBoundingClientRect();
-  if (drag.y >= top && drag.y <= bottom) {
+  if (drag.targeted && drag.y >= top && drag.y <= bottom) {
     const edge = Math.min(48, height / 4);
     const scrollDistance = Math.min(0, drag.y - top - edge) + Math.max(0, drag.y - bottom + edge);
     if (scrollDistance) arena.scrollTop += Math.sign(scrollDistance) * Math.min(14, Math.abs(scrollDistance) / 3);
   }
-  const rival = rivalAt(drag.x, drag.y);
-  if (rival !== drag.rival) {
-    drag.rival?.classList.remove('is-drop-target');
-    rival?.classList.add('is-drop-target');
-    drag.rival = rival;
+  const dropTarget = combatDropTarget(drag, drag.x, drag.y);
+  if (dropTarget !== drag.dropTarget) {
+    drag.dropTarget?.classList.remove('is-drop-target');
+    dropTarget?.classList.add('is-drop-target');
+    drag.dropTarget = dropTarget;
   }
   const halfWidth = drag.preview.offsetWidth / 2;
   drag.preview.style.left = `${Math.max(halfWidth, Math.min(drag.x, window.innerWidth - halfWidth))}px`;
@@ -969,10 +971,10 @@ window.addEventListener('click', (event) => {
 }, true);
 
 game.addEventListener('pointerdown', (event) => {
-  const source = event.target.closest('[data-aim]:not(:disabled)');
+  const source = event.target.closest(':is([data-aim], [data-block-drag]):not(:disabled)');
   if (!source || !event.isPrimary || event.button !== 0 || attackDrag) return;
   const { pointerId, clientX: x, clientY: y } = event;
-  attackDrag = { source, pointerId, startX: x, startY: y, x, y };
+  attackDrag = { source, targeted: source.hasAttribute('data-aim'), pointerId, startX: x, startY: y, x, y };
   source.setPointerCapture(pointerId);
 });
 
@@ -987,19 +989,19 @@ window.addEventListener('pointermove', (event) => {
   drag.preview = document.createElement('div');
   drag.preview.className = 'attack-preview';
   drag.preview.setAttribute('aria-hidden', 'true');
-  drag.preview.textContent = drag.source.dataset.aim;
+  drag.preview.textContent = drag.source.dataset.aim ?? drag.source.dataset.blockDrag;
   document.body.append(drag.preview);
   drag.source.classList.add('is-aiming');
-  game.classList.add('is-drag-aiming');
+  game.classList.add(drag.targeted ? 'is-drag-aiming' : 'is-drag-blocking');
   drawAttackDrag();
 });
 
 window.addEventListener('pointerup', (event) => {
   const drag = attackDrag;
   if (drag?.pointerId !== event.pointerId) return;
-  const rival = drag.preview && rivalAt(event.clientX, event.clientY);
+  const target = drag.preview && combatDropTarget(drag, event.clientX, event.clientY);
   clearAttackDrag();
-  if (rival) playCombatMove(drag.source, Number(rival.dataset.index));
+  if (target) playCombatMove(drag.source, drag.targeted ? Number(target.dataset.index) : undefined);
 });
 
 window.addEventListener('pointercancel', (event) => {

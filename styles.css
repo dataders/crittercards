@@ -317,7 +317,10 @@ img.unit-art { width: 34%; }
 .play-card:hover:not(:disabled), .play-card[aria-pressed='true'] { transform: translateY(-3px); box-shadow: 0 0 0 2px var(--lime), 0 .6rem 1rem #070f0b9c; }
 .play-card:disabled { opacity: .55; }
 [data-aim]:not(:disabled) { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
-[data-aim].is-aiming { opacity: .7; cursor: grabbing; }
+[data-block-drag]:not(:disabled) { touch-action: pan-x; user-select: none; -webkit-user-select: none; }
+:is([data-aim], [data-block-drag]).is-aiming { opacity: .7; cursor: grabbing; }
+.is-drag-blocking [data-block-drop] { outline: 2px dashed var(--lime); border-radius: .4rem; }
+[data-block-drop].is-drop-target { outline: 3px solid var(--lime); }
 .attack-preview {
   position: fixed;
   z-index: 20;
