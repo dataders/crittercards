@@ -4,7 +4,7 @@ import {
   ACTS, LEVELS_PER_ACT, trailPosition, hardPerkOptions, getEnemyIntent, rivalHealth, briarHealer, FLOODGATE_RECOIL_PERCENT,
   getCardDescription, validateStartingDeck, canAffordCard, canRemoveRunCard, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE,
 } from './game.mjs';
-import { createRoom, findPublicMatch, isTerminalRoomError, joinRoom, resumeRoom } from './transport.mjs';
+import { createRoom, findPublicMatch, isTerminalRoomError, joinRoom, resumeRoom, recoverRoom } from './transport.mjs';
 
 const game = document.querySelector('#game');
 const soundtrack = document.querySelector('#soundtrack');
@@ -331,14 +331,18 @@ function lobby() {
             <label class="field">Room code<input name="code" required autocomplete="off" value="${escape(ui.joinCode)}" maxlength="8"></label>
             <button type="submit" class="button button-secondary" ${ui.pending ? 'disabled' : ''}>Join room</button>
           </form>
-        </div>` : ''}
+        </div>
+        <details><summary>Restore a room after a restart</summary>
+          <p>Player 1: paste your private recovery code. If Player 2 already joined, they can reload their original tab to reconnect. Otherwise, they can join with the usual room code.</p>
+          <form id="recover-form" class="form-row"><label class="field">Recovery code<textarea name="recoveryCode" required></textarea></label><button type="submit" class="button button-secondary" ${ui.pending ? 'disabled' : ''}>Restore room</button></form>
+        </details>` : ''}
       ${room ? `
         <div class="form-row">
           <span>Room <strong class="room-code">${escape(room.code)}</strong></span>
           ${button('Share invite', 'invite')}
           ${waitingForPublicMatch(room) ? button('Leave queue', 'leave-queue', { disabled: ui.pending }) : ''}
           <span class="muted">${room.publicMatch ? 'Public match · ' : ''}${room.joined[1] ? 'Both players joined' : 'Waiting for Player 2'} · You are ${playerName(room.seat)}</span>
-        </div>` : ''}
+        </div>${recoveryControls(room)}` : ''}
       ${ui.mode !== 'online' || room ? `
         <p class="collection-status"><strong>${collectionCount()} / ${Object.keys(CRITTER_UNLOCKS).length}</strong> creatures recruited</p>
         ${room || ui.mode === 'solo' ? '' : `<div class="seat-picker" aria-label="Choose whose character to edit">${[0, 1].map((seat) => button(
@@ -707,7 +711,7 @@ function render() {
   const scene = state ? runScenes[state.phase](state) : lobby();
   const saveControl = state && !['victory', 'defeat'].includes(state.phase)
     ? `<div class="save-controls">${button('Save game', 'save', { disabled: ui.pending })}<span class="muted">Saved in this browser${ui.room ? ' · resumes on one screen' : ''}</span></div>` : '';
-  game.innerHTML = messages + saveControl + scene;
+  game.innerHTML = messages + saveControl + (state ? recoveryControls(ui.room) : '') + scene;
   if (ui.scrollToRoute && state?.phase === 'route') {
     game.querySelector('.trail-rung.is-current')?.scrollIntoView({ block: 'start' });
     ui.scrollToRoute = false;
@@ -765,6 +769,11 @@ function attachRoom(room) {
     ui.error = error.message;
     render();
   });
+}
+
+function recoveryControls(room) {
+  if (!room || room.seat !== 0 || !room.recoveryCode) return '';
+  return `<details><summary>Private room recovery code</summary><p>Save this code somewhere safe after your latest move. If the server restarts, Player 1 can restore the room with it. Anyone with this code can control both seats, so do not share it publicly.</p><label class="field">Recovery code<textarea readonly rows="3">${escape(room.recoveryCode)}</textarea></label>${button('Copy recovery code', 'copy-recovery')}</details>`;
 }
 
 async function runRemote(operation) {
@@ -966,6 +975,12 @@ document.addEventListener('click', async (event) => {
   }
   ui.error = '';
   ui.notice = '';
+  if (action === 'copy-recovery' && ui.room?.seat === 0) {
+    try { await navigator.clipboard.writeText(ui.room.recoveryCode); ui.notice = 'Recovery code copied. Keep it private.'; }
+    catch { ui.error = 'Could not copy automatically. Select and copy the recovery code instead.'; }
+    render();
+    return;
+  }
   if (action === 'save') {
     try {
       localStorage.setItem(saveKey, JSON.stringify({ version: 1, state, origin: ui.room?.code ?? ui.savedRunOrigin ?? 'local', perks: ui.perks, hardPerks: ui.hardPerks, drafts: ui.drafts }));
@@ -1054,6 +1069,12 @@ document.addEventListener('click', async (event) => {
 });
 
 game.addEventListener('submit', (event) => {
+  if (event.target.id === 'recover-form') {
+    event.preventDefault();
+    const recoveryCode = new FormData(event.target).get('recoveryCode');
+    ui.error = '';
+    return runRemote(async () => attachRoom(await recoverRoom(recoveryCode)));
+  }
   if (event.target.id !== 'join-form') return;
   event.preventDefault();
   ui.joinCode = new FormData(event.target).get('code').trim().toUpperCase();
