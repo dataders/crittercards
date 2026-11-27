@@ -389,7 +389,10 @@ function lobby() {
 }
 
 function health(unit) {
-  return `<span class="health-label"><span>Health ${unit.hp}/${unit.maxHp}</span>${unit.block ? `<span>Block ${unit.block}</span>` : ''}</span>
+  return `<span class="health-label">
+    <span><span class="combat-metric-label">HP</span> <strong>${unit.hp}/${unit.maxHp}</strong></span>
+    ${unit.block ? `<span><span class="combat-metric-label">Block</span> <strong>${unit.block}</strong></span>` : ''}
+  </span>
     <span class="health-bar" aria-hidden="true"><span style="width:${Math.max(0, unit.hp / unit.maxHp * 100)}%"></span></span>`;
 }
 
@@ -667,7 +670,7 @@ function combat(state) {
         <div class="hand-heading" data-block-drop>
           ${art(player.critterId, 'hud-portrait', name)}
           <div class="hud-familiar"><h2 id="turn-heading">${escape(turnTitle)}</h2><span class="turn-details">${player.hp}/${player.maxHp} HP${player.block ? ` · ${player.block} Block` : ''}</span></div>
-          <span class="turn-energy" aria-label="Energy available">${player.energy} energy</span>
+          <span class="turn-energy" role="group" aria-label="${player.energy} energy available"><span class="combat-metric-label" aria-hidden="true">Energy</span><strong aria-hidden="true">${player.energy}</strong></span>
           <div class="hand-pagination" aria-label="Scroll hand">
             ${button('‹', 'hand-scroll', { data: 'data-index="-1" aria-label="Previous cards"' })}${button('›', 'hand-scroll', { data: 'data-index="1" aria-label="Next cards"' })}
           </div>
@@ -683,7 +686,7 @@ function combat(state) {
           ${companion ? button(`${escape(companion.name)} · ${player.companionUsed ? 'Used' : 'Free companion move'}`, 'companion-strike', { disabled: !enabled || !companionReady, data: `data-seat="${seat}" data-aim="${escape(companion.name)}" aria-pressed="false" aria-describedby="attack-instructions"` }) : ''}
           <span class="hand-counts">${escape(TYPES[CRITTERS[player.critterId].type].name)} type</span>
         </div>
-        <div class="turn-actions">${state.players.map((member, index) => button(`View ${escape(CRITTERS[member.critterId].name)}’s deck (${member.deck.length})`, 'view-battle-deck', { data: `data-seat="${index}"` })).join('')} </div>
+        <div class="turn-actions combat-deck-actions">${state.players.map((member, index) => button(`View ${escape(CRITTERS[member.critterId].name)}’s deck (${member.deck.length})`, 'view-battle-deck', { data: `data-seat="${index}"` })).join('')}</div>
     </section>
   </div>`;
 }
