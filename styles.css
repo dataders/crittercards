@@ -694,7 +694,6 @@ button.route-option:hover:not(:disabled) { border-color: var(--lime); background
 .unit-effects { display: flex; flex-wrap: wrap; gap: .25rem; font-size: .72rem; font-weight: 700; }
 .type-key { color: var(--muted); font-size: .85rem; }
 .type-matchup { color: var(--lime); font-size: .82rem; font-weight: 700; }
-.unit-effects > span { border-radius: .3rem; padding: .15rem .35rem; }
 .effect-strength { background: #debc71; color: #302208; }
 .effect-vulnerable { background: #efaf9f; color: #441b16; }
 .effect-frail { background: #c9badd; color: #302040; }
@@ -1137,3 +1136,76 @@ body:not([data-battle-area])::before {
 .title-screen + .solo-goals { margin-top: .75rem; }
 .solo-goals summary { color: var(--lime); cursor: pointer; }
 .solo-goals ul { display: grid; gap: .4rem; margin: .6rem 0 0; padding-left: 1.15rem; }
+
+.rival-entry { display: grid; grid-template-rows: 1fr auto; min-width: 0; }
+.rival-entry > .rival-card { width: 100%; }
+.rival-effects { margin-top: .27rem; }
+.unit-effects > button {
+  min-height: 2rem;
+  padding: .22rem .45rem;
+  border: 1px solid #a4957c80;
+  border-radius: .35rem;
+  font: inherit;
+  text-align: start;
+  text-decoration: underline dotted;
+  text-underline-offset: .16em;
+}
+.effect-marked { background: #5a3d2d; color: #f3d9b9; }
+.effect-tooltip {
+  position: fixed;
+  z-index: 21;
+  width: max-content;
+  max-width: min(17rem, calc(100vw - 1rem));
+  padding: .46rem .65rem;
+  border: 1px solid var(--lime);
+  border-radius: .4rem;
+  background: var(--forest-deep);
+  color: var(--paper);
+  box-shadow: 0 .35rem 1rem #09110c99;
+  font-size: .85rem;
+  line-height: 1.4;
+}
+.combat-terms summary { cursor: pointer; color: var(--lime); }
+.combat-terms dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .35rem .65rem; margin: .5rem 0 0; font-size: .83rem; }
+.combat-terms dt { color: var(--lime); font-weight: 700; }
+.combat-terms dd { margin: 0; }
+
+@media (max-width: 38rem) {
+  .combat-screen .rival-card .unit-art { height: clamp(2.5rem, 7dvh, 3.8rem); }
+  .combat-screen .battlefield { margin-block: 0 auto; }
+  .unit-effects > button { min-height: 2.75rem; }
+}
+
+.type-key summary, .solo-deck-preview summary, .reward-unlocks summary { color: var(--lime); cursor: pointer; }
+.type-key p { margin-top: .3rem; }
+.solo-deck-preview, .reward-unlocks {
+  margin-block: .55rem;
+  padding: .6rem .75rem;
+  border: 1px solid var(--line);
+  border-radius: .55rem;
+  background: var(--forest-deep);
+}
+.solo-deck-preview .deck-builder { margin-top: .6rem; }
+.reward-unlocks .recruit-banner { margin-top: .45rem; padding: .6rem .75rem; }
+.reward-card-heading, .reward-confirm { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .55rem; }
+.reward-card-heading .reward-label, .reward-confirm .reward-status { margin: 0; }
+.reward-card-heading small { color: var(--muted); font-weight: 400; }
+.reward-confirm { padding-top: .65rem; border-top: 1px solid var(--line); }
+.reward-confirm .button, .reward-card-heading .button { min-height: 2.75rem; }
+.solo-reward { padding: clamp(.8rem, 2.2vw, 1.75rem); }
+.solo-reward .level-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.solo-reward .reward-label { margin-top: .45rem; }
+.solo-reward .reward-card-heading .reward-label { margin-top: 0; }
+
+@media (min-width: 68rem) {
+  .solo-reward .level-options { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
+@media (max-width: 38rem) {
+  .solo-reward > section { gap: .55rem; }
+  .solo-reward .section-heading { flex-direction: row; align-items: baseline; flex-wrap: wrap; }
+  .solo-reward .level-options { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem; }
+  .solo-reward .level-choice { min-height: 4.2rem; padding: .55rem; font-size: .84rem; gap: .25rem; }
+  .solo-reward .hand-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem; }
+  .solo-reward .play-card { min-height: 5.2rem; }
+}

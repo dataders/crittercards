@@ -14,6 +14,7 @@ export function createCombatInput(game, playCombatMove) {
     game.querySelector('#aim-status').textContent = aiming ? `${control.dataset.aim} selected. Choose a highlighted rival.` : '';
     game.querySelector('[data-do="cancel-aim"]').hidden = !aiming;
     for (const rival of game.querySelectorAll(livingRival)) rival.tabIndex = aiming ? 0 : -1;
+    for (const chip of game.querySelectorAll('[data-effect]')) chip.tabIndex = aiming ? -1 : 0;
   }
 
   function cancelAim() {
@@ -144,4 +145,71 @@ export function createCombatInput(game, playCombatMove) {
   }
 
   return { clearAttackDrag, setAimedMove, selectTarget };
+}
+
+export function createEffectHelp(game, tooltip) {
+  let active;
+  let pinned;
+  let closing;
+  const effectButton = (node) => node?.closest?.('[data-effect]');
+
+  function close() {
+    clearTimeout(closing);
+    active = pinned = null;
+    tooltip.hidden = true;
+  }
+
+  function show(button) {
+    clearTimeout(closing);
+    active = button;
+    tooltip.textContent = document.getElementById(button.getAttribute('aria-describedby')).textContent;
+    tooltip.hidden = false;
+    const anchor = button.getBoundingClientRect();
+    const { width, height } = tooltip.getBoundingClientRect();
+    const above = anchor.top - height - 3;
+    const left = Math.max(8, Math.min(anchor.left, innerWidth - width - 8));
+    const top = above >= 8 ? above : Math.min(anchor.bottom + 3, innerHeight - height - 8);
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${Math.max(8, top)}px`;
+  }
+
+  function scheduleClose() {
+    clearTimeout(closing);
+    if (!pinned) closing = setTimeout(close, 130);
+  }
+
+  game.addEventListener('pointerover', (event) => {
+    const button = effectButton(event.target);
+    if (event.pointerType === 'mouse' && button && !pinned) show(button);
+  });
+  game.addEventListener('pointerout', (event) => {
+    const button = effectButton(event.target);
+    if (button === active && button && !button.contains(event.relatedTarget) &&
+        document.activeElement !== button) scheduleClose();
+  });
+  tooltip.addEventListener('pointerenter', () => clearTimeout(closing));
+  tooltip.addEventListener('pointerleave', scheduleClose);
+  game.addEventListener('focusin', (event) => {
+    const button = effectButton(event.target);
+    if (button && !pinned) show(button);
+  });
+  game.addEventListener('focusout', (event) => {
+    if (effectButton(event.target) === active) close();
+  });
+  document.addEventListener('click', (event) => {
+    const button = effectButton(event.target);
+    if (button && game.contains(button)) {
+      if (button === pinned) close();
+      else {
+        pinned = button;
+        show(button);
+      }
+    } else if (!tooltip.contains(event.target)) close();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') close();
+  });
+  window.addEventListener('resize', close);
+  window.addEventListener('scroll', close, true);
+  return close;
 }

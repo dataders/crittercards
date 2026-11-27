@@ -40,6 +40,7 @@
     </header>
     <main class="game-main" id="game"></main>
   </div>
+  <div id="effect-tooltip" class="effect-tooltip" aria-hidden="true" hidden></div>
   <audio id="soundtrack" preload="none" loop></audio>
   <dialog id="battle-deck" aria-labelledby="battle-deck-title">
     <div class="battle-deck-content">
@@ -75,14 +76,14 @@
           <div class="tutorial-lesson">
             <figure class="tutorial-visual">
               <button class="tutorial-enlarge" type="button" data-enlarge-picture aria-haspopup="dialog" aria-controls="tutorial-picture">
-                <img src="assets/tutorial/build-deck.webp" width="990" height="782" alt="The starting deck preview shows the character’s signature and shared starter cards." loading="lazy">
+                <img src="assets/tutorial/build-deck.webp" width="990" height="836" alt="The expanded starting deck shows Ember’s signature and shared starter cards." loading="lazy">
                 <span>Enlarge picture</span>
               </button>
               <figcaption>Review your shared basics and character cards before starting.</figcaption>
             </figure>
             <div class="tutorial-copy">
               <p>Each character starts with 15 cards. Everyone shares 12 basics, including Claw Strike and Hold Fast. The other three cards suit your character, including their signature moves.</p>
-              <p>Review your starting deck, then choose <strong>Begin the trail</strong>. You can change your deck during the run through rewards, merchants, and camps.</p>
+              <p>In single player, open <strong>Review starting deck</strong> to see your cards. Choose <strong>Begin the trail</strong> when you’re ready. You can change your deck during the run through rewards, merchants, and camps.</p>
             </div>
           </div>
         </section>
@@ -107,7 +108,7 @@
           <div class="tutorial-lesson">
             <figure class="tutorial-visual">
               <button class="tutorial-enlarge" type="button" data-enlarge-picture aria-haspopup="dialog" aria-controls="tutorial-picture">
-                <img src="assets/tutorial/play-turn.webp" width="1048" height="326" alt="The battle HUD shows energy and End turn above the hand, with Draw and Discard on either side." loading="lazy">
+                <img src="assets/tutorial/play-turn.webp" width="1048" height="350" alt="The battle HUD shows energy and End turn above the hand, with Draw and Discard on either side." loading="lazy">
                 <span>Enlarge picture</span>
               </button>
               <figcaption>Hold Fast is a Block card. Tap it to gain 8 Block.</figcaption>
@@ -125,14 +126,14 @@
           <div class="tutorial-lesson">
             <figure class="tutorial-visual">
               <button class="tutorial-enlarge" type="button" data-enlarge-picture aria-haspopup="dialog" aria-controls="tutorial-picture">
-                <img src="assets/tutorial/types-effects.webp" width="464" height="235" alt="Ironhide is a Stone rival with 19 HP. Next move shows Hits Ember for 10, and Your attacks shows Resisted, times 0.75." loading="lazy">
+                <img src="assets/tutorial/types-effects.webp" width="464" height="235" alt="Ironhide is a Stone rival with 19 HP. Its next move hits you for 10, and it resists your attacks." loading="lazy">
                 <span>Enlarge picture</span>
               </button>
-              <figcaption>Read Next move and Your attacks under the rival’s HP.</figcaption>
+              <figcaption>Read the rival’s next move and type matchup under its HP.</figcaption>
             </figure>
             <div class="tutorial-copy">
               <p><strong>Ember beats Grove · Grove beats Tide · Tide beats Stone · Stone beats Ember.</strong> A strong matchup deals 50% more damage. The reverse matchup deals 25% less.</p>
-              <p><strong>Strength</strong> adds attack damage. <strong>Vulnerable</strong> increases the next hit by 50%. <strong>Frail</strong> reduces the next Block gain by 3. The battle screen shows active effects and matchups.</p>
+              <p>Hover, focus, or tap an effect such as <strong>Frail</strong> for its definition. For the full list, open <strong>Battle info → Combat terms</strong>.</p>
             </div>
           </div>
         </section>
@@ -141,14 +142,14 @@
           <div class="tutorial-lesson">
             <figure class="tutorial-visual">
               <button class="tutorial-enlarge" type="button" data-enlarge-picture aria-haspopup="dialog" aria-controls="tutorial-picture">
-                <img src="assets/tutorial/grow-save.webp" width="1040" height="829" alt="The level-up screen shows perks, three draft cards, a Skip card button, and a confirmation button." loading="lazy">
+                <img src="assets/tutorial/grow-save.webp" width="1040" height="638" alt="The level-up screen shows six perks, optional cards, Skip card, and Claim reward." loading="lazy">
                 <span>Enlarge picture</span>
               </button>
               <figcaption>Choose a perk even if you decide to skip the card.</figcaption>
             </figure>
             <div class="tutorial-copy">
-              <p>After a trainer fight, choose a level-up perk and take a card or skip it. Each player confirms their own choice. Defeating rivals also unlocks cards and creatures for future runs.</p>
-              <p>Choose <strong>Save game</strong> during a run, then <strong>Continue saved game</strong> on the opening screen. Saves stay in this browser. A saved room game resumes on one shared screen.</p>
+              <p>After a trainer fight, choose a perk for the run. Take a card or select <strong>Skip card</strong>, then claim your level-up reward. Defeating rivals also unlocks cards and creatures for future runs.</p>
+              <p>Choose <strong>Save game</strong> during a run, then <strong>Continue saved game</strong> on the opening screen. Saves stay in this browser. If you save during a solo reward, claiming it updates that save. A saved room game resumes on one shared screen.</p>
               <p>Clear three acts of 20 levels each. Defeat each act's boss to continue. A full run is designed for 90–120 minutes, and you can save your progress along the way.</p>
             </div>
           </div>

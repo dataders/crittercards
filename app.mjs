@@ -4,16 +4,17 @@ import {
   ACTS, LEVELS_PER_ACT, trailPosition, hardPerkOptions, getEnemyIntent, rivalHealth,
   getCardDescription, canRemoveRunCard, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE,
 } from './game.mjs';
-import { deckLibrary } from './data.mjs';
+import { deckLibrary, describeCard } from './data.mjs';
 import { soloGoals, soloProgressKey, updateSoloProgress } from './solo-progress.mjs';
-import { createCombatInput } from './combat-input.mjs';
+import { createCombatInput, createEffectHelp } from './combat-input.mjs';
 import { createAudioController } from './audio.mjs';
-import { readStorage, savedRewardChoices, savedRunStatus, saveKey, writeStorage } from './storage.mjs';
+import { advanceSoloRewardSave, readStorage, savedRewardChoices, savedRunStatus, saveKey, writeStorage } from './storage.mjs';
 import { actionCard, art, battleCardViews, button, cardReveal, combat, escape, playerName, progress, purse, trailLocation } from './views.mjs';
 import { captureViewState, restoreViewState, setupSelect } from './view-state.mjs';
 import { createRoom, findPublicMatch, isTerminalRoomError, joinRoom, resumeRoom, recoverRoom } from './transport.mjs';
 
 const game = document.querySelector('#game');
+const closeEffectHelp = createEffectHelp(game, document.querySelector('#effect-tooltip'));
 const runTools = document.querySelector('#run-tools');
 const soundtrack = document.querySelector('#soundtrack');
 const musicToggle = document.querySelector('#music-toggle');
@@ -239,28 +240,30 @@ function rosterCard(critter, seat, picks, enabled) {
   </button>`;
 }
 
-function roster(seat, picks, enabled, companions, setupActions) {
+function roster(seat, picks, enabled, companions, setupActions, soloDeck) {
+  const solo = ui.mode === 'solo';
   const creatures = Object.values(CRITTERS).filter(({ animal }) => animal);
   const filtered = creatures.filter(({ id }) => ui.filter === 'all' || collection.has(id) === (ui.filter === 'owned'));
   const cousin = Object.hasOwn(COUSINS, picks[seat] ?? '');
   const animalCard = (critter) => cousin ? `<div class="familiar-option">${rosterCard(critter, seat, picks, enabled)}${button(companions[seat] === critter.id ? '✓ Companion selected' : 'Choose as companion', 'pick-companion', { disabled: !enabled || !collection.has(critter.id), data: `data-seat="${seat}" data-id="${escape(critter.id)}" aria-label="Choose ${escape(critter.name)} as companion" aria-pressed="${companions[seat] === critter.id}"` })}</div>` : rosterCard(critter, seat, picks, enabled);
   return `
-      <div class="section-heading"><h2>${playerName(seat)}</h2><span class="muted">${enabled ? 'Choose a character' : picks[seat] ? 'Character chosen' : 'Waiting to choose'}</span></div>
-      <p class="type-key">Type strengths · Ember beats Grove · Grove beats Tide · Tide beats Stone · Stone beats Ember</p>
+      ${solo ? '' : `<div class="section-heading"><h2>${playerName(seat)}</h2><span class="muted">${enabled ? 'Choose a character' : picks[seat] ? 'Character chosen' : 'Waiting to choose'}</span></div>`}
+      <details class="type-key" data-view-state="type-key"><summary>Type strengths</summary><p>Ember beats Grove · Grove beats Tide · Tide beats Stone · Stone beats Ember</p></details>
       <div class="turn-actions setup-actions">
         <h3>The four cousins</h3>
         ${setupActions}
       </div>
+      ${soloDeck ?? ''}
       <div class="critter-grid cousin-roster">
         ${Object.values(COUSINS).map((critter) => rosterCard(critter, seat, picks, enabled)).join('')}
       </div>
       ${cousin ? `<section class="companion-picker" aria-label="Animal companion">
         <div class="section-heading"><h2>Choose ${escape(CRITTERS[picks[seat]].name)}’s animal</h2><span class="muted">Companion</span></div>
-        <p>Choose a recruited animal here or from the woodland familiars below. Its special ability is free once per turn.</p>
+        <p>Choose a companion. Its move is free once per round.</p>
         <label class="field">Animal companion<select data-companion-seat="${seat}" ${!enabled ? 'disabled' : ''}><option value="" disabled ${companions[seat] ? '' : 'selected'}>Choose an animal</option>
           ${Object.values(CRITTERS).filter((animal) => animal.animal && (collection.has(animal.id) || companions[seat] === animal.id)).map((animal) => `<option value="${animal.id}" ${companions[seat] === animal.id ? 'selected' : ''}>${escape(animal.name)} · ${escape(TYPES[animal.type].name)} · ${escape(COMPANION_ABILITIES[animal.id].name)}</option>`).join('')}
         </select></label>
-        ${companions[seat] ? `<div class="companion-preview">${art(companions[seat], 'companion-art')}<span><strong>${escape(CRITTERS[companions[seat]].name)} · ${escape(COMPANION_ABILITIES[companions[seat]].name)}</strong><br>${escape(TYPES[CRITTERS[companions[seat]].type].name)} type · free once per turn<br>${escape(getCompanionDescription(companions[seat]))}</span></div>` : ''}
+        ${companions[seat] ? `<div class="companion-preview">${art(companions[seat], 'companion-art')}<span><strong>${escape(CRITTERS[companions[seat]].name)} · ${escape(COMPANION_ABILITIES[companions[seat]].name)}</strong><br>${escape(TYPES[CRITTERS[companions[seat]].type].name)} type · free once per round<br>${escape(getCompanionDescription(companions[seat], 0, { solo }))}</span></div>` : ''}
       </section>` : ''}
       <h3>Recruited familiars</h3>
       <div class="critter-grid">${creatures.filter(({ id }) => collection.has(id)).map(animalCard).join('')}</div>
@@ -280,19 +283,18 @@ function deckBuilder(seat, critterId, room) {
   const critter = CRITTERS[critterId];
   const signature = CARDS[critter.signature];
   const cards = room ? room.dealtDeck ?? room.deck ?? [] : startingLibraryFor(critterId);
-  const oneCost = cards.filter((id) => CARDS[id].cost === 1).length;
+  const formatCard = (card) => escape(describeCard(card, 0, { solo: ui.mode === 'solo' }));
   return `<section class="deck-builder" aria-labelledby="deck-title">
-    <div class="section-heading"><h2 id="deck-title">${escape(critter.name)}’s starting deck</h2><span class="muted">${knownCards.size} / ${cardLibrary.length} library cards unlocked</span></div>
-    <p class="muted">${cards.length + (critter.signatureCopies ?? 2)} cards including signatures · ${oneCost} library cards cost 1 energy.</p>
-    <p class="deck-signature"><strong>${escape(signature.name)} × ${critter.signatureCopies ?? 2}</strong> · ${signature.cost} energy · ${escape(signature.description)}</p>
+    <div class="section-heading"><h2 id="deck-title">${escape(critter.name)}’s starting deck</h2><span class="muted">${cards.length + (critter.signatureCopies ?? 2)} cards</span></div>
+    <p class="deck-signature"><strong>${escape(signature.name)} × ${critter.signatureCopies ?? 2}</strong> · ${signature.cost} energy · ${formatCard(signature)}</p>
     <div class="deck-slots">${cards.map((id) => {
       const card = CARDS[id];
-      return `<article class="battle-deck-card" data-starting-card="${escape(id)}"><strong>${escape(card.name)}</strong><span>${card.cost} energy</span><p>${escape(card.description)}</p></article>`;
+      return `<article class="battle-deck-card" data-starting-card="${escape(id)}"><strong>${escape(card.name)}</strong><span>${card.cost} energy</span><p>${formatCard(card)}</p></article>`;
     }).join('')}</div>
-    <details class="deck-library" data-view-state="deck-library" ${ui.showLibrary ? 'open' : ''}><summary>Card library and unlocks</summary>
+    <details class="deck-library" data-view-state="deck-library" ${ui.showLibrary ? 'open' : ''}><summary>Card library · ${knownCards.size} of ${cardLibrary.length} unlocked</summary>
       <ul>${cardLibrary.map((id) => {
         const rival = ENCOUNTERS.flatMap((entry) => entry.enemies).find(({ animal }) => CARD_UNLOCKS[animal]?.includes(id));
-        return `<li><strong>${escape(CARDS[id].name)}</strong> · ${knownCards.has(id) ? escape(CARDS[id].description) : `Defeat ${escape(rival?.name)} to unlock.`}</li>`;
+        return `<li><strong>${escape(CARDS[id].name)}</strong> · ${knownCards.has(id) ? formatCard(CARDS[id]) : `Defeat ${escape(rival?.name)} to unlock.`}</li>`;
       }).join('')}</ul>
     </details>
     ${room && !room.deck ? `<div class="turn-actions">${button('Confirm deck', 'ready', { style: 'primary', disabled: ui.pending || (Object.hasOwn(COUSINS, critterId) && !room.companions[seat]) })}</div>` : ''}
@@ -330,7 +332,12 @@ function lobby() {
   const seat = room?.seat ?? ui.pickSeat;
   const companions = room?.companions ?? ui.companions;
   const companionNeeded = (index) => Object.hasOwn(COUSINS, picks[index] ?? '') && !companions[index];
+  const solo = ui.mode === 'solo';
+  const startingDeck = deckBuilder(seat, picks[seat], room);
+  const soloDeck = solo && startingDeck
+    ? `<details class="solo-deck-preview" data-view-state="starting-deck"><summary>Review starting deck</summary>${startingDeck}</details>` : '';
   const setupActions = `
+    ${solo && companionNeeded(0) ? '<span class="muted">Choose a companion below</span>' : ''}
     ${!room || room.seat === 0 ? button('Begin the trail', 'start', { style: 'primary', disabled: ui.pending || !(ui.mode === 'solo' ? picks[0] : picks.every(Boolean)) || (ui.mode === 'solo' ? companionNeeded(0) : picks.some((_, index) => companionNeeded(index))) || (room && !room.ready.every(Boolean)) }) : ''}
     ${!room && ui.mode !== 'solo' && !picks[1 - seat] ? button(`Choose for ${playerName(1 - seat)}`, 'seat', { data: `data-seat="${1 - seat}"` }) : ''}
     ${room ? `<span class="muted">${room.ready.filter(Boolean).length} of 2 decks confirmed</span>` : ''}`;
@@ -363,8 +370,8 @@ function lobby() {
           `${playerName(seat)} · ${escape(CRITTERS[picks[seat]]?.name ?? 'Choose character')}`, 'seat', { data: `data-seat="${seat}" aria-pressed="${ui.pickSeat === seat}"` }
         )).join('')}</div>`}
         <section aria-label="${playerName(seat)} character selection">
-          ${roster(seat, picks, !ui.pending, companions, setupActions)}
-          ${deckBuilder(seat, picks[seat], room)}
+          ${roster(seat, picks, !ui.pending, companions, setupActions, soloDeck)}
+          ${solo ? '' : startingDeck}
         </section>
       ` : ''}
     </div>`;
@@ -381,7 +388,7 @@ function trailMap(state) {
       <img class="area-art" src="assets/${area.image}" alt="${escape(area.alt)}" width="1536" height="1024" fetchpriority="high">
       <div class="area-copy">
         <p class="eyebrow">Act ${actIndex + 1} · Choose your route</p>
-        <h1 id="area-title">${escape(act.name)}</h1>
+        <h1 id="area-title" tabindex="-1">${escape(act.name)}</h1>
         <p>${escape(area.description)}</p>
         <p class="area-boss">Level ${LEVELS_PER_ACT} · ${escape(act.boss)}</p>
       </div>
@@ -474,7 +481,7 @@ function merchantShop(state) {
         const card = CARDS[id];
         const sold = state.soldCards.includes(id);
         return `<article class="shop-item"><p class="route-tag">${card.cost} energy · ${escape(card.type)}</p>
-          <h2>${escape(card.name)}</h2><p>${escape(card.description)}</p>
+          <h2>${escape(card.name)}</h2><p>${escape(describeCard(card, 0, { solo: state.players.length === 1 }))}</p>
           <strong class="shop-price">${sold ? 'Sold' : `${price} gold`}</strong>
           ${sold ? '' : `<div class="shop-buy">${state.players.filter(({ id: seat }) => !ui.room || ui.room.seat === seat).map((player) =>
             button(`Buy for ${escape(CRITTERS[player.critterId].name)}${ui.room ? '' : ` (P${player.id + 1})`}`, 'buy', {
@@ -498,19 +505,21 @@ function recruitment() {
 
 function rewardPerkChoices(perks, action, seat, selected, enabled) {
   return perks.map((perk) =>
-    `<button type="button" class="level-choice" data-do="${action}" data-seat="${seat}" data-id="${escape(perk.id)}" aria-pressed="${selected === perk.id}" ${enabled ? '' : 'disabled'}><strong>${escape(perk.name)}</strong><span>${escape(perk.description)}</span></button>`).join('');
+    `<button type="button" class="level-choice" data-do="${action}" data-seat="${seat}" data-id="${escape(perk.id)}" aria-pressed="${selected === perk.id}" ${enabled ? '' : 'disabled'}><strong>${escape(perk.name)}</strong><span>${escape(action === 'perk' ? perk.description.replace(/ for the rest of this run\.$/, '.') : perk.description)}</span></button>`).join('');
 }
 
 function rewards(state) {
   const { actIndex, bossLevel } = trailPosition(state.encounter);
   const trialReward = getEncounter(state)?.trialReward;
+  const solo = state.players.length === 1;
+  const unlockCount = ui.recruits.length + ui.newCards.length;
   return `
-    <section class="battle-head"><div><p class="eyebrow">${bossLevel ? `Act ${actIndex + 1} cleared` : 'Trainer defeated'}</p><h1>Level up your familiars</h1></div>${purse(state)}</section>
+    <section class="battle-head"><div><p class="eyebrow">${bossLevel ? `Act ${actIndex + 1} cleared` : 'Trainer defeated'}</p><h1 id="reward-title" tabindex="-1">${solo ? 'Level up' : 'Level up your familiars'}</h1></div>${purse(state)}</section>
     ${bossLevel ? `<p class="status-line">The pack recovers to full health before entering ${escape(ACTS[actIndex + 1].name)}.</p>` : ''}
     ${trialReward ? `<p class="status-line">Trial cleared. Each player can draft ${escape(CARDS[trialReward].name)} as their card reward.</p>` : ''}
-    ${recruitment()}
-    ${cardReveal(ui.newCards)}
-    <div class="reward-panel">
+    ${!solo ? recruitment() + cardReveal(ui.newCards) : ''}
+    ${solo && unlockCount ? `<details class="reward-unlocks" data-view-state="reward-unlocks"><summary>New unlocks · ${unlockCount}</summary>${recruitment()}${cardReveal(ui.newCards)}</details>` : ''}
+    <div class="reward-panel${solo ? ' solo-reward' : ''}">
       ${state.players.map((player, seat) => {
         const critter = CRITTERS[player.critterId];
         const saved = state.rewardPicks[seat];
@@ -518,19 +527,28 @@ function rewards(state) {
         const savedPerk = saved?.perkId ?? player.perks.at(-1);
         const savedHardPerk = saved?.hardPerkId;
         const enabled = !ui.pending && !saved && (!ui.room || ui.room.seat === seat);
-        const ready = ui.perks[seat] && ui.drafts[seat] && (!state.hardReward || ui.hardPerks[seat]);
+        const perk = LEVEL_PERKS[ui.perks[seat]];
+        const card = ui.drafts[seat];
+        const ready = perk && card && (!state.hardReward || ui.hardPerks[seat]);
+        const selection = card === 'skip' ? 'No new card' : CARDS[card]?.name;
+        const guidance = !enabled ? 'Waiting for this player to choose.' : !perk ? 'Choose a perk to level up.' :
+          !card ? 'Choose a card or select Skip card.' : !ready ? 'Choose a Hard route perk.' :
+          solo ? `${perk.name} · ${selection}` : 'Ready to confirm.';
         return `<section>
-          <div class="section-heading"><h2>${escape(critter.name)} · ${playerName(seat)}</h2><span class="muted">${saved ? 'Ready' : `Level ${player.level} to ${player.level + 1}`}</span></div>
+          <div class="section-heading"><h2>${escape(critter.name)}${solo ? '' : ` · ${playerName(seat)}`}</h2><span class="muted">${saved ? 'Ready' : `Level ${player.level} → ${player.level + 1}`}</span></div>
           ${saved ? `<p>${savedCard ? `Learned ${escape(CARDS[savedCard].name)}` : 'Skipped the card'} and chose ${escape(LEVEL_PERKS[savedPerk]?.name)}${savedHardPerk ? ` and ${escape(HARD_PERKS[savedHardPerk].name)}` : ''}.</p>` : `
-            <h3 class="reward-label">1. Choose a perk</h3>
+            <h3 class="reward-label">1. Choose a perk for this run</h3>
             <div class="level-options" aria-label="Level-up perk">${rewardPerkChoices(Object.values(LEVEL_PERKS), 'perk', seat, ui.perks[seat], enabled)}</div>
-            <h3 class="reward-label">2. Take or skip a card</h3>
-            <div class="hand-grid">${state.rewardOptions[seat].map((id, index) => actionCard(state, seat, id, index, enabled, true, ui.drafts[seat])).join('')}</div>
-            <div class="turn-actions">${button('Skip card', 'draft-pick', { disabled: !enabled, data: `data-seat="${seat}" data-id="skip" aria-pressed="${ui.drafts[seat] === 'skip'}"` })}</div>
+            <div class="reward-card-heading"><h3 class="reward-label">2. Take a card <small>(optional)</small></h3>
+              ${button('Skip card', 'draft-pick', { disabled: !enabled, data: `data-seat="${seat}" data-id="skip" aria-pressed="${card === 'skip'}"` })}
+            </div>
+            <div class="hand-grid">${state.rewardOptions[seat].map((id, index) => actionCard(state, seat, id, index, enabled, true, card)).join('')}</div>
             ${state.hardReward ? `<h3 class="reward-label">3. Choose a Hard route perk</h3>
               <div class="level-options" aria-label="Hard route perk">${rewardPerkChoices(hardPerkOptions(state.players.length), 'hard-perk', seat, ui.hardPerks[seat], enabled)}</div>` : ''}
-            <p class="reward-status" aria-live="polite">${!enabled ? 'Waiting for this player to choose.' : !ui.perks[seat] ? 'Choose a level-up perk.' : !ui.drafts[seat] ? 'Take a card or choose Skip card.' : !ready ? 'Choose a Hard route perk.' : 'Ready to confirm.'}</p>
-            <div class="turn-actions">${button(`Confirm ${playerName(seat)} upgrade`, 'draft', { style: 'primary', disabled: !enabled || !ready, data: `data-seat="${seat}"` })}</div>
+            <div class="reward-confirm">
+              <p class="reward-status" aria-live="polite">${escape(guidance)}</p>
+              ${button(solo ? 'Claim reward' : `Confirm ${playerName(seat)} upgrade`, 'draft', { style: 'primary', disabled: !enabled || !ready, data: `data-seat="${seat}"` })}
+            </div>
           `}
         </section>`;
       }).join('')}
@@ -648,9 +666,11 @@ function animateCombatMotion(motion) {
 }
 
 function render() {
+  closeEffectHelp();
   clearAttackDrag();
   setAimedMove();
-  const stageTop = game.querySelector('.game-stage')?.scrollTop ?? 0;
+  const previousStage = game.querySelector('.game-stage');
+  const stageTop = previousStage?.scrollTop ?? 0;
   const arenaTop = game.querySelector('.arena-scroll')?.scrollTop ?? 0;
   const handLeft = game.querySelector('.combat-hand')?.scrollLeft ?? 0;
   const previousBattle = game.querySelector('.combat-screen');
@@ -701,6 +721,8 @@ function render() {
         ['do', 'seat', 'id', 'index'].every((key, i) => node.dataset[key] === focus[i]) && node.tabIndex >= 0);
     }
     if (equivalent) equivalent.focus({ preventScroll: true });
+    else if (state?.phase === 'reward' && previousStage?.dataset.scene !== 'reward') game.querySelector('#reward-title')?.focus({ preventScroll: true });
+    else if (state?.phase === 'route' && previousStage?.dataset.scene === 'reward') game.querySelector('#area-title')?.focus({ preventScroll: true });
     else if (state?.phase === 'combat' && (!previousBattle || hadBattleFocus)) {
       const cardInSlot = focus?.[0] === 'play' && previousTurn === game.querySelector('.combat-screen').dataset.turn
         ? game.querySelector(`.combat-hand [data-index="${Number(focus[3])}"]:not(:disabled)`) : null;
@@ -818,6 +840,11 @@ function dispatch(action) {
     const previous = ui.run;
     ui.run = applyAction(previous, action);
     acceptState(ui.run, previous);
+    if (action.type === 'draft' && previous.players.length === 1 && ui.run.phase === 'route') {
+      if (!advanceSoloRewardSave(localStorage, previous, ui.run, ui.savedRunOrigin ?? 'local')) {
+        ui.error = 'Reward claimed. This browser could not update your saved game.';
+      }
+    }
   } catch (error) {
     ui.error = error.message;
   }
@@ -951,7 +978,12 @@ document.addEventListener('click', async (event) => {
   if (action === 'save') {
     try {
       localStorage.setItem(saveKey, JSON.stringify({ version: 1, state, origin: ui.room?.code ?? ui.savedRunOrigin ?? 'local', perks: ui.perks, hardPerks: ui.hardPerks, drafts: ui.drafts }));
-      ui.notice = 'Game saved in this browser. Choose Continue saved game from the opening screen.';
+      ui.notice = 'Game saved. Open it with Continue saved game.';
+      const menu = control.closest('.game-menu');
+      if (menu) {
+        menu.open = false;
+        menu.querySelector('summary').focus({ preventScroll: true });
+      }
     } catch {
       ui.error = 'Could not save in this browser. Check browser storage and try again.';
     }

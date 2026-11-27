@@ -118,3 +118,14 @@ export function savedRewardChoices(saved) {
     drafts: forSeats(saved.drafts, (card) => card === 'skip' || isCard(card)),
   };
 }
+
+export function advanceSoloRewardSave(storage, previous, next, origin) {
+  if (previous.phase !== 'reward' || next.phase !== 'route') return true;
+  const { saved } = savedRunStatus(storage);
+  if (saved?.state.phase !== 'reward' || saved.state.runId !== previous.runId || saved.state.seed !== previous.seed ||
+      saved.state.encounter !== previous.encounter || saved.state.players.length !== 1 ||
+      (saved.origin ?? 'local') !== origin) return true;
+  return writeStorage(storage, saveKey, {
+    ...saved, state: next, perks: [null, null], hardPerks: [null, null], drafts: [null, null],
+  });
+}

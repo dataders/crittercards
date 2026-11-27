@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { applyAction, createRun, MERCHANTS, TRAIL } from '../game.mjs';
-import { saveKey, savedRunStatus, validateSavedRun, writeStorage } from '../storage.mjs';
+import { advanceSoloRewardSave, saveKey, savedRunStatus, validateSavedRun, writeStorage } from '../storage.mjs';
 
 const saved = (state) => JSON.parse(JSON.stringify({ version: 1, state }));
 const apply = (state, action) => applyAction(state, { player: 0, ...action });
@@ -61,4 +61,28 @@ test('invalid versions, references, and phase-specific fields are rejected befor
   assert.deepEqual(savedRunStatus(storage), { corrupt: true });
   assert.equal(writeStorage(storage, saveKey, null), true);
   assert.deepEqual(savedRunStatus(storage), {});
+});
+
+test('claiming either solo reward advances its matching save and clears pending picks', () => {
+  const battle = apply(createRun(['fox'], 19), { type: 'route', routeId: 'steady' });
+  battle.players[0].hand = ['jab', 'jab'];
+  for (const enemy of battle.enemies) enemy.hp = 1;
+  const first = apply(battle, { type: 'play', cardIndex: 0, target: 0 });
+  const reward = apply(first, { type: 'play', cardIndex: 0, target: 1 });
+  assert.equal(reward.phase, 'reward');
+  const items = new Map();
+  const storage = { getItem: (key) => items.get(key) ?? null, setItem: (key, value) => items.set(key, value) };
+
+  for (const choice of ['skip', reward.rewardOptions[0][0]]) {
+    const checkpoint = { ...saved(reward), origin: 'local', perks: ['keen', null], drafts: [choice, null] };
+    const route = apply(reward, { type: 'draft', perkId: 'keen', ...(choice === 'skip' ? {} : { cardId: choice }) });
+    assert.equal(route.phase, 'route');
+    assert.ok(writeStorage(storage, saveKey, checkpoint));
+    assert.ok(advanceSoloRewardSave(storage, reward, route, 'other'));
+    assert.deepEqual(savedRunStatus(storage).saved, checkpoint);
+    assert.ok(advanceSoloRewardSave(storage, reward, route, 'local'));
+    assert.deepEqual(savedRunStatus(storage).saved, {
+      ...checkpoint, state: saved(route).state, perks: [null, null], hardPerks: [null, null], drafts: [null, null],
+    });
+  }
 });

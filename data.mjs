@@ -239,33 +239,48 @@ export function matchup(attackerType, defenderType) {
 export const MARK_DAMAGE = 3;
 export const FRAIL_BLOCK_LOSS = 3;
 
-export function describeCard(card, attackBonus) {
+export const COMBAT_TERMS = {
+  block: { label: 'Block', text: 'Absorbs incoming damage before HP.' },
+  strength: { label: 'Strength', text: 'Adds damage to every attack this fight.' },
+  vulnerable: { label: 'Vulnerable', text: 'The next hit deals 50% more damage and uses one stack.' },
+  frail: { label: 'Frail', text: `The next time this unit gains Block, it gains ${FRAIL_BLOCK_LOSS} less Block and uses one stack.` },
+  poison: { label: 'Poison', text: 'Lose 1 HP per Poison stack before acting, then lose one stack. Poison bypasses Block.' },
+  marked: { label: 'Marked', text: `The next attack against this target deals +${MARK_DAMAGE} damage.` },
+  exhaust: { label: 'Exhaust', text: 'The card leaves combat when played and returns for the next fight.' },
+};
+
+export function describeCard(card, attackBonus, { compact = false, solo = false } = {}) {
   const sentences = [];
   if (card.stealBlock) sentences.push(`Steal up to ${card.stealBlock} Block.`);
   if (card.damage) sentences.push(`Deal ${card.damage + attackBonus} damage${card.pierce ? ', ignoring Block' : ''}.`);
   if (card.woundedBonus) sentences.push(`Deal +${card.woundedBonus} damage to targets at half HP or below.`);
-  if (card.block) sentences.push(`Gain ${card.block} Block.`);
-  if (card.allyBlock) sentences.push(`Give your ally ${card.allyBlock} Block.`);
-  if (card.poison) sentences.push(`Apply ${card.poison} Poison. Before acting, the rival loses 1 HP per Poison stack, then loses 1 stack.`);
-  if (card.heal) sentences.push(`Heal for ${card.heal}.`);
-  if (card.allyHeal) sentences.push(`Heal your ally for ${card.allyHeal}.`);
+  if (card.block || (solo && card.allyBlock)) {
+    const extra = solo && card.block && card.allyBlock ? `, then ${card.allyBlock} more` : '';
+    sentences.push(`Gain ${card.block || card.allyBlock} Block${extra}.`);
+  }
+  if (!solo && card.allyBlock) sentences.push(`Give your ally ${card.allyBlock} Block.`);
+  if (card.poison) sentences.push(`Apply ${card.poison} Poison.${compact ? '' : ' ' + COMBAT_TERMS.poison.text}`);
+  const selfHeal = (card.heal ?? 0) + (solo ? (card.allyHeal ?? 0) : 0);
+  if (selfHeal) sentences.push(`Heal for ${selfHeal}.`);
+  if (!solo && card.allyHeal) sentences.push(`Heal your ally for ${card.allyHeal}.`);
   if (card.energy) sentences.push(`Gain ${card.energy} energy this turn.`);
   if (card.nextEnergy) sentences.push(`Gain ${card.nextEnergy} energy next turn.`);
   if (card.emptyEnergy) sentences.push(`If you have no energy, gain ${card.emptyEnergy} energy this turn.`);
   if (card.energyOnDefeat) sentences.push(`If this attack defeats the rival, gain ${card.energyOnDefeat} energy this turn.`);
   if (card.guardedEnergy) sentences.push(`If you already had Block, gain ${card.guardedEnergy} energy this turn.`);
-  if (card.hurtEnergy) sentences.push(`If you had half HP or less before healing, gain ${card.hurtEnergy} energy this turn.`);
-  if (card.allyEnergy) sentences.push(`Your ally gains ${card.allyEnergy} energy next turn. In solo, you gain it instead.`);
-  if (card.selfFrail) sentences.push(`Gain ${card.selfFrail} Frail. Each stack reduces your next Block gain by ${FRAIL_BLOCK_LOSS}.`);
-  if (card.mark) sentences.push(`Mark the target. The next attack against it deals +${MARK_DAMAGE} damage.`);
-  if (card.strength) sentences.push(`Gain ${card.strength} Strength, adding that much damage to attacks this fight.`);
-  if (card.vulnerable) sentences.push('Apply Vulnerable. The next hit against this target deals 50% more damage.');
-  if (card.frail) sentences.push(`Apply Frail. The target gains ${FRAIL_BLOCK_LOSS} less Block the next time it gains Block.`);
+  if (card.hurtEnergy) sentences.push(compact ? `Half HP or less: +${card.hurtEnergy} energy before healing.` : `If you had half HP or less before healing, gain ${card.hurtEnergy} energy this turn.`);
+  if (card.allyEnergy) sentences.push(solo ? `Gain ${card.allyEnergy} energy next turn.` :
+    `Your ally gains ${card.allyEnergy} energy next turn.`);
+  if (card.selfFrail) sentences.push(`Gain ${card.selfFrail} Frail.${compact ? '' : ' ' + COMBAT_TERMS.frail.text}`);
+  if (card.mark) sentences.push(compact ? 'Mark the rival.' : `Mark the target. ${COMBAT_TERMS.marked.text}`);
+  if (card.strength) sentences.push(`Gain ${card.strength} Strength.${compact ? '' : ' ' + COMBAT_TERMS.strength.text}`);
+  if (card.vulnerable) sentences.push(compact ? 'Apply Vulnerable.' : `Apply Vulnerable. ${COMBAT_TERMS.vulnerable.text}`);
+  if (card.frail) sentences.push(compact ? 'Apply Frail.' : `Apply Frail. ${COMBAT_TERMS.frail.text}`);
   if (card.openingDrawDenominator) sentences.push(`1 in ${card.openingDrawDenominator} chance to draw in round 1. Otherwise, draw in round ${card.drawRound}.`);
-  if (card.exhaust) sentences.push('After casting, remove this card for the rest of the fight.');
+  if (card.exhaust) sentences.push(compact ? 'Exhaust.' : COMBAT_TERMS.exhaust.text);
   const effect = sentences.join(' ');
   if (card.cost !== 'X') return effect;
-  return `Spend all remaining energy and repeat for each energy spent. ${effect}${card.damage ? ' Extra hits move to the next rival.' : ''}`;
+  return `${compact ? 'Repeat per energy spent.' : 'Spend all remaining energy and repeat for each energy spent.'} ${effect}${card.damage ? ' Extra hits move to the next rival.' : ''}`;
 }
 
 export const COMPANION_ABILITIES = {
@@ -301,8 +316,8 @@ export const COMPANION_ABILITIES = {
   wolverine: { name: 'Fierce Nip', damage: 3, woundedBonus: 2, heal: 1 },
 };
 
-export function getCompanionDescription(animalId, attackBonus = 0) {
-  return describeCard(COMPANION_ABILITIES[animalId], attackBonus);
+export function getCompanionDescription(animalId, attackBonus = 0, options) {
+  return describeCard(COMPANION_ABILITIES[animalId], attackBonus, options);
 }
 
 for (const card of Object.values(CARDS)) {

@@ -40,9 +40,10 @@ export function validateStartingDeck(cards, { allowLegacy = false } = {}) {
   }
 }
 
-export function getCardDescription(state, playerIndex, cardId) {
+export function getCardDescription(state, playerIndex, cardId, options) {
   const player = state.players[playerIndex];
-  return describeCard(CARDS[cardId], player.attackBonus + (state.phase === 'combat' ? player.strength : 0));
+  return describeCard(CARDS[cardId], player.attackBonus + (state.phase === 'combat' ? player.strength : 0),
+    { ...options, solo: state.players.length === 1 });
 }
 
 export function canAffordCard(card, energy) {
