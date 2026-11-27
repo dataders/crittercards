@@ -38,6 +38,23 @@ test('both reward choices preserve current HP while granting level-up benefits',
   assert.deepEqual(route(next).players.map(({ hp }) => hp), [10, 12]);
 });
 
+test('claiming the level 2 reward leads to the tuned Shadow Grove encounter', () => {
+  const reward = win(['fox'], 1, 'steady');
+  const next = draft(reward, { cardId: reward.rewardOptions[0][0] });
+  assert.equal(next.phase, 'route');
+  assert.equal(next.encounter, 2);
+
+  const standard = route(next);
+  assert.deepEqual(standard.enemies.map(({ hp, intent }) => [hp, intent.type]), [
+    [21, 'attack'], [17, 'attack'],
+  ]);
+  const hard = route(next, 'perilous');
+  assert.deepEqual(hard.enemies.map(({ name, hp, intent }) => [name, hp, intent.type, intent.amount]), [
+    ['Echo of the Wilds', 28, 'frailAttack', 11],
+    ['Cairn of the Wilds', 23, 'attack', 8],
+  ]);
+});
+
 test('level 3 Hard offers a bonus and solo perks reset at the start of each fight', () => {
   assert.equal(win(['tita'], 2, 'steady').hardReward, false);
   assert.equal(win(['tita'], 5, 'perilous').hardReward, false);

@@ -49,7 +49,7 @@ function allyCard(player, seat, state) {
   </div>`;
 }
 
-function intentLabel(intent, enemy, state, brief = false) {
+export function intentLabel(intent, enemy, state, brief = false) {
   if (!intent) return '';
   if (intent.type === 'guard') return `Gains ${Math.max(0, intent.amount - (enemy.frail ? FRAIL_BLOCK_LOSS : 0))} Block`;
   if (intent.type === 'shadowWard') return `Shadow Ward · gains ${Math.max(0, intent.amount - (enemy.frail ? FRAIL_BLOCK_LOSS : 0))} Block and heals 8`;

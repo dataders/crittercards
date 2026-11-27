@@ -9,7 +9,7 @@ import { soloGoals, soloProgressKey, updateSoloProgress } from './solo-progress.
 import { createCombatInput, createEffectHelp } from './combat-input.mjs';
 import { createAudioController } from './audio.mjs';
 import { advanceSoloRewardSave, readStorage, savedRewardChoices, savedRunStatus, saveKey, writeStorage } from './storage.mjs';
-import { actionCard, art, battleCardViews, button, cardReveal, combat, escape, playerName, progress, purse, trailLocation } from './views.mjs';
+import { actionCard, art, battleCardViews, button, cardReveal, combat, escape, intentLabel, playerName, progress, purse, trailLocation } from './views.mjs';
 import { captureViewState, restoreViewState, setupSelect } from './view-state.mjs';
 import { createRoom, findPublicMatch, isTerminalRoomError, joinRoom, resumeRoom, recoverRoom } from './transport.mjs';
 

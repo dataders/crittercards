@@ -563,13 +563,14 @@ function laterTrail(config, actIndex) {
 for (const [level, routes] of openingTrail.entries()) {
   if (!HARD_LEVELS.has(level)) continue;
   const hard = routes.find((route) => route.id === 'perilous');
-  hard.enemies = hard.enemies.map((enemy) => ({
+  const firstHardFight = level === 2;
+  hard.enemies = hard.enemies.map((enemy, slot) => ({
     ...enemy,
-    hp: Math.ceil(enemy.hp * 1.35),
-    moves: enemy.moves.map(([type, amount]) => [
-      type,
-      ['guard', 'shadowWard'].includes(type) ? amount : Math.ceil(amount * 1.25),
-    ]),
+    hp: Math.ceil(enemy.hp * 1.35) - (firstHardFight ? 6 : 0),
+    moves: enemy.moves.map(([type, amount], moveIndex) => {
+      if (firstHardFight && slot === 1 && moveIndex === 0) return ['attack', 9];
+      return [type, ['guard', 'shadowWard'].includes(type) ? amount : Math.ceil(amount * 1.25)];
+    }),
   }));
 }
 
