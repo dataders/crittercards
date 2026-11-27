@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { ACTS, CAMPS, CARDS, CRITTERS, LEVELS_PER_ACT, MERCHANTS, TRAIL, applyAction, createRun, matchup, trailPosition } from '../game.mjs';
+import { ACTS, CAMPS, CARDS, CRITTERS, LEVELS_PER_ACT, MERCHANTS, TRAIL, applyAction, createRun, getEncounter, matchup, trailPosition } from '../game.mjs';
 
 function replay({ critters, seed, decks, companions }, actions) {
   let state = createRun(critters, seed, decks, companions);
@@ -149,7 +149,7 @@ test('a seeded solo replay clears 20 levels and defeats the Ash Regent', () => {
   assert.equal(final.enemies.find((enemy) => enemy.boss)?.hp, 0);
 });
 
-test('a seeded co-op replay clears all three acts from a fresh run', () => {
+test('a seeded co-op replay clears all three trial types and defeats the Thorn Sovereign', () => {
   const fixture = new URL('./fixtures/coop-campaign.json', import.meta.url);
   const { setup, actions } = JSON.parse(readFileSync(fixture, 'utf8'));
   const timeline = replay(setup, actions);
@@ -159,6 +159,35 @@ test('a seeded co-op replay clears all three acts from a fresh run', () => {
 
   const fights = timeline.filter((state, index) => state.phase === 'combat' && actions[index].type === 'route');
   assert.deepEqual(fights.map(({ encounter }) => encounter), TRAIL.map((_, index) => index));
+  const trials = fights.filter(({ encounter, path }) => path[encounter] === 'trial');
+  const expectedTrials = [
+    [5, 'The Briar Infirmary', 'mendRivals', 'thornbreak'],
+    [25, 'The Floodgate', 'openingSurge', 'undertow'],
+    [45, 'The War Grove', 'rally', 'lastWord'],
+  ];
+  assert.deepEqual(
+    trials.map((state) => [state.encounter + 1, getEncounter(state).name]),
+    expectedTrials.map(([level, name]) => [level, name]),
+  );
+
+  for (const [index, opening] of trials.entries()) {
+    const { encounter } = opening;
+    const [, name, openingIntent, featuredCard] = expectedTrials[index];
+    assert.ok(opening.enemies.some(({ intent }) => intent.type === openingIntent), name);
+
+    const reward = timeline.find((state) => state.encounter === encounter && state.phase === 'reward');
+    assert.ok(reward, `Expected to clear ${name}`);
+    for (const { id } of opening.players) {
+      assert.ok(reward.rewardOptions[id].includes(featuredCard), `${name} should offer ${featuredCard} to seat ${id + 1}`);
+    }
+
+    const nextRoute = timeline.find((state) => state.encounter === encounter + 1 && state.phase === 'route');
+    assert.ok(nextRoute, `Expected to continue after ${name}`);
+    for (const { id, deck } of nextRoute.players) {
+      assert.ok(deck.includes(featuredCard), `Seat ${id + 1} should draft ${featuredCard} after ${name}`);
+    }
+  }
+
   assert.deepEqual(timeline[0].players.map(({ companionId }) => companionId), setup.companions);
   for (const { id } of timeline[0].players) {
     assert.ok(actions.some(({ type, player }) => type === 'companionStrike' && player === id));
