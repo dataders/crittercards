@@ -54,8 +54,16 @@ export function intentLabel(intent, enemy, state, brief = false) {
   if (intent.type === 'guard') return `Gains ${Math.max(0, intent.amount - (enemy.frail ? FRAIL_BLOCK_LOSS : 0))} Block`;
   if (intent.type === 'shadowWard') return `Shadow Ward · gains ${Math.max(0, intent.amount - (enemy.frail ? FRAIL_BLOCK_LOSS : 0))} Block and heals 8`;
   if (intent.type === 'mendRivals') {
-    const ally = state.enemies.find((rival) => rival !== enemy && rival.hp > 0);
-    return ally ? `Mends ${ally.name} for up to ${intent.amount} HP` : 'No other rival to mend';
+    const rule = `Heals other living rivals for up to ${intent.amount} HP each`;
+    if (!state.enemies?.includes(enemy)) return rule;
+    const allies = state.enemies.filter((rival) => rival !== enemy && rival.hp > 0);
+    if (!allies.length) return 'No other rival to mend';
+    const injured = allies.filter((rival) => rival.hp < rival.maxHp);
+    if (!injured.length) {
+      return brief ? `Heal up to ${intent.amount} HP${allies.length > 1 ? ' each' : ''}` : `${rule} · all at full HP`;
+    }
+    const heals = injured.map((rival) => `${rival.name} +${Math.min(rival.maxHp - rival.hp, intent.amount)} HP`);
+    return brief ? heals.join(', ') : `${rule}. At current HP: ${heals.join(', ')}.`;
   }
   if (intent.type === 'rally') return `Rallies · gains ${intent.amount} Strength for this fight`;
   if (intent.type === 'spentSurge') return 'Opening Surge spent';
@@ -83,7 +91,7 @@ function rivalIntent(enemy, index, state) {
   const { intent } = enemy;
   if (!intent || enemy.hp === 0) return '';
   const description = intentLabel(intent, enemy, state);
-  const summary = intent.type === 'openingSurge'
+  const summary = ['openingSurge', 'mendRivals'].includes(intent.type)
     ? intentLabel(intent, enemy, state, true)
     : description;
   const descriptionId = `intent-description-${index}`;

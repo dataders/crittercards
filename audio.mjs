@@ -18,23 +18,28 @@ const actSoundtracks = [
 ];
 
 export function createAudioController(soundtrack, musicToggle, storage) {
-  let enabled = readStorage(storage, musicKey, true);
+  let enabled = readStorage(storage, musicKey, false) === true;
+  const status = musicToggle.querySelector('[data-music-state]');
+
   function updateMusicToggle() {
-    musicToggle.setAttribute('aria-pressed', String(!soundtrack.paused && !soundtrack.error));
+    musicToggle.setAttribute('aria-pressed', String(enabled));
+    status.textContent = enabled ? 'On' : 'Off';
   }
 
   function playSoundtrack() {
-    soundtrack.play().catch(updateMusicToggle);
+    // If the browser requires a gesture, the next in-game action can retry.
+    soundtrack.play().catch(() => {});
   }
 
   function syncSoundtrack(state) {
+    if (!enabled) return;
     const { actIndex, bossLevel } = trailPosition(state?.encounter ?? 0);
     const tracks = actSoundtracks[actIndex];
     const [file, title] = state?.phase === 'combat' && bossLevel ? tracks.boss : tracks.trail;
     const source = `assets/${file}.mp3`;
-    if (soundtrack.getAttribute('src') === source) return;
-    const resume = enabled && !soundtrack.paused;
     musicToggle.title = title;
+    if (soundtrack.getAttribute('src') === source) return;
+    const resume = !soundtrack.paused;
     soundtrack.src = source;
     if (resume) playSoundtrack();
   }
@@ -45,13 +50,17 @@ export function createAudioController(soundtrack, musicToggle, storage) {
   }
 
   soundtrack.volume = 0.55;
-  for (const event of ['play', 'pause', 'error']) soundtrack.addEventListener(event, updateMusicToggle);
+  updateMusicToggle();
 
   function toggle(state) {
-    enabled = soundtrack.paused;
+    enabled = !enabled;
     writeStorage(storage, musicKey, enabled);
+    updateMusicToggle();
     if (enabled) startMusic(state);
-    else soundtrack.pause();
+    else {
+      soundtrack.pause();
+      musicToggle.removeAttribute('title');
+    }
   }
 
   return { startMusic, syncSoundtrack, toggle, pause: () => soundtrack.pause() };
