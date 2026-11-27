@@ -2,7 +2,7 @@ import {
   COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, STARTER_DECK, MAX_STARTING_COPIES, FRAIL_BLOCK_LOSS,
   ENCOUNTERS, TRAIL, MERCHANTS, CAMPS, LEVEL_PERKS, HARD_PERKS, TYPES, matchup, COMPANION_ABILITIES, getCompanionDescription, createRun, applyAction, getEncounter,
   ACTS, LEVELS_PER_ACT, trailPosition, hardPerkOptions, getEnemyIntent, rivalHealth, briarHealer, FLOODGATE_RECOIL_PERCENT,
-  getCardDescription, validateStartingDeck, canAffordCard, canRemoveRunCard, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE,
+  getCardDescription, validateStartingDeck, canAffordCard, canRemoveRunCard, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE, validateSavedRun,
 } from './game.mjs';
 import { createRoom, findPublicMatch, isTerminalRoomError, joinRoom, resumeRoom, recoverRoom } from './transport.mjs';
 
@@ -192,7 +192,10 @@ const ui = {
   notice: '',
   joinCode: invite,
   savedRunOrigin: null,
+  showRecovery: false,
+  showCampaignMap: false,
 };
+let lastRunToolsHtml = '';
 let attackDrag;
 let aimedMove;
 let suppressDragClick = false;
@@ -223,7 +226,7 @@ function unlockCards(state) {
   if (!state) return;
   // Earlier encounters count as wins even if an online tab skipped their snapshots.
   const defeated = TRAIL.slice(0, state.encounter).flatMap((routes, level) =>
-    routes.find(({ id }) => id === state.path[level]).enemies.map(({ animal }) => animal));
+    (routes.find(({ id }) => id === state.path[level])?.enemies ?? []).map(({ animal }) => animal));
   defeated.push(...state.enemies.filter((enemy) => enemy.hp === 0).map(({ animal }) => animal));
   for (const id of defeated.flatMap((animal) => CARD_UNLOCKS[animal] ?? [])) {
     if (knownCards.has(id)) continue;
@@ -231,6 +234,18 @@ function unlockCards(state) {
     ui.newCards.push(id);
   }
   if (ui.newCards.length) writeStorage(localStorage, cardKey, [...knownCards]);
+}
+
+function readSavedRun() {
+  let raw = null;
+  try {
+    const text = localStorage.getItem(saveKey);
+    if (text === null) return { hasSave: false, saved: null };
+    raw = JSON.parse(text);
+  } catch {
+    return { hasSave: true, saved: null };
+  }
+  return { hasSave: true, saved: validateSavedRun(raw) ? raw : null };
 }
 
 function recruitmentHint(id) {
@@ -327,7 +342,7 @@ function deckBuilder(seat, critterId, room) {
 
 function lobby() {
   const room = ui.room;
-  const saved = !room ? readStorage(localStorage, saveKey, null)?.state : null;
+  const { hasSave, saved } = !room ? readSavedRun() : { hasSave: false, saved: null };
   const showingSetup = ui.showSetup || room;
   const modes = `<div class="mode-picker" aria-label="Play mode">
     ${[['Single player', 'solo'], ['Share a screen', 'local'], ['Play with a room code', 'online']].map(([label, mode]) => {
@@ -340,6 +355,7 @@ function lobby() {
     <img class="hero-art" src="assets/hollow-trail.webp" alt="">
     <div class="hero-copy"><h1>The Hollow Trail</h1>
       ${saved ? button('Continue saved game', 'continue', { style: 'primary' }) : ''}
+      ${hasSave && !saved ? `<p class="status-line">An older or corrupted saved game could not be loaded.</p>${button('Clear invalid save', 'clear-save')}` : ''}
       ${modes}
     </div>
   </section>`;
@@ -446,12 +462,22 @@ function intentLabel(intent, enemy, state) {
   return `Hits ${name(victim)} for ${damage(victim)}${intent.type === 'frailAttack' ? ' and applies Frail' : ''}`;
 }
 
+function effectivenessLabel(attackerType, defenderType) {
+  const multiplier = matchup(attackerType, defenderType);
+  return multiplier > 1 ? 'Super effective · ×1.5' : multiplier < 1 ? 'Resisted · ×0.75' : 'Normal damage';
+}
+
 function enemyCard(enemy, index, state) {
   const alive = enemy.hp > 0;
   const healer = briarHealer(state, enemy);
+  const active = state.players[state.activePlayer];
+  const activeType = CRITTERS[active.critterId].type;
+  const companion = active.companionId ? CRITTERS[active.companionId] : null;
   const bondTarget = state.players.length > 1 && state.lastTarget === index && state.lastAttacker !== state.activePlayer && !state.bondTriggered;
-  const multiplier = matchup(CRITTERS[state.players[state.activePlayer].critterId].type, CRITTERS[enemy.animal].type);
-  const effectiveness = multiplier > 1 ? 'Super effective · ×1.5' : multiplier < 1 ? 'Resisted · ×0.75' : 'Normal damage';
+  const effectiveness = effectivenessLabel(activeType, CRITTERS[enemy.animal].type);
+  const companionMatchup = companion && companion.type !== activeType
+    ? `<span class="type-matchup">Companion (${escape(companion.name)}) · ${effectivenessLabel(companion.type, CRITTERS[enemy.animal].type)}</span>`
+    : '';
   return `<button class="unit-card rival-card ${alive ? '' : 'is-defeated'}" type="button" data-do="target" data-index="${index}" tabindex="-1" ${alive ? '' : 'disabled'}>
     ${art(enemy.animal, 'unit-art')}
     <span class="unit-info">
@@ -460,7 +486,7 @@ function enemyCard(enemy, index, state) {
       <span class="combat-label">${escape(TYPES[CRITTERS[enemy.animal].type].name)} · ${bondTarget ? 'Bond Strike ready' : enemy.marked ? 'Marked' : enemy.boss ? (state.encounter === TRAIL.length - 1 ? 'Final boss' : 'Act boss') : 'Rival creature'}</span>
       ${health(enemy)}
       ${effects(enemy)}
-      ${alive ? `<span class="type-matchup">Your attacks · ${effectiveness}</span>
+      ${alive ? `<span class="type-matchup">Your attacks · ${effectiveness}</span>${companionMatchup}
         ${healer ? `<span class="type-matchup">Briar Ward from ${escape(healer.name)} · half attack damage</span>` : ''}
         ${enemy.poison >= enemy.hp ? '<span class="type-matchup">Poison is lethal at current HP</span>' : ''}
         <span class="intent"><strong>Next move</strong> · ${escape(intentLabel(enemy.intent, enemy, state))}</span>` : ''}
@@ -503,7 +529,7 @@ function trailMap(state) {
     ${progress(state)}
     ${ui.room?.seat === 1 ? '<p class="muted trail-wait">Player 1 chooses the next stop.</p>' : ''}
     <ol class="trail-ladder current-route" aria-label="Current route" start="${currentIndex + 1}">${renderLevel(actRoutes[currentIndex], currentIndex)}</ol>
-    <details class="campaign-map"><summary>Act map</summary><ol class="act-levels">${actRoutes.map((_, index) => {
+    <details class="campaign-map" ${ui.showCampaignMap ? 'open' : ''}><summary>Act map</summary><ol class="act-levels">${actRoutes.map((_, index) => {
       const level = first + index;
       const route = actRoutes[index].find(({ id }) => id === state.path[level]);
       return `<li ${level === state.encounter ? 'aria-current="step"' : ''}><strong>${index + 1}</strong> <span>${route ? escape(route.name) : level === state.encounter ? 'Current level' : index === LEVELS_PER_ACT - 1 ? escape(act.boss) : 'Ahead'}</span></li>`;
@@ -738,6 +764,45 @@ function conclusion(state) {
   </section>`;
 }
 
+function captureFocus() {
+  const previous = document.activeElement;
+  if (!previous || (!game.contains(previous) && !runTools.contains(previous))) return null;
+  const inRunTools = runTools.contains(previous);
+  const inCollection = Boolean(previous.closest('.creature-library'));
+  if (previous.dataset.do) {
+    return { inRunTools, inCollection, kind: 'do', attrs: ['do', 'seat', 'id', 'index'].map((key) => previous.dataset[key]) };
+  }
+  if (Object.hasOwn(previous.dataset, 'deckSlot')) {
+    return { inRunTools, inCollection, kind: 'deck', seat: previous.dataset.seat, slot: previous.dataset.deckSlot };
+  }
+  if (Object.hasOwn(previous.dataset, 'companionSeat')) {
+    return { inRunTools, inCollection, kind: 'companion', seat: previous.dataset.companionSeat };
+  }
+  const summaryDetails = previous.tagName === 'SUMMARY' ? previous.parentElement : null;
+  const detailsClass = summaryDetails && ['recovery-details', 'combat-info', 'creature-library', 'deck-library', 'campaign-map']
+    .find((name) => summaryDetails.classList.contains(name));
+  if (detailsClass) return { inRunTools, inCollection, kind: 'summary', detailsClass };
+  return null;
+}
+
+function restoreFocus(target) {
+  if (!target) return;
+  const root = target.inRunTools ? runTools : target.inCollection ? game.querySelector('.creature-library') : game;
+  if (!root) return;
+  let match = null;
+  if (target.kind === 'do') {
+    match = [...root.querySelectorAll('[data-do]')].find((node) =>
+      ['do', 'seat', 'id', 'index'].every((key, i) => node.dataset[key] === target.attrs[i]));
+  } else if (target.kind === 'deck') {
+    match = root.querySelector(`[data-deck-slot="${target.slot}"][data-seat="${target.seat}"]`);
+  } else if (target.kind === 'companion') {
+    match = root.querySelector(`[data-companion-seat="${target.seat}"]`);
+  } else if (target.kind === 'summary') {
+    match = root.querySelector(`.${target.detailsClass} > summary`);
+  }
+  match?.focus({ preventScroll: true });
+}
+
 function render() {
   clearAttackDrag();
   setAimedMove();
@@ -745,11 +810,8 @@ function render() {
   const arenaTop = game.querySelector('.arena-scroll')?.scrollTop ?? 0;
   const handLeft = game.querySelector('.combat-hand')?.scrollLeft ?? 0;
   const previousTurn = game.querySelector('.combat-screen')?.dataset.turn;
-  const battleInfoOpen = game.querySelector('.combat-info')?.open;
-  const previous = document.activeElement;
-  const focusInRunTools = runTools.contains(previous);
-  const focusInCollection = previous?.closest('.creature-library');
-  const focus = previous?.dataset.do ? ['do', 'seat', 'id', 'index'].map((key) => previous.dataset[key]) : null;
+  const battleInfoOpen = Boolean(game.querySelector('.combat-info')?.open);
+  const focus = captureFocus();
   const state = ui.room ? ui.room.state : ui.run;
   const battleArea = state?.phase === 'combat' ? areaScenes[trailPosition(state.encounter).actIndex]?.id : null;
   if (battleArea) document.body.dataset.battleArea = battleArea;
@@ -762,7 +824,11 @@ function render() {
     : lobby();
   const saveControl = state && !['victory', 'defeat'].includes(state.phase)
     ? `<div class="save-controls">${button('Save game', 'save', { disabled: ui.pending })}<span class="muted">Saved in this browser${ui.room ? ' · resumes on one screen' : ''}</span></div>` : '';
-  runTools.innerHTML = saveControl + (state ? recoveryControls(ui.room) : '');
+  const nextRunToolsHtml = saveControl + (state ? recoveryControls(ui.room) : '');
+  if (nextRunToolsHtml !== lastRunToolsHtml) {
+    runTools.innerHTML = nextRunToolsHtml;
+    lastRunToolsHtml = nextRunToolsHtml;
+  }
   game.innerHTML = `${messages}<div class="game-stage" data-scene="${state?.phase ?? 'lobby'}">${scene}</div>`;
   if (!ui.scrollToTop) {
     game.querySelector('.game-stage').scrollTop = stageTop;
@@ -773,12 +839,7 @@ function render() {
     }
   }
   ui.scrollToTop = false;
-  if (focus) {
-    const focusRoot = focusInRunTools ? runTools : focusInCollection ? game.querySelector('.creature-library') : game;
-    const equivalent = [...(focusRoot?.querySelectorAll('[data-do]') ?? [])].find((node) =>
-      ['do', 'seat', 'id', 'index'].every((key, i) => node.dataset[key] === focus[i]));
-    equivalent?.focus({ preventScroll: true });
-  }
+  restoreFocus(focus);
 }
 
 function acceptState(state, previous) {
@@ -833,7 +894,7 @@ function attachRoom(room) {
 
 function recoveryControls(room) {
   if (!room || room.seat !== 0 || !room.recoveryCode) return '';
-  return `<details><summary>Private room recovery code</summary><p>Save this code somewhere safe after your latest move. If the server restarts, Player 1 can restore the room with it. Anyone with this code can control both seats, so do not share it publicly.</p><label class="field">Recovery code<textarea readonly rows="3">${escape(room.recoveryCode)}</textarea></label>${button('Copy recovery code', 'copy-recovery')}</details>`;
+  return `<details class="recovery-details" ${ui.showRecovery ? 'open' : ''}><summary>Private room recovery code</summary><p>Save this code somewhere safe after your latest move. If the server restarts, Player 1 can restore the room with it. Anyone with this code can control both seats, so do not share it publicly.</p><label class="field">Recovery code<textarea readonly rows="3">${escape(room.recoveryCode)}</textarea></label>${button('Copy recovery code', 'copy-recovery')}</details>`;
 }
 
 async function runRemote(operation) {
@@ -1106,19 +1167,28 @@ document.addEventListener('click', async (event) => {
     render();
     return;
   }
+  if (action === 'clear-save') {
+    writeStorage(localStorage, saveKey, null);
+    ui.notice = 'Saved game cleared.';
+    render();
+    return;
+  }
   if (action === 'continue') {
-    const saved = readStorage(localStorage, saveKey, null);
-    if (!saved || saved.version !== 1 || !saved.state || !Array.isArray(saved.state.players) || !['route', 'combat', 'camp', 'shop', 'reward'].includes(saved.state.phase)) {
-      ui.error = 'This saved game could not be loaded.';
+    const { saved } = readSavedRun();
+    if (!saved) {
+      ui.error = 'This saved game could not be loaded because it is corrupted or from an incompatible version.';
       render();
       return;
     }
+    saved.state.visitedShops ??= [];
+    saved.state.visitedCamps ??= [];
+    saved.state.log ??= [];
     ui.stopWatching?.();
     writeStorage(sessionStorage, roomKey, null);
     ui.room = null;
     ui.run = saved.state;
     ui.mode = saved.state.players.length === 1 ? 'solo' : 'local';
-    ui.savedRunOrigin = saved.origin;
+    ui.savedRunOrigin = saved.origin ?? 'local';
     ui.perks = Array.isArray(saved.perks) ? saved.perks : [null, null];
     ui.hardPerks = Array.isArray(saved.hardPerks) ? saved.hardPerks : [null, null];
     ui.drafts = Array.isArray(saved.drafts) ? saved.drafts : [null, null];
@@ -1232,9 +1302,11 @@ game.addEventListener('change', (event) => {
   game.querySelector(`[data-deck-slot="${index}"]`)?.focus({ preventScroll: true });
 });
 
-game.addEventListener('toggle', (event) => {
+document.addEventListener('toggle', (event) => {
   if (event.target.matches('.deck-library')) ui.showLibrary = event.target.open;
   if (event.target.matches('.creature-library')) ui.showCreatures = event.target.open;
+  if (event.target.matches('.campaign-map')) ui.showCampaignMap = event.target.open;
+  if (event.target.matches('.recovery-details')) ui.showRecovery = event.target.open;
 }, true);
 
 game.addEventListener('error', (event) => {

@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +16,7 @@ const hourSoundtrackFile = 'crittercards-faster-soundtrack-one-hour.mp3';
 const hourSoundtrackDownload = `/downloads/${hourSoundtrackFile}`;
 const enchantedWoodsAlbum = '/assets/crittercards-enchanted-woods-album.zip';
 const staticFiles = new Set([
-  '/index.html', '/soundtrack.html', '/styles.css', '/app.mjs', '/game.mjs', '/transport.mjs',
+  '/index.html', '/soundtrack.html', '/styles.css', '/app.mjs', '/data.mjs', '/game.mjs', '/transport.mjs',
   '/assets/crittercards-soundtrack.zip', enchantedWoodsAlbum,
 ]);
 const assetPath = /^\/assets\/(?:[\w-]+\/)*[\w.-]+\.(?:avif|gif|ico|jpe?g|mp3|png|svg|webp|woff2)$/i;
@@ -33,11 +34,12 @@ class RequestError extends Error {
   }
 }
 
-function sendJson(response, status, data) {
+function sendJson(response, status, data, headers = {}) {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
+    ...headers,
   });
   response.end(JSON.stringify(data));
 }
@@ -51,9 +53,12 @@ async function readJson(request) {
   let bytes = 0;
   for await (const chunk of request) {
     bytes += chunk.length;
-    if (bytes <= 65536) chunks.push(chunk);
+    if (bytes > 65536) {
+      request.destroy();
+      throw new RequestError(413, 'Request is too large.');
+    }
+    chunks.push(chunk);
   }
-  if (bytes > 65536) throw new RequestError(413, 'Request is too large.');
 
   let data;
   try {
@@ -84,6 +89,12 @@ function isExpired(room, now) {
   return now - room.updatedAt >= lifetime;
 }
 
+function pruneExpiredRooms(rooms, now) {
+  for (const [code, room] of rooms) {
+    if (isExpired(room, now)) rooms.delete(code);
+  }
+}
+
 function createRoom(rooms, { critterId, publicMatch, now }) {
   const code = newRoomCode(rooms);
   const token = randomBytes(32).toString('base64url');
@@ -108,12 +119,18 @@ function joinRoom(room, critterId, now) {
   return { ...snapshot(room, 1), token };
 }
 
+const recoveryCodeCache = new WeakMap();
+
 function signedRecoveryCode(room) {
   const secret = process.env.ROOM_RECOVERY_SECRET;
   if (!secret) return undefined;
+  const cached = recoveryCodeCache.get(room);
+  if (cached && cached.revision === room.revision && cached.secret === secret) return cached.code;
   const payload = gzipSync(JSON.stringify(room)).toString('base64url');
   const signature = createHmac('sha256', secret).update(payload).digest('base64url');
-  return `CR2-${payload}.${signature}`;
+  const code = `CR2-${payload}.${signature}`;
+  recoveryCodeCache.set(room, { revision: room.revision, secret, code });
+  return code;
 }
 
 function snapshot(room, seat) {
@@ -145,13 +162,19 @@ function recoverRoom(rooms, recoveryCode) {
   catch { throw new RequestError(400, 'Invalid recovery code.'); }
   if (!room || !/^[A-Z2-9]{6}$/.test(room.code) || !Array.isArray(room.tokens) || room.tokens.length !== 2 ||
       typeof room.tokens[0] !== 'string' || !room.tokens.every((token) => token === null || /^[\w-]{43}$/.test(token)) ||
-      !Array.isArray(room.picks) || !Array.isArray(room.decks) || !Array.isArray(room.companions) ||
-      !Number.isSafeInteger(room.revision) || room.revision < 0 || (room.state !== null && typeof room.state !== 'object')) {
+      !Array.isArray(room.picks) || room.picks.length !== 2 ||
+      !Array.isArray(room.decks) || room.decks.length !== 2 ||
+      !Array.isArray(room.companions) || room.companions.length !== 2 ||
+      !Number.isSafeInteger(room.revision) || room.revision < 0 || !Number.isSafeInteger(room.updatedAt) ||
+      (room.state !== null && typeof room.state !== 'object')) {
     throw new RequestError(400, 'Invalid recovery code.');
   }
+  const now = Date.now();
+  pruneExpiredRooms(rooms, now);
   if (rooms.has(room.code)) throw new RequestError(409, 'This room is already active.');
+  if (isExpired(room, now)) throw new RequestError(410, 'This recovery code has expired.');
   if (rooms.size >= roomCapacity) throw new RequestError(503, 'All rooms are currently in use.');
-  room.updatedAt = Date.now();
+  room.updatedAt = now;
   rooms.set(room.code, room);
   return { ...snapshot(room, 0), token: room.tokens[0] };
 }
@@ -221,6 +244,28 @@ function takeAction(room, seat, action) {
   room.state = createRun([...room.picks], randomBytes(4).readUInt32LE(), room.decks, room.companions);
 }
 
+function streamFile(filePath, response, status, headers, range) {
+  return new Promise((resolveStream, rejectStream) => {
+    const stream = createReadStream(filePath, range);
+    stream.once('open', () => {
+      response.writeHead(status, headers);
+      stream.pipe(response);
+    });
+    stream.once('error', (error) => {
+      if (!response.headersSent) rejectStream(error);
+      else {
+        response.destroy(error);
+        resolveStream();
+      }
+    });
+    response.once('finish', resolveStream);
+    response.once('close', () => {
+      stream.destroy();
+      resolveStream();
+    });
+  });
+}
+
 async function serveStatic(request, response, pathname) {
   const download = pathname === hourSoundtrackDownload;
   const path = download ? `/assets/${hourSoundtrackFile}` : pathname === '/' ? '/index.html' : pathname;
@@ -228,19 +273,24 @@ async function serveStatic(request, response, pathname) {
     throw new RequestError(404, 'Page not found.');
   }
 
-  let data;
+  const filePath = fileURLToPath(new URL(`.${path}`, import.meta.url));
+  let fileStat;
   try {
-    data = await readFile(new URL(`.${path}`, import.meta.url));
+    fileStat = await stat(filePath);
   } catch (error) {
     if (error.code === 'ENOENT') throw new RequestError(404, 'Page not found.');
     throw error;
   }
+  if (!fileStat.isFile()) throw new RequestError(404, 'Page not found.');
 
+  const size = fileStat.size;
+  const etag = `"${size}-${Math.trunc(fileStat.mtimeMs)}"`;
   const headers = {
     'Content-Type': types[path.split('.').at(-1).toLowerCase()],
-    'Content-Length': data.length,
+    'Content-Length': size,
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-cache',
+    ETag: etag,
   };
   if (download || path === enchantedWoodsAlbum) {
     headers['Content-Disposition'] = `attachment; filename="${path.split('/').at(-1)}"`;
@@ -249,24 +299,30 @@ async function serveStatic(request, response, pathname) {
     headers['Accept-Ranges'] = 'bytes';
     const range = request.method === 'GET' && /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
     if (range && (range[1] || range[2])) {
-      const size = data.length;
       const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
       const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
-      if (start > end) {
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || start >= size) {
         response.writeHead(416, { 'Content-Range': `bytes */${size}`, 'Content-Length': 0 });
         response.end();
         return;
       }
-      data = data.subarray(start, end + 1);
       headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
-      headers['Content-Length'] = data.length;
-      response.writeHead(206, headers);
-      response.end(data);
+      headers['Content-Length'] = end - start + 1;
+      await streamFile(filePath, response, 206, headers, { start, end });
       return;
     }
   }
-  response.writeHead(200, headers);
-  response.end(request.method === 'HEAD' ? undefined : data);
+  if (request.headers['if-none-match'] === etag) {
+    response.writeHead(304, { ETag: etag, 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
+    response.end();
+    return;
+  }
+  if (request.method === 'HEAD') {
+    response.writeHead(200, headers);
+    response.end();
+    return;
+  }
+  await streamFile(filePath, response, 200, headers);
 }
 
 export function createGameServer() {
@@ -291,9 +347,7 @@ export function createGameServer() {
         if (critterId !== null) validateCritter(critterId);
 
         const now = Date.now();
-        for (const [code, room] of rooms) {
-          if (isExpired(room, now)) rooms.delete(code);
-        }
+        pruneExpiredRooms(rooms, now);
         if (publicMatch) {
           const waitingRoom = [...rooms.values()].find(isWaitingForPublicMatch);
           if (waitingRoom) {
@@ -349,7 +403,13 @@ export function createGameServer() {
       } else if (seat === 0 && isWaitingForPublicMatch(room)) {
         room.updatedAt = now;
       }
-      sendJson(response, 200, snapshot(room, seat));
+      const etag = `"${room.code}:${room.revision}"`;
+      if (request.method === 'GET' && request.headers['if-none-match'] === etag) {
+        response.writeHead(304, { ETag: etag, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+        response.end();
+        return;
+      }
+      sendJson(response, 200, snapshot(room, seat), { ETag: etag });
     } catch (error) {
       if (response.destroyed) return;
       if (error instanceof RequestError) {

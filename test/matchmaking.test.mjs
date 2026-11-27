@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { Readable } from 'node:stream';
+import { PassThrough, Readable } from 'node:stream';
 import test from 'node:test';
 
 import { createGameServer } from '../server.mjs';
@@ -7,19 +7,31 @@ import { createGameServer } from '../server.mjs';
 function createClient() {
   // Exercise the HTTP handler without opening a socket during node --test.
   const [handleRequest] = createGameServer().listeners('request');
-  return async (path, { body, token } = {}) => {
-    const request = Readable.from(body === undefined ? [] : [Buffer.from(JSON.stringify(body))]);
+  return async (path, { body, rawBody, token, method, headers = {} } = {}) => {
+    const payload = rawBody ?? (body === undefined ? undefined : Buffer.from(JSON.stringify(body)));
+    const request = Readable.from(payload === undefined ? [] : [payload]);
     request.url = path;
-    request.method = body === undefined ? 'GET' : 'POST';
-    request.headers = {};
-    if (body !== undefined) request.headers['content-type'] = 'application/json';
+    request.method = method ?? (payload === undefined ? 'GET' : 'POST');
+    request.headers = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
+    if (payload !== undefined && !request.headers['content-type']) request.headers['content-type'] = 'application/json';
     if (token) request.headers.authorization = `Bearer ${token}`;
 
-    const received = {};
-    await handleRequest(request, {
-      writeHead(status) { received.status = status; },
-      end(data) { received.body = JSON.parse(data); },
-    });
+    const chunks = [];
+    const response = new PassThrough();
+    const received = { headers: {} };
+    response.headersSent = false;
+    response.writeHead = (status, responseHeaders = {}) => {
+      received.status = status;
+      received.headers = Object.fromEntries(Object.entries(responseHeaders).map(([k, v]) => [k.toLowerCase(), v]));
+      response.headersSent = true;
+      return response;
+    };
+    response.on('data', (chunk) => chunks.push(chunk));
+    await handleRequest(request, response);
+    received.raw = Buffer.concat(chunks);
+    if (received.headers['content-type']?.startsWith('application/json') && received.raw.length > 0) {
+      received.body = JSON.parse(received.raw.toString('utf8'));
+    }
     return received;
   };
 }
@@ -127,4 +139,91 @@ test('only authenticated host polls extend the short public waiting lifetime', a
 
   now += 45000;
   assert.equal((await readRoom(request, waiting)).status, 200);
+});
+
+test('recovery checkpoints honor the room inactivity window, capacity pruning, and active-room conflicts', async (t) => {
+  process.env.ROOM_RECOVERY_SECRET = 'test-only-signing-key-never-use-in-production';
+  let now = 1_000_000;
+  t.mock.method(Date, 'now', () => now);
+  const original = createClient();
+  const host = (await original('/api/rooms', { body: {} })).body;
+  const queue = (await enterQueue(original)).body;
+  const recover = (request, room) => request('/api/rooms/recover', { body: { recoveryCode: room.recoveryCode } });
+
+  assert.equal((await recover(original, host)).status, 409);
+  now += 44_999;
+  assert.equal((await recover(createClient(), queue)).status, 200);
+  now += 1;
+  assert.equal((await recover(createClient(), queue)).status, 410);
+
+  now = 1_000_000 + 6 * 60 * 60 * 1000 - 1;
+  const beforeExpiry = await recover(createClient(), host);
+  assert.equal(beforeExpiry.status, 200);
+  assert.equal(beforeExpiry.body.code, host.code);
+  assert.equal(beforeExpiry.body.revision, host.revision);
+  now += 1;
+  assert.equal((await recover(createClient(), host)).status, 410);
+
+  // Fill another server instance to room capacity, expire those rooms, and verify recovery prunes them first.
+  const fullServer = createClient();
+  let latestNow = 10_000_000;
+  now = latestNow;
+  for (let i = 0; i < 300; i += 1) {
+    const created = await fullServer('/api/rooms', { body: {} });
+    assert.equal(created.status, 201);
+  }
+  now = latestNow + 6 * 60 * 60 * 1000;
+  const freshSource = await createClient()('/api/rooms', { body: {} });
+  const prunedRecovery = await fullServer('/api/rooms/recover', { body: { recoveryCode: freshSource.body.recoveryCode } });
+  assert.equal(prunedRecovery.status, 200);
+});
+
+test('room polling supports ETag 304 and rejects oversized JSON bodies early', async () => {
+  const request = createClient();
+  const host = await request('/api/rooms', { body: {} });
+  assert.equal(host.status, 201);
+  const poll = await request(roomPath(host.body), { token: host.body.token });
+  assert.equal(poll.status, 200);
+  assert.ok(poll.headers.etag);
+
+  const unchanged = await request(roomPath(host.body), {
+    token: host.body.token,
+    headers: { 'if-none-match': poll.headers.etag },
+  });
+  assert.equal(unchanged.status, 304);
+  assert.equal(unchanged.raw.length, 0);
+
+  const joined = await request(`${roomPath(host.body)}/join`, { body: {} });
+  assert.equal(joined.status, 200);
+  const updated = await request(roomPath(host.body), {
+    token: host.body.token,
+    headers: { 'if-none-match': poll.headers.etag },
+  });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.revision, joined.body.revision);
+
+  const oversized = await request('/api/rooms', { rawBody: Buffer.alloc(65537, 'a') });
+  assert.equal(oversized.status, 413);
+});
+
+test('static files stream with ETag 304, byte ranges, and path allowlisting', async () => {
+  const request = createClient();
+  const dataJs = await request('/data.mjs');
+  assert.equal(dataJs.status, 200);
+  assert.ok(dataJs.headers.etag);
+  assert.ok(dataJs.raw.toString('utf8').includes('COUSINS'));
+
+  const notModified = await request('/data.mjs', { headers: { 'if-none-match': dataJs.headers.etag } });
+  assert.equal(notModified.status, 304);
+
+  const partial = await request('/assets/footsteps-under-black-pines.mp3', { headers: { range: 'bytes=0-15' } });
+  assert.equal(partial.status, 206);
+  assert.equal(partial.raw.length, 16);
+  assert.match(partial.headers['content-range'], /^bytes 0-15\/\d+$/);
+
+  const badRange = await request('/assets/footsteps-under-black-pines.mp3', { headers: { range: 'bytes=999999999-' } });
+  assert.equal(badRange.status, 416);
+
+  const blocked = await request('/server.mjs');
+  assert.equal(blocked.status, 404);
 });

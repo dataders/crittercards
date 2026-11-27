@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { ACTS, CAMPS, CARDS, CRITTERS, LEVELS_PER_ACT, MERCHANTS, TRAIL, applyAction, createRun, getEncounter, matchup, trailPosition } from '../game.mjs';
+import { ACTS, CAMPS, CARDS, CRITTERS, LEVELS_PER_ACT, MERCHANTS, TRAIL, applyAction, createRun, getEncounter, matchup, trailPosition, validateSavedRun } from '../game.mjs';
 
 function replay({ critters, seed, decks, companions }, actions) {
   let state = createRun(critters, seed, decks, companions);
@@ -472,4 +472,55 @@ test('Briar Ward halves piercing attacks, drops with the healer, and lets Poison
   const nextRound = applyAction(poisoned, { type: 'endTurn', player: 0 });
   assert.equal(nextRound.enemies[patient].hp, 0);
   assert.ok(nextRound.enemies[healer].hp > 0);
+});
+
+test('X-cost retargeting onto the Floodgate surger counts toward surge recoil', () => {
+  const run = createRun(['fox'], 23);
+  run.encounter = 24;
+  const battle = applyAction(run, { type: 'route', player: 0, routeId: 'trial' });
+  const surger = battle.enemies.findIndex(({ intent }) => intent.type === 'openingSurge');
+  const bracing = 1 - surger;
+  battle.players[0].hand = ['jab', 'flurry'];
+  battle.enemies[bracing].block = 0;
+  battle.enemies[bracing].hp = 1;
+  const first = applyAction(battle, { type: 'play', player: 0, cardIndex: 0, target: surger });
+  const before = first.enemies[surger].hp;
+  const finished = applyAction(first, { type: 'play', player: 0, cardIndex: 0, target: bracing });
+  assert.equal(finished.enemies[bracing].hp, 0);
+  assert.ok(finished.enemies[surger].hp <= before - Math.ceil(finished.enemies[surger].maxHp * 0.35));
+  assert.ok(finished.log.some((entry) => entry.startsWith('Surge recoil costs')));
+});
+
+test('validateSavedRun accepts valid saves across phases and rejects malformed data', () => {
+  const wrap = (state) => ({ version: 1, state });
+  const route = createRun(['quinn'], 12, undefined, ['hare']);
+  assert.equal(validateSavedRun(wrap(route)), true);
+
+  const combat = applyAction(route, { type: 'route', player: 0, routeId: 'steady' });
+  assert.equal(validateSavedRun(wrap(combat)), true);
+
+  const shopRun = createRun(['fox', 'hare'], 12);
+  shopRun.encounter = 3;
+  const shop = applyAction(shopRun, { type: 'route', player: 0, routeId: 'merchant' });
+  assert.equal(validateSavedRun(wrap(shop)), true);
+
+  const campRun = createRun(['fox', 'hare'], 12);
+  campRun.encounter = 2;
+  const camp = applyAction(campRun, { type: 'route', player: 0, routeId: 'camp' });
+  assert.equal(validateSavedRun(wrap(camp)), true);
+
+  combat.players[0].hand = ['jab', 'jab'];
+  for (const enemy of combat.enemies) enemy.hp = 1;
+  const reward = applyAction(applyAction(combat, { type: 'play', player: 0, cardIndex: 0, target: 0 }), { type: 'play', player: 0, cardIndex: 0, target: 1 });
+  assert.equal(validateSavedRun(wrap(reward)), true);
+
+  assert.equal(validateSavedRun(null), false);
+  assert.equal(validateSavedRun({ version: 2, state: route }), false);
+  assert.equal(validateSavedRun(wrap({ ...route, encounter: 99 })), false);
+  assert.equal(validateSavedRun(wrap({ ...route, players: [{ ...route.players[0], critterId: 'unknown' }] })), false);
+  assert.equal(validateSavedRun(wrap({ ...route, players: [{ ...route.players[0], deck: ['missingCard'] }] })), false);
+  assert.equal(validateSavedRun(wrap({ ...combat, enemies: [] })), false);
+  assert.equal(validateSavedRun(wrap({ ...combat, activePlayer: 2 })), false);
+  assert.equal(validateSavedRun(wrap({ ...reward, rewardPicks: [{}] })), false);
+  assert.equal(validateSavedRun(wrap({ ...camp, campChoices: [] })), false);
 });

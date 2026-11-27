@@ -4,10 +4,11 @@ export function isTerminalRoomError(error) {
   return [403, 404, 410].includes(error.status);
 }
 
-async function request(path, { method = 'GET', token, data } = {}) {
+async function request(path, { method = 'GET', token, data, etag } = {}) {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   if (data !== undefined) headers['Content-Type'] = 'application/json';
+  if (etag) headers['If-None-Match'] = etag;
 
   const response = await fetch(path, {
     method,
@@ -15,6 +16,7 @@ async function request(path, { method = 'GET', token, data } = {}) {
     body: data === undefined ? undefined : JSON.stringify(data),
     signal: AbortSignal.timeout(10000),
   });
+  if (response.status === 304) return null;
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload) {
     const error = new Error(payload?.message ?? 'The room server is unavailable.');
@@ -60,7 +62,7 @@ function connect(data) {
       async function poll() {
         let snapshot;
         try {
-          snapshot = await request(path, { token });
+          snapshot = await request(path, { token, etag: `"${latest.code}:${latest.revision}"` });
         } catch (error) {
           if (stopped) return;
           if (lastError !== error.message) onError?.(error);
@@ -69,14 +71,15 @@ function connect(data) {
             stop();
             return;
           }
+          if (!stopped) timer = setTimeout(poll, pollDelay);
+          return;
         }
 
         if (stopped) return;
-        if (snapshot) {
-          const recovered = Boolean(lastError);
-          lastError = undefined;
-          accept(snapshot, recovered);
-        }
+        const recovered = Boolean(lastError);
+        lastError = undefined;
+        if (snapshot) accept(snapshot, recovered);
+        else if (recovered) accept(latest, true);
         if (!stopped) timer = setTimeout(poll, pollDelay);
       }
 
