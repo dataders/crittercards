@@ -196,6 +196,8 @@ const ui = {
 let attackDrag;
 let aimedMove;
 let suppressDragClick = false;
+let presentedBattle;
+let lastCardPlay;
 
 function unlockRecruits(state) {
   if (!state) return;
@@ -458,12 +460,12 @@ function enemyCard(enemy, index, state) {
       ${alive ? '<span class="rival-aim-label" aria-hidden="true"></span>' : '<span class="target-label">Defeated</span>'}
       <strong class="unit-name">${escape(enemy.name)}</strong>
       <span class="combat-label">${escape(TYPES[CRITTERS[enemy.animal].type].name)} · ${bondTarget ? 'Bond Strike ready' : enemy.marked ? 'Marked' : enemy.boss ? (state.encounter === TRAIL.length - 1 ? 'Final boss' : 'Act boss') : 'Rival creature'}</span>
-      ${health(enemy)}
+      <span class="rival-vitals">${health(enemy)}</span>
+      ${alive && enemy.intent ? `<span class="intent rival-intent" data-intent="${escape(enemy.intent.type)}"><strong>Next move</strong><span>${escape(intentLabel(enemy.intent, enemy, state))}</span></span>` : ''}
       ${effects(enemy)}
       ${alive ? `<span class="type-matchup">Your attacks · ${effectiveness}</span>
         ${healer ? `<span class="type-matchup">Briar Ward from ${escape(healer.name)} · half attack damage</span>` : ''}
-        ${enemy.poison >= enemy.hp ? '<span class="type-matchup">Poison is lethal at current HP</span>' : ''}
-        <span class="intent"><strong>Next move</strong> · ${escape(intentLabel(enemy.intent, enemy, state))}</span>` : ''}
+        ${enemy.poison >= enemy.hp ? '<span class="type-matchup">Poison is lethal at current HP</span>' : ''}` : ''}
     </span>
   </button>`;
 }
@@ -619,6 +621,12 @@ function actionCard(state, seat, cardId, index, enabled, draft = false) {
   </button>`;
 }
 
+function combatPile(kind, label, count) {
+  return `<div class="combat-pile" role="group" data-pile="${kind}" aria-label="${label} pile, ${count} cards">
+    <span class="pile-stack" aria-hidden="true">${count}</span><span>${label}</span>
+  </div>`;
+}
+
 function combat(state) {
   const seat = state.activePlayer;
   const player = state.players[seat];
@@ -640,7 +648,7 @@ function combat(state) {
       <details class="combat-info"><summary class="button button-ghost">Battle info</summary>
         <div class="combat-info-panel">
           ${progress(state)}${purse(state)}
-          <div class="compact-card-text"><h2>Cards in hand</h2><ul>${[...new Set(player.hand)].map((id) => `<li><strong>${escape(CARDS[id].name)}</strong> · ${escape(getCardDescription(state, seat, id))}</li>`).join('')}</ul><p class="hand-counts">${player.drawPile.length} draw · ${player.discardPile.length} discard</p></div>
+          <div class="compact-card-text"><h2>Cards in hand</h2><ul>${[...new Set(player.hand)].map((id) => `<li><strong>${escape(CARDS[id].name)}</strong> · ${escape(getCardDescription(state, seat, id))}</li>`).join('')}</ul></div>
           <h2>Your team</h2><div class="combat-row">${state.players.map((unit, index) => allyCard(unit, index, state)).join('')}</div>
           ${state.players.filter((unit) => unit.companionId).map((unit) => `<div class="companion-battle">${art(unit.companionId, 'companion-art')}<span><strong>${escape(CRITTERS[unit.companionId].name)} · ${escape(COMPANION_ABILITIES[unit.companionId].name)}</strong><br>${escape(TYPES[CRITTERS[unit.companionId].type].name)} type · ${escape(getCompanionDescription(unit.companionId, unit.attackBonus + unit.strength))}</span></div>`).join('')}
           ${other?.hp > 0 && other.hand.length ? `<p class="secondary-hand"><strong>${escape(CRITTERS[other.critterId].name)}’s hand</strong> · ${other.hand.map((id) => escape(CARDS[id].name)).join(', ')}</p>` : ''}
@@ -666,10 +674,14 @@ function combat(state) {
           ${button('End turn', 'end', { style: 'primary', disabled: !enabled, data: `data-seat="${seat}" title="${escape(next)}"` })}
         </div>
         <div class="hud-instructions"><p class="turn-instructions" id="attack-instructions">${!canAct ? 'You can look at the rivals while you wait.' : [canAim && 'Drag a targeted move onto a rival, or tap it to aim.', canTap && 'Tap untargeted moves. You can also drag Block cards onto your familiar.'].filter(Boolean).join(' ') || 'End your turn when you’re ready.'}</p>${button('Cancel aim', 'cancel-aim', { data: 'hidden' })}</div>
-        <div class="hand-grid combat-hand" aria-label="Hand">${player.hand.map((id, index) => actionCard(state, seat, id, index, enabled && canAffordCard(CARDS[id], player.energy))).join('') || '<p class="muted">No cards left in hand.</p>'}</div>
+        <div class="card-table">
+          ${combatPile('draw', 'Draw', player.drawPile.length)}
+          <div class="hand-grid combat-hand" aria-label="Hand">${player.hand.map((id, index) => actionCard(state, seat, id, index, enabled && canAffordCard(CARDS[id], player.energy))).join('') || '<p class="muted">No cards left in hand.</p>'}</div>
+          ${combatPile('discard', 'Discard', player.discardPile.length)}
+        </div>
         <div class="turn-actions combat-actions">
           ${companion ? button(`${escape(companion.name)} · ${player.companionUsed ? 'Used' : 'Free companion move'}`, 'companion-strike', { disabled: !enabled || !companionReady, data: `data-seat="${seat}" data-aim="${escape(companion.name)}" aria-pressed="false" aria-describedby="attack-instructions"` }) : ''}
-          <span class="hand-counts">${player.drawPile.length} draw · ${player.discardPile.length} discard · ${escape(TYPES[CRITTERS[player.critterId].type].name)}</span>
+          <span class="hand-counts">${escape(TYPES[CRITTERS[player.critterId].type].name)} type</span>
         </div>
         <div class="turn-actions">${state.players.map((member, index) => button(`View ${escape(CRITTERS[member.critterId].name)}’s deck (${member.deck.length})`, 'view-battle-deck', { data: `data-seat="${index}"` })).join('')} </div>
     </section>
@@ -740,6 +752,99 @@ function conclusion(state) {
   </section>`;
 }
 
+function visibleHandCards() {
+  const hand = game.querySelector('.combat-hand');
+  if (!hand) return [];
+  const bounds = hand.getBoundingClientRect();
+  return [...hand.querySelectorAll('.play-card')].flatMap((card) => {
+    const rect = card.getBoundingClientRect();
+    const center = rect.left + rect.width / 2;
+    return center >= bounds.left && center <= bounds.right ? [{ card, rect }] : [];
+  });
+}
+
+function pileRect(kind) {
+  return game.querySelector(`[data-pile="${kind}"] .pile-stack`)?.getBoundingClientRect();
+}
+
+function combatMotion(before, after) {
+  if (after?.phase !== 'combat' || before === after || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const sameFight = before?.phase === 'combat' && before.runId === after.runId && before.encounter === after.encounter;
+  const sameTurn = sameFight && before.round === after.round && before.activePlayer === after.activePlayer;
+  const outgoing = [];
+  if (sameFight) {
+    const seat = before.activePlayer;
+    const oldPlayer = before.players[seat];
+    const newPlayer = after.players[seat];
+    if (sameTurn && oldPlayer.hand.length === newPlayer.hand.length) return;
+    const candidate = lastCardPlay?.state === before ? lastCardPlay.index : -1;
+    const playedIndex = candidate >= 0 && oldPlayer.hand.length === newPlayer.hand.length + 1 &&
+      newPlayer.hand.every((id, index) => id === oldPlayer.hand[index + Number(index >= candidate)]) ? candidate : -1;
+    let retained = 0;
+    const removed = oldPlayer.hand.map((id, index) => {
+      if (!sameTurn) return true;
+      if (index !== playedIndex && id === newPlayer.hand[retained]) {
+        retained++;
+        return false;
+      }
+      return true;
+    });
+    if (removed.some(Boolean)) {
+      const copiesInPiles = (player, id) => [...player.hand, ...player.drawPile, ...player.discardPile].filter((cardId) => cardId === id).length;
+      for (const { card, rect } of visibleHandCards()) {
+        const index = Number(card.dataset.index);
+        if (!removed[index]) continue;
+        const id = oldPlayer.hand[index];
+        const spent = CARDS[id].exhaust && copiesInPiles(newPlayer, id) < copiesInPiles(oldPlayer, id);
+        outgoing.push({ rect, title: CARDS[id].name, spent });
+      }
+    }
+  }
+  const arriving = !sameTurn;
+  if (!arriving && !outgoing.length) return;
+  const prior = sameFight ? before.players[after.activePlayer] : null;
+  const next = after.players[after.activePlayer];
+  const recycle = prior && after.round > before.round && !next.discardPile.length &&
+    prior.drawPile.length < next.hand.length &&
+    (prior.discardPile.length || (before.activePlayer === after.activePlayer && prior.hand.length));
+  return { outgoing, arriving, recycle };
+}
+
+function flyCard(from, to, kind, title = '', delay = 0) {
+  if (!from || !to) return;
+  const card = document.createElement('div');
+  card.className = `card-flight card-flight-${kind}`;
+  card.setAttribute('aria-hidden', 'true');
+  card.textContent = title;
+  card.style.left = `${from.left + from.width / 2}px`;
+  card.style.top = `${from.top + from.height / 2}px`;
+  document.body.append(card);
+  const x = to.left + to.width / 2 - from.left - from.width / 2;
+  const y = to.top + to.height / 2 - from.top - from.height / 2;
+  const animation = card.animate([
+    { transform: 'translate(-50%, -50%) scale(.72)', opacity: 0 },
+    { opacity: .95, offset: .22 },
+    { transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px)) scale(${kind === 'draw' ? 1.08 : .58})`, opacity: 0 },
+  ], { duration: 265, delay, easing: 'ease-in-out', fill: 'backwards' });
+  animation.finished.then(() => card.remove(), () => card.remove());
+}
+
+function animateCombatMotion(motion) {
+  const draw = pileRect('draw');
+  const discard = pileRect('discard');
+  motion.outgoing.forEach(({ rect, title, spent }, index) => flyCard(rect, spent ? rect : discard, 'discard', title, index * 22));
+  const transferDelay = motion.outgoing.length ? 120 : 0;
+  if (motion.recycle) flyCard(discard, draw, 'recycle', '', transferDelay);
+  if (motion.arriving) {
+    const drawDelay = transferDelay + (motion.recycle ? 150 : 0);
+    visibleHandCards().forEach(({ card, rect }, index) => {
+      const delay = drawDelay + index * 34;
+      flyCard(draw, rect, 'draw', '', delay);
+      card.animate([{ opacity: .28 }, { opacity: 1 }], { duration: 200, delay: delay + 105, fill: 'backwards' });
+    });
+  }
+}
+
 function render() {
   clearAttackDrag();
   setAimedMove();
@@ -753,6 +858,9 @@ function render() {
   const focusInCollection = previous?.closest('.creature-library');
   const focus = previous?.dataset.do ? ['do', 'seat', 'id', 'index'].map((key) => previous.dataset[key]) : null;
   const state = ui.room ? ui.room.state : ui.run;
+  const motion = combatMotion(presentedBattle, state);
+  if (presentedBattle !== state) lastCardPlay = undefined;
+  presentedBattle = state?.phase === 'combat' ? state : undefined;
   const battleArea = state?.phase === 'combat' ? areaScenes[trailPosition(state.encounter).actIndex]?.id : null;
   if (battleArea) document.body.dataset.battleArea = battleArea;
   else delete document.body.dataset.battleArea;
@@ -781,6 +889,7 @@ function render() {
       ['do', 'seat', 'id', 'index'].every((key, i) => node.dataset[key] === focus[i]));
     equivalent?.focus({ preventScroll: true });
   }
+  if (motion) animateCombatMotion(motion);
 }
 
 function acceptState(state, previous) {
@@ -853,6 +962,7 @@ async function runRemote(operation) {
 }
 
 function dispatch(action) {
+  if (action.type === 'play') lastCardPlay = { state: ui.room ? ui.room.state : ui.run, index: action.cardIndex };
   if (ui.room) {
     const room = ui.room;
     return runRemote(() => room.act(action));
