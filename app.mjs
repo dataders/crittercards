@@ -273,11 +273,6 @@ function roster(seat, picks, enabled, companions) {
       <div class="critter-grid cousin-roster">
         ${Object.values(COUSINS).map((critter) => rosterCard(critter, seat, picks, enabled)).join('')}
       </div>
-      <h3>Woodland familiars</h3>
-      <div class="roster-filters" aria-label="Filter creatures">
-        ${[['all', 'All creatures'], ['owned', 'Recruited'], ['locked', 'Unrecruited']].map(([id, label]) =>
-          button(label, 'filter', { data: `data-id="${id}" aria-pressed="${ui.filter === id}"` })).join('')}
-      </div>
       ${cousin ? `<section class="companion-picker" aria-label="Animal companion">
         <div class="section-heading"><h2>Choose ${escape(CRITTERS[picks[seat]].name)}’s animal</h2><span class="muted">Companion</span></div>
         <p>Choose a recruited animal here or from the woodland familiars below. Its special ability is free once per turn.</p>
@@ -286,6 +281,11 @@ function roster(seat, picks, enabled, companions) {
         </select></label>
         ${companions[seat] ? `<div class="companion-preview">${art(companions[seat], 'companion-art')}<span><strong>${escape(CRITTERS[companions[seat]].name)} · ${escape(COMPANION_ABILITIES[companions[seat]].name)}</strong><br>${escape(TYPES[CRITTERS[companions[seat]].type].name)} type · free once per turn<br>${escape(getCompanionDescription(companions[seat]))}</span></div>` : ''}
       </section>` : ''}
+      <h3>Woodland familiars</h3>
+      <div class="roster-filters" aria-label="Filter creatures">
+        ${[['all', 'All creatures'], ['owned', 'Recruited'], ['locked', 'Unrecruited']].map(([id, label]) =>
+          button(label, 'filter', { data: `data-id="${id}" aria-pressed="${ui.filter === id}"` })).join('')}
+      </div>
       <div class="critter-grid" aria-label="Creature collection">
         ${creatures.map((critter) => cousin ? `<div class="familiar-option">${rosterCard(critter, seat, picks, enabled)}${button(companions[seat] === critter.id ? '✓ Companion selected' : 'Choose as companion', 'pick-companion', { disabled: !enabled || !collection.has(critter.id), data: `data-seat="${seat}" data-id="${escape(critter.id)}" aria-label="Choose ${escape(critter.name)} as companion" aria-pressed="${companions[seat] === critter.id}"` })}</div>` : rosterCard(critter, seat, picks, enabled)).join('') || '<p class="muted">No creatures in this view.</p>'}
       </div>

@@ -173,8 +173,6 @@ img.hero-art { mask-image: linear-gradient(90deg, transparent, #000 24%); }
 .critter-grid:has(> :nth-child(5)) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .cousin-roster { margin-bottom: 1.5rem; }
 .cousin-roster .critter-art img { object-position: center 20%; }
-.critter-card { flex: 1; }
-.familiar-option .button[aria-pressed='true'] { border-color: var(--lime); color: var(--lime); }
 .critter-card {
   position: relative;
   display: flex;
@@ -192,7 +190,9 @@ img.hero-art { mask-image: linear-gradient(90deg, transparent, #000 24%); }
   transition: border-color .16s ease, transform .16s ease, box-shadow .16s ease;
 }
 .familiar-option { display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
-.familiar-option button.critter-card:hover:not(:disabled), .critter-card[aria-pressed='true'], .critter-card.is-selected {
+.familiar-option .critter-card { flex: 1; }
+.familiar-option .button[aria-pressed='true'] { border-color: var(--lime); color: var(--lime); }
+button.critter-card:hover:not(:disabled), .critter-card[aria-pressed='true'], .critter-card.is-selected {
   transform: translateY(-3px);
   border-color: var(--lime);
   box-shadow: 0 0 0 2px var(--lime), 0 .55rem 1.2rem #07110b70;
