@@ -173,6 +173,9 @@ img.hero-art { mask-image: linear-gradient(90deg, transparent, #000 24%); }
   text-align: left;
   box-shadow: 0 .45rem .9rem #07110b45;
   transition: border-color .16s ease, transform .16s ease, box-shadow .16s ease;
+.familiar-option { display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
+.familiar-option .critter-card { flex: 1; }
+.familiar-option .button[aria-pressed='true'] { border-color: var(--lime); color: var(--lime); }
 }
 button.critter-card:hover:not(:disabled), .critter-card[aria-pressed='true'], .critter-card.is-selected {
   transform: translateY(-3px);

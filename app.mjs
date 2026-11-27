@@ -256,7 +256,7 @@ function rosterCard(critter, seat, picks, enabled) {
   </button>`;
 }
 
-function roster(seat, picks, enabled) {
+function roster(seat, picks, enabled, companions) {
   const creatures = Object.values(CRITTERS).filter(({ id, animal }) =>
     animal && (ui.filter === 'all' || collection.has(id) === (ui.filter === 'owned')));
   return `
@@ -264,6 +264,7 @@ function roster(seat, picks, enabled) {
       <div class="section-heading"><h2>${playerName(seat)}</h2><span class="muted">${enabled ? 'Choose a character' : picks[seat] ? 'Character chosen' : 'Waiting to choose'}</span></div>
       <p class="type-key">Type strengths · Ember beats Grove · Grove beats Tide · Tide beats Stone · Stone beats Ember</p>
       <h3>The four cousins</h3>
+  const cousin = Object.hasOwn(COUSINS, picks[seat] ?? '');
       <div class="critter-grid cousin-roster">
         ${Object.values(COUSINS).map((critter) => rosterCard(critter, seat, picks, enabled)).join('')}
       </div>
@@ -272,8 +273,16 @@ function roster(seat, picks, enabled) {
         ${[['all', 'All creatures'], ['owned', 'Recruited'], ['locked', 'Unrecruited']].map(([id, label]) =>
           button(label, 'filter', { data: `data-id="${id}" aria-pressed="${ui.filter === id}"` })).join('')}
       </div>
+      ${cousin ? `<section class="companion-picker" aria-label="Animal companion">
+        <div class="section-heading"><h2>Choose ${escape(CRITTERS[picks[seat]].name)}’s animal</h2><span class="muted">Companion</span></div>
+        <p>Choose a recruited animal here or from the woodland familiars below. Its special ability is free once per turn.</p>
+        <label class="field">Animal companion<select data-companion-seat="${seat}" ${!enabled ? 'disabled' : ''}><option value="" disabled ${companions[seat] ? '' : 'selected'}>Choose an animal</option>
+          ${Object.values(CRITTERS).filter((animal) => animal.animal && (collection.has(animal.id) || companions[seat] === animal.id)).map((animal) => `<option value="${animal.id}" ${companions[seat] === animal.id ? 'selected' : ''}>${escape(animal.name)} · ${escape(TYPES[animal.type].name)} · ${escape(COMPANION_ABILITIES[animal.id].name)}</option>`).join('')}
+        </select></label>
+        ${companions[seat] ? `<div class="companion-preview">${art(companions[seat], 'companion-art')}<span><strong>${escape(CRITTERS[companions[seat]].name)} · ${escape(COMPANION_ABILITIES[companions[seat]].name)}</strong><br>${escape(TYPES[CRITTERS[companions[seat]].type].name)} type · free once per turn<br>${escape(getCompanionDescription(companions[seat]))}</span></div>` : ''}
+      </section>` : ''}
       <div class="critter-grid" aria-label="Creature collection">
-        ${creatures.map((critter) => rosterCard(critter, seat, picks, enabled)).join('') || '<p class="muted">No creatures in this view.</p>'}
+        ${creatures.map((critter) => cousin ? `<div class="familiar-option">${rosterCard(critter, seat, picks, enabled)}${button(companions[seat] === critter.id ? '✓ Companion selected' : 'Choose as companion', 'pick-companion', { disabled: !enabled || !collection.has(critter.id), data: `data-seat="${seat}" data-id="${escape(critter.id)}" aria-label="Choose ${escape(critter.name)} as companion" aria-pressed="${companions[seat] === critter.id}"` })}</div>` : rosterCard(critter, seat, picks, enabled)).join('') || '<p class="muted">No creatures in this view.</p>'}
       </div>
     </section>`;
 }
@@ -350,15 +359,7 @@ function lobby() {
         ${room || ui.mode === 'solo' ? '' : `<div class="seat-picker" aria-label="Choose whose character to edit">${[0, 1].map((seat) => button(
           `${playerName(seat)} · ${escape(CRITTERS[picks[seat]]?.name ?? 'Choose character')}`, 'seat', { data: `data-seat="${seat}" aria-pressed="${ui.pickSeat === seat}"` }
         )).join('')}</div>`}
-        ${roster(seat, picks, !ui.pending)}
-        ${Object.hasOwn(COUSINS, picks[seat] ?? '') ? `<section class="companion-picker" aria-label="Animal companion">
-          <div class="section-heading"><h2>Choose ${escape(CRITTERS[picks[seat]].name)}’s animal</h2><span class="muted">Companion</span></div>
-          <p>Bring a recruited animal. Once per turn, it can use its special ability for free. Its attack uses its own type and benefits from your attack bonuses. In solo play, ally effects help you.</p>
-          <label class="field">Animal companion<select data-companion-seat="${seat}" ${ui.pending ? 'disabled' : ''}><option value="" disabled ${companions[seat] ? '' : 'selected'}>Choose an animal</option>
-            ${Object.values(CRITTERS).filter((animal) => animal.animal && (collection.has(animal.id) || companions[seat] === animal.id)).map((animal) => `<option value="${animal.id}" ${companions[seat] === animal.id ? 'selected' : ''}>${escape(animal.name)} · ${escape(TYPES[animal.type].name)} · ${escape(COMPANION_ABILITIES[animal.id].name)}</option>`).join('')}
-          </select></label>
-          ${companions[seat] ? `<div class="companion-preview">${art(companions[seat], 'companion-art')}<span><strong>${escape(CRITTERS[companions[seat]].name)} · ${escape(COMPANION_ABILITIES[companions[seat]].name)}</strong><br>${escape(TYPES[CRITTERS[companions[seat]].type].name)} type · free once per turn<br>${escape(getCompanionDescription(companions[seat]))}</span></div>` : ''}
-        </section>` : ''}
+        ${roster(seat, picks, !ui.pending, companions)}
         ${deckBuilder(seat, picks[seat], room)}
         <div class="turn-actions">
           ${!room && ui.mode !== 'solo' && !picks[1 - seat] ? button(`Choose for ${playerName(1 - seat)}`, 'seat', { data: `data-seat="${1 - seat}"` }) : ''}
@@ -1107,6 +1108,10 @@ document.addEventListener('click', async (event) => {
   if (action === 'leave-shop') return dispatch({ type: 'leaveShop', player: 0 });
   if (action === 'end') return dispatch({ type: 'endTurn', player: seat });
   if (action === 'perk') ui.perks[seat] = id;
+  if (action === 'pick-companion') {
+    if (ui.room) return dispatch({ type: 'companion', companionId: id });
+    ui.companions[seat] = id;
+  }
   if (action === 'hard-perk') ui.hardPerks[seat] = id;
   if (action === 'draft-pick') ui.drafts[seat] = id;
   if (action === 'draft') return dispatch({
