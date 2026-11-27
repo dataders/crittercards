@@ -55,13 +55,7 @@ Run `node --test` from the repository root. The tests drive game actions directl
 
 ## Roadmap
 
-The 60-level campaign includes optional trials and deck removal at camp. Shared-screen save/resume and recruitment status filters are playable. Seeded engine replays cover solo Act I and a full co-op clear. A two-client loopback check covers room setup, turn handoff, stale actions, and guest seat recovery.
-
-| Milestone | Gameplay | Visual design | Engineering |
-| --- | --- | --- | --- |
-| First playtest | Watch two players share a screen. Note whether they coordinate without prompting, which trials they choose, and when they trade healing for deck changes. Record wins and run time by pair. | Check whether both players can read whose turn it is, what rival creatures intend to do, and what unlocks next. | Repeat the room flow across two devices. Check recovery after a brief connection loss and give players a way back to setup when a room expires. |
-| Collection update | Add recruitment choices tied to animals met on the trail. Give a few favorites distinct level paths and try a draft choice to remove or upgrade a card. | Make recruitment and level-ups more visible with short, skippable reveals. Add a combat role filter to the collection. | Add a rematch that keeps the players' chosen characters and starting decks. |
-| Wider playtest | Add more trainer patterns and encounters before evaluating PvP. Tune creature pairings using playtest results. | Give each biome distinct arena artwork and tune combat effects for readability with reduced motion. | Persist online rooms and actions, test recovery across browsers, and put the service behind HTTPS before opening a public playtest. |
+See the [Crittercards roadmap](ROADMAP.md) for workstream ownership, milestones, issue acceptance criteria, and the local verification queue.
 
 ## Artwork
 

@@ -171,6 +171,7 @@ const ui = {
   pickSeat: 0,
   filter: 'all',
   room: null,
+  reconnect: null,
   stopWatching: null,
   run: null,
   perks: [null, null],
@@ -185,7 +186,8 @@ const ui = {
   savedRunOrigin: null,
 };
 let attackDrag;
-let keyboardAttack;
+let aimedMove;
+let suppressDragClick = false;
 
 function unlockRecruits(state) {
   if (!state) return;
@@ -436,7 +438,7 @@ function enemyCard(enemy, index, state) {
   return `<button class="unit-card rival-card ${alive ? '' : 'is-defeated'}" type="button" data-do="target" data-index="${index}" tabindex="-1" ${alive ? '' : 'disabled'}>
     ${art(enemy.animal, 'unit-art')}
     <span class="unit-info">
-      ${alive ? '' : '<span class="target-label">Defeated</span>'}
+      ${alive ? '<span class="rival-aim-label" aria-hidden="true"></span>' : '<span class="target-label">Defeated</span>'}
       <strong class="unit-name">${escape(enemy.name)}</strong>
       <span class="combat-label">${escape(TYPES[CRITTERS[enemy.animal].type].name)} · ${bondTarget ? 'Bond Strike ready' : enemy.marked ? 'Marked' : enemy.boss ? (state.encounter === TRAIL.length - 1 ? 'Final boss' : 'Act boss') : 'Rival creature'}</span>
       ${health(enemy)}
@@ -574,7 +576,8 @@ function actionCard(state, seat, cardId, index, enabled, draft = false) {
   const card = CARDS[cardId];
   const active = draft && ui.drafts[seat] === cardId;
   const energyLabel = card.cost === 'X' ? 'X energy, spends all remaining energy' : `${card.cost} energy`;
-  return `<button type="button" class="play-card card-${escape(card.type)}" data-do="${draft ? 'draft-pick' : 'play'}" data-seat="${seat}" data-id="${escape(cardId)}" data-index="${index}" ${!draft && card.target === 'enemy' ? 'data-aim aria-describedby="attack-instructions"' : ''} ${draft ? `aria-pressed="${active}"` : ''} ${enabled ? '' : 'disabled'}>
+  const aim = !draft && card.target === 'enemy' ? `data-aim="${escape(card.name)}" aria-pressed="false" aria-describedby="attack-instructions"` : '';
+  return `<button type="button" class="play-card card-${escape(card.type)}" data-do="${draft ? 'draft-pick' : 'play'}" data-seat="${seat}" data-id="${escape(cardId)}" data-index="${index}" ${aim} ${draft ? `aria-pressed="${active}"` : ''} ${enabled ? '' : 'disabled'}>
     <span class="card-cost" aria-label="${energyLabel}">${card.cost}</span>
     <span class="card-type">${active ? '✓ Selected · ' : ''}${escape(card.type)}</span>
     <strong class="card-title">${escape(card.name)}</strong>
@@ -606,18 +609,18 @@ function combat(state) {
     </section>
     ${cardReveal()}
     <section class="battlefield" aria-labelledby="rival-heading">
-      <div class="rival-heading"><h2 id="rival-heading">Rivals</h2><p>Read each rival’s next move.</p></div>
+      <div class="rival-heading"><h2 id="rival-heading">Rivals</h2><p id="aim-status" role="status">Read each rival’s next move.</p>${button('Cancel aim', 'cancel-aim', { data: 'hidden' })}</div>
       <div class="combat-row">${state.enemies.map((enemy, index) => enemyCard(enemy, index, state)).join('')}</div>
     </section>
     <div class="battle-grid">
       <section class="hand-panel" aria-labelledby="turn-heading">
         <div class="hand-heading"><h2 id="turn-heading">${escape(turnTitle)}</h2>
           <span class="turn-energy" aria-label="Energy available">${player.energy} energy</span></div>
-        <p class="turn-instructions" id="attack-instructions">${!canAct ? 'You can look at the rivals while you wait.' : [canAim && 'Drag an attack or targeted move onto a rival.', canTap && 'Tap other moves to play them.'].filter(Boolean).join(' ') || 'End your turn when you’re ready.'}</p>
+        <p class="turn-instructions" id="attack-instructions">${!canAct ? 'You can look at the rivals while you wait.' : [canAim && 'Drag a targeted move onto a rival, or select the move and then choose a rival.', canTap && 'Tap untargeted moves to play them.'].filter(Boolean).join(' ') || 'End your turn when you’re ready.'}</p>
         <div class="turn-details"><span><strong>Health</strong> · ${player.hp}/${player.maxHp}</span>${player.block ? `<span><strong>Block</strong> · ${player.block}</span>` : ''}</div>
         <div class="hand-grid">${player.hand.map((id, index) => actionCard(state, seat, id, index, enabled && canAffordCard(CARDS[id], player.energy))).join('') || '<p class="muted">No cards left in hand.</p>'}</div>
         <div class="turn-actions combat-actions">
-          ${companion ? button(`${escape(companion.name)} · ${player.companionUsed ? 'Used' : 'Free companion move'}`, 'companion-strike', { disabled: !enabled || !companionReady, data: `data-seat="${seat}" data-aim aria-describedby="attack-instructions"` }) : ''}
+          ${companion ? button(`${escape(companion.name)} · ${player.companionUsed ? 'Used' : 'Free companion move'}`, 'companion-strike', { disabled: !enabled || !companionReady, data: `data-seat="${seat}" data-aim="${escape(companion.name)}" aria-pressed="false" aria-describedby="attack-instructions"` }) : ''}
           <span class="status-line">${escape(next)}</span>
           ${button('End turn', 'end', { style: 'primary', disabled: !enabled, data: `data-seat="${seat}"` })}
         </div>
@@ -700,7 +703,7 @@ function conclusion(state) {
 
 function render() {
   clearAttackDrag();
-  clearKeyboardAttack();
+  setAimedMove();
   const scrollY = window.scrollY;
   const previous = document.activeElement;
   const focus = previous?.dataset.do ? ['do', 'seat', 'id', 'index'].map((key) => previous.dataset[key]) : null;
@@ -708,7 +711,9 @@ function render() {
   syncSoundtrack(state);
   const messages = `<div class="feedback" aria-live="polite">${ui.error ? `<p class="error-line" role="alert">${escape(ui.error)}</p>` : ''}${ui.notice ? `<p class="status-line">${escape(ui.notice)}</p>` : ''}</div>`;
   const runScenes = { route: trailMap, camp: campScreen, shop: merchantShop, combat, reward: rewards, victory: conclusion, defeat: conclusion };
-  const scene = state ? runScenes[state.phase](state) : lobby();
+  const scene = state ? runScenes[state.phase](state) : ui.reconnect
+    ? `<section class="lobby-panel"><h1>Reconnect to room ${escape(ui.reconnect.code)}</h1><p>The room is not available yet. If the server restarted, Player 1 can restore it with their recovery code. Your seat is saved in this tab.</p><div class="turn-actions">${button('Retry connection', 'retry-room', { style: 'primary', disabled: ui.pending })}${button('Return to setup', 'forget-room', { disabled: ui.pending })}</div></section>`
+    : lobby();
   const saveControl = state && !['victory', 'defeat'].includes(state.phase)
     ? `<div class="save-controls">${button('Save game', 'save', { disabled: ui.pending })}<span class="muted">Saved in this browser${ui.room ? ' · resumes on one screen' : ''}</span></div>` : '';
   game.innerHTML = messages + saveControl + (state ? recoveryControls(ui.room) : '') + scene;
@@ -746,6 +751,7 @@ function acceptState(state, previous) {
 function attachRoom(room) {
   ui.stopWatching?.();
   ui.room = room;
+  ui.reconnect = null;
   ui.mode = 'online';
   ui.savedRunOrigin = null;
   if (room.deck) ui.startingDecks[room.seat] = [...room.deck];
@@ -763,6 +769,14 @@ function attachRoom(room) {
     if (waitingForPublicMatch(room) && isTerminalRoomError(error)) {
       home('online');
       ui.notice = 'The public lobby closed. Find another match to rejoin the queue.';
+      render();
+      return;
+    }
+    if (error.status === 404) {
+      ui.stopWatching?.();
+      ui.room = null;
+      ui.reconnect = { code: room.code, token: room.token };
+      ui.error = '';
       render();
       return;
     }
@@ -814,7 +828,7 @@ function home(mode = 'local') {
   }
   ui.stopWatching?.();
   writeStorage(sessionStorage, roomKey, null);
-  Object.assign(ui, { room: null, run: null, mode, recruits: [], newCards: [], notice: '', error: '', savedRunOrigin: null });
+  Object.assign(ui, { room: null, reconnect: null, run: null, mode, recruits: [], newCards: [], notice: '', error: '', savedRunOrigin: null });
   const url = new URL(location.href);
   url.searchParams.delete('room');
   history.replaceState(null, '', url);
@@ -840,12 +854,23 @@ function playCombatMove(control, target) {
 
 const livingRival = '[data-do="target"]:not(:disabled)';
 
-function clearKeyboardAttack() {
-  if (!keyboardAttack) return;
-  keyboardAttack.classList.remove('is-aiming');
-  game.classList.remove('is-keyboard-aiming');
-  for (const rival of game.querySelectorAll(livingRival)) rival.tabIndex = -1;
-  keyboardAttack = undefined;
+function setAimedMove(control) {
+  if (aimedMove === control) return;
+  aimedMove?.setAttribute('aria-pressed', 'false');
+  aimedMove = control;
+  const aiming = Boolean(control);
+  control?.setAttribute('aria-pressed', 'true');
+  game.classList.toggle('is-choosing-target', aiming);
+  game.querySelector('#aim-status').textContent = aiming ? `${control.dataset.aim} selected. Choose a highlighted rival.` : 'Read each rival’s next move.';
+  game.querySelector('[data-do="cancel-aim"]').hidden = !aiming;
+  for (const rival of game.querySelectorAll(livingRival)) rival.tabIndex = aiming ? 0 : -1;
+}
+
+function cancelAim() {
+  const source = aimedMove ?? attackDrag?.source;
+  clearAttackDrag();
+  setAimedMove();
+  source?.focus();
 }
 
 function rivalAt(x, y) {
@@ -875,15 +900,27 @@ function drawAttackDrag() {
     rival?.classList.add('is-drop-target');
     drag.rival = rival;
   }
-  drag.preview.style.left = `${drag.x}px`;
+  const halfWidth = drag.preview.offsetWidth / 2;
+  drag.preview.style.left = `${Math.max(halfWidth, Math.min(drag.x, window.innerWidth - halfWidth))}px`;
   drag.preview.style.top = `${drag.y}px`;
+  drag.preview.classList.toggle('is-below-pointer', drag.y < drag.preview.offsetHeight + 12);
   drag.frame = requestAnimationFrame(drawAttackDrag);
 }
+
+window.addEventListener('pointerdown', (event) => {
+  if (event.isPrimary && event.button === 0) suppressDragClick = false;
+}, true);
+
+window.addEventListener('click', (event) => {
+  if (!suppressDragClick || event.detail === 0) return;
+  suppressDragClick = false;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}, true);
 
 game.addEventListener('pointerdown', (event) => {
   const source = event.target.closest('[data-aim]:not(:disabled)');
   if (!source || !event.isPrimary || event.button !== 0 || attackDrag) return;
-  clearKeyboardAttack();
   const { pointerId, clientX: x, clientY: y } = event;
   attackDrag = { source, pointerId, startX: x, startY: y, x, y };
   source.setPointerCapture(pointerId);
@@ -895,10 +932,12 @@ window.addEventListener('pointermove', (event) => {
   drag.x = event.clientX;
   drag.y = event.clientY;
   if (drag.preview || Math.hypot(drag.x - drag.startX, drag.y - drag.startY) < 8) return;
+  suppressDragClick = true;
+  setAimedMove();
   drag.preview = document.createElement('div');
   drag.preview.className = 'attack-preview';
   drag.preview.setAttribute('aria-hidden', 'true');
-  drag.preview.textContent = drag.source.querySelector('.card-title')?.textContent ?? drag.source.textContent;
+  drag.preview.textContent = drag.source.dataset.aim;
   document.body.append(drag.preview);
   drag.source.classList.add('is-aiming');
   game.classList.add('is-drag-aiming');
@@ -913,18 +952,18 @@ window.addEventListener('pointerup', (event) => {
   if (rival) playCombatMove(drag.source, Number(rival.dataset.index));
 });
 
-for (const eventName of ['pointercancel', 'lostpointercapture']) {
-  window.addEventListener(eventName, (event) => {
-    if (attackDrag?.pointerId === event.pointerId) clearAttackDrag();
-  });
-}
+window.addEventListener('pointercancel', (event) => {
+  if (attackDrag?.pointerId === event.pointerId) clearAttackDrag();
+});
+window.addEventListener('lostpointercapture', (event) => {
+  if (attackDrag?.pointerId === event.pointerId && attackDrag.source === event.target) clearAttackDrag();
+});
 window.addEventListener('blur', clearAttackDrag);
 
-game.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || !keyboardAttack) return;
-  const source = keyboardAttack;
-  clearKeyboardAttack();
-  source.focus();
+window.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || (!aimedMove && !attackDrag?.preview)) return;
+  event.preventDefault();
+  cancelAim();
 });
 
 document.addEventListener('click', async (event) => {
@@ -935,22 +974,20 @@ document.addEventListener('click', async (event) => {
   const index = Number(control.dataset.index);
   const state = ui.room ? ui.room.state : ui.run;
   if (control.hasAttribute('data-aim')) {
-    if (event.detail !== 0) return;
-    const rivals = [...game.querySelectorAll(livingRival)];
-    if (!rivals.length) return;
-    clearKeyboardAttack();
-    keyboardAttack = control;
-    control.classList.add('is-aiming');
-    game.classList.add('is-keyboard-aiming');
-    for (const rival of rivals) rival.tabIndex = 0;
-    rivals[0].focus();
+    if (aimedMove === control) return cancelAim();
+    const firstRival = game.querySelector(livingRival);
+    if (!firstRival) return;
+    setAimedMove(control);
+    if (event.detail === 0) firstRival.focus();
+    else firstRival.closest('.battlefield').scrollIntoView({ block: 'nearest' });
     return;
   }
+  if (action === 'cancel-aim') return cancelAim();
   if (action === 'target') {
-    if (event.detail !== 0 || !keyboardAttack) return;
-    const source = keyboardAttack;
-    clearKeyboardAttack();
-    source.focus({ preventScroll: true });
+    if (!aimedMove) return;
+    const source = aimedMove;
+    setAimedMove();
+    if (event.detail === 0) source.focus({ preventScroll: true });
     return playCombatMove(source, index);
   }
   if (action === 'open-soundtrack') { soundtrack.pause(); return; }
@@ -980,6 +1017,17 @@ document.addEventListener('click', async (event) => {
     catch { ui.error = 'Could not copy automatically. Select and copy the recovery code instead.'; }
     render();
     return;
+  }
+  if (action === 'forget-room') { home('online'); return; }
+  if (action === 'retry-room' && ui.reconnect) {
+    const ticket = ui.reconnect;
+    return runRemote(async () => {
+      try { attachRoom(await resumeRoom(ticket.code, ticket.token)); }
+      catch (error) {
+        if (error.status === 404) throw new Error('The room is still unavailable. Ask Player 1 to restore it, then retry.');
+        throw error;
+      }
+    });
   }
   if (action === 'save') {
     try {
@@ -1134,6 +1182,11 @@ if (savedRoom && (!invite || invite === savedRoom.code)) {
   runRemote(async () => {
     try { attachRoom(await resumeRoom(savedRoom.code, savedRoom.token)); }
     catch (error) {
+      if (error.status === 404) {
+        ui.reconnect = savedRoom;
+        ui.mode = 'online';
+        return;
+      }
       if (!isTerminalRoomError(error)) {
         throw new Error('Could not reconnect to your room. Reload this page to retry.', { cause: error });
       }

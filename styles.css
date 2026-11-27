@@ -242,8 +242,26 @@ img.critter-art { height: auto; }
 }
 .unit-card.is-active { border-color: var(--lime); box-shadow: inset 0 0 0 1px var(--lime); }
 .rival-card { border-color: #9b795e; background: #302a24; cursor: default; }
-.is-drag-aiming .rival-card:not(:disabled), .is-keyboard-aiming .rival-card:not(:disabled) { border-color: var(--lime); }
-.rival-card.is-drop-target { outline: 3px solid var(--lime); outline-offset: 2px; }
+:is(.is-drag-aiming, .is-choosing-target) .rival-card:not(:disabled) { border-color: var(--lime); }
+.is-choosing-target .rival-card:not(:disabled) { cursor: pointer; }
+.rival-card.is-drop-target, .is-choosing-target .rival-card:hover:not(:disabled) { outline: 3px solid var(--lime); outline-offset: 2px; }
+.rival-aim-label {
+  display: none;
+  position: absolute;
+  z-index: 1;
+  inset: .35rem auto auto .35rem;
+  padding: .15rem .4rem;
+  border: 1px solid var(--lime);
+  border-radius: .3rem;
+  background: var(--forest-deep);
+  color: var(--paper);
+  font-size: .75rem;
+  font-weight: 700;
+  pointer-events: none;
+}
+.is-choosing-target .rival-aim-label, .is-drop-target .rival-aim-label { display: block; }
+.is-choosing-target .rival-aim-label::before { content: 'Choose target'; }
+.is-drop-target .rival-aim-label::before { content: 'Release to target'; }
 .rival-card .unit-name { font-size: clamp(1.2rem, 2.5vw, 1.65rem); }
 .target-label { width: fit-content; padding: .15rem .45rem; border-radius: .3rem; background: #46382d; color: var(--paper); font-size: .75rem; font-weight: 700; }
 .unit-card.is-defeated { filter: saturate(.35); opacity: .5; }
@@ -296,13 +314,14 @@ img.unit-art { width: 34%; }
   transform: translate(-50%, calc(-100% - 12px));
   max-width: 14rem;
   padding: .35rem .65rem;
-  border: 1px solid var(--forest-deep);
+  border: 1px solid var(--lime);
   border-radius: .4rem;
-  background: var(--lime);
-  color: var(--forest-deep);
+  background: var(--forest-deep);
+  color: var(--paper);
   font-weight: 700;
   pointer-events: none;
 }
+.attack-preview.is-below-pointer { transform: translate(-50%, 12px); }
 .card-attack { --card-accent: #a85e42; --card-ink: #713827; }
 .card-support { --card-accent: #548984; --card-ink: #235a55; }
 .card-cost { display: grid; place-items: center; width: 1.55rem; height: 1.55rem; border-radius: 50%; background: var(--card-ink, #2c4930); color: var(--paper); font-weight: 700; }
