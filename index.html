@@ -52,40 +52,88 @@
     <div class="lobby-panel tutorial">
       <div class="tutorial-top"><span class="eyebrow">The Hollow Trail</span><span id="tutorial-progress" class="muted" aria-live="polite"></span></div>
       <h2 id="rules-title" tabindex="-1">How to play</h2>
-      <div class="tutorial-content" aria-live="polite">
+      <div class="tutorial-content" role="region" aria-label="Tutorial lesson" aria-live="polite" tabindex="0">
         <section data-tutorial-step>
           <h3>Choose your team</h3>
-          <p><strong>Quick start.</strong> Pick a character and begin the trail. Choose a fight, select a rival, play your cards, then end your turn.</p>
-          <p>Choose <strong>Single player</strong> for one character, or <strong>Share a screen</strong> for two. To play on separate screens, find a public match or share a private room code.</p>
-          <p>Pick a cousin or a woodland familiar. Each cousin also chooses a recruited animal companion. Each animal has a special ability it can use for free once per turn, using its own type. Other woodland creatures can be recruited as you play.</p>
+          <div class="tutorial-lesson">
+            <figure class="tutorial-visual">
+              <img src="assets/tutorial/choose-team.webp" width="990" height="599" alt="The character screen shows play modes and portrait cards for the four cousins.">
+              <figcaption>Choose a play mode, then pick a character.</figcaption>
+            </figure>
+            <div class="tutorial-copy">
+              <p><strong>Quick start.</strong> Pick a character and begin the trail. Choose a fight, select a rival, play your cards, then end your turn.</p>
+              <p>Choose <strong>Single player</strong> for one character, or <strong>Share a screen</strong> for two. To play on separate screens, find a public match or share a private room code.</p>
+              <p>Pick a cousin or a woodland familiar. Each cousin also chooses a recruited animal companion. Each animal has a special ability it can use for free once per turn, using its own type. Other woodland creatures can be recruited as you play.</p>
+            </div>
+          </div>
         </section>
         <section data-tutorial-step hidden>
           <h3>Build a deck</h3>
-          <p>Choose five cards for each character. You can keep the starting selection or change it. Most characters bring two signature cards. Tito brings one Secret Star per fight.</p>
-          <p>Include at least one attack, and use no more than two copies of any library card. Then choose <strong>Begin the trail</strong>.</p>
+          <div class="tutorial-lesson">
+            <figure class="tutorial-visual">
+              <img src="assets/tutorial/build-deck.webp" width="990" height="409" alt="The deck builder shows a signature card and five card slots with dropdowns." loading="lazy">
+              <figcaption>Use the five card slots to adjust your starting deck.</figcaption>
+            </figure>
+            <div class="tutorial-copy">
+              <p>Choose five cards for each character. You can keep the starting selection or change it. Most characters bring two signature cards. Tito brings one Secret Star per fight.</p>
+              <p>Include at least one attack, and use no more than two copies of any library card. Then choose <strong>Begin the trail</strong>.</p>
+            </div>
+          </div>
         </section>
         <section data-tutorial-step hidden>
           <h3>Choose a path</h3>
-          <p>Pick a fight on the trail map. Hard fights pay more gold. Win the level 3 Hard fight to choose an extra perk for the rest of the run.</p>
-          <p>Merchants sell cards and remove unwanted cards for 30 gold. At camp, each character can heal 30% of maximum health, upgrade a card, or remove a card for 30 gold. Trials offer new rival tactics and a featured draft card. These stops and routes are optional.</p>
+          <div class="tutorial-lesson">
+            <figure class="tutorial-visual">
+              <img src="assets/tutorial/choose-path.webp" width="1040" height="260" alt="Two routes appear side by side with rival portraits and their difficulty." loading="lazy">
+              <figcaption>Pick a route to fight the rivals shown on it.</figcaption>
+            </figure>
+            <div class="tutorial-copy">
+              <p>Pick a fight on the trail map. Hard fights pay more gold. Win the level 3 Hard fight to choose an extra perk for the rest of the run.</p>
+              <p>Merchants sell cards and remove unwanted cards for 30 gold. At camp, each character can heal 30% of maximum health, upgrade a card, or remove a card for 30 gold. Trials offer new rival tactics and a featured draft card. These stops and routes are optional.</p>
+            </div>
+          </div>
         </section>
         <section data-tutorial-step hidden>
           <h3>Play a turn</h3>
-          <p>The rival cards show who you are fighting. Look for <strong>Next move</strong> to see who they’ll hit or how they’ll defend.</p>
-          <p>Drag a targeted move onto a rival, or tap the move and then the rival. Tap a Block card to play it immediately, or drag it onto your familiar. Tap other untargeted moves to play them. With a keyboard, press Enter on a targeted move, then use Tab and Enter to choose a rival. A companion’s move is free once per turn.</p>
-          <p>Each round, draw <strong>5 cards</strong> and usually start with <strong>3 energy</strong>. A card’s number is its cost. An X card spends all remaining energy and repeats once per energy spent. Choose <strong>End turn</strong> when you’re ready.</p>
-          <p>In co-op, both players take a turn before the rivals act. Have your partner attack the same rival you hit most recently to trigger a Bond Strike once per round.</p>
+          <div class="tutorial-lesson">
+            <figure class="tutorial-visual">
+              <img src="assets/tutorial/play-turn.webp" width="1048" height="326" alt="The battle HUD shows energy and End turn above the hand, with Draw and Discard on either side." loading="lazy">
+              <figcaption>Hold Fast is a Block card. Tap it to gain 8 Block.</figcaption>
+            </figure>
+            <div class="tutorial-copy">
+              <p>The rival cards show who you are fighting. Look for <strong>Next move</strong> to see who they’ll hit or how they’ll defend.</p>
+              <p>Drag a targeted move onto a rival, or tap the move and then the rival. Tap a Block card to play it immediately, or drag it onto your familiar. Tap other untargeted moves to play them. With a keyboard, press Enter on a targeted move, then use Tab and Enter to choose a rival. A companion’s move is free once per turn.</p>
+              <p>Each round, draw <strong>5 cards</strong> and usually start with <strong>3 energy</strong>. A card’s number is its cost. An X card spends all remaining energy and repeats once per energy spent. Choose <strong>End turn</strong> when you’re ready.</p>
+              <p>In co-op, both players take a turn before the rivals act. Have your partner attack the same rival you hit most recently to trigger a Bond Strike once per round.</p>
+            </div>
+          </div>
         </section>
         <section data-tutorial-step hidden>
           <h3>Types and effects</h3>
-          <p><strong>Ember beats Grove · Grove beats Tide · Tide beats Stone · Stone beats Ember.</strong> A strong matchup deals 50% more damage. The reverse matchup deals 25% less.</p>
-          <p><strong>Strength</strong> adds attack damage. <strong>Vulnerable</strong> increases the next hit by 50%. <strong>Frail</strong> reduces the next Block gain by 3. The battle screen shows active effects and matchups.</p>
+          <div class="tutorial-lesson">
+            <figure class="tutorial-visual">
+              <img src="assets/tutorial/types-effects.webp" width="464" height="235" alt="Ironhide is a Stone rival with 19 HP. Next move shows Hits Ember for 9, and Your attacks shows Resisted, times 0.75." loading="lazy">
+              <figcaption>Read Next move and Your attacks under the rival’s HP.</figcaption>
+            </figure>
+            <div class="tutorial-copy">
+              <p><strong>Ember beats Grove · Grove beats Tide · Tide beats Stone · Stone beats Ember.</strong> A strong matchup deals 50% more damage. The reverse matchup deals 25% less.</p>
+              <p><strong>Strength</strong> adds attack damage. <strong>Vulnerable</strong> increases the next hit by 50%. <strong>Frail</strong> reduces the next Block gain by 3. The battle screen shows active effects and matchups.</p>
+            </div>
+          </div>
         </section>
         <section data-tutorial-step hidden>
           <h3>Grow and save your run</h3>
-          <p>After a trainer fight, choose a level-up perk and take a card or skip it. Each player confirms their own choice. Defeating rivals also unlocks cards and creatures for future runs.</p>
-          <p>Choose <strong>Save game</strong> during a run, then <strong>Continue saved game</strong> on the opening screen. Saves stay in this browser. A saved room game resumes on one shared screen.</p>
-          <p>Clear three acts of 20 levels each. Defeat each act's boss to continue. A full run is designed for 90–120 minutes, and you can save your progress along the way.</p>
+          <div class="tutorial-lesson">
+            <figure class="tutorial-visual">
+              <img src="assets/tutorial/grow-save.webp" width="1040" height="829" alt="The level-up screen shows perks, three draft cards, a Skip card button, and a confirmation button." loading="lazy">
+              <figcaption>Choose a perk even if you decide to skip the card.</figcaption>
+            </figure>
+            <div class="tutorial-copy">
+              <p>After a trainer fight, choose a level-up perk and take a card or skip it. Each player confirms their own choice. Defeating rivals also unlocks cards and creatures for future runs.</p>
+              <p>Choose <strong>Save game</strong> during a run, then <strong>Continue saved game</strong> on the opening screen. Saves stay in this browser. A saved room game resumes on one shared screen.</p>
+              <p>Clear three acts of 20 levels each. Defeat each act's boss to continue. A full run is designed for 90–120 minutes, and you can save your progress along the way.</p>
+            </div>
+          </div>
         </section>
       </div>
       <div class="tutorial-actions"><button type="button" class="button button-ghost" data-do="tutorial-close">Skip tutorial</button><button type="button" class="button button-secondary" data-do="tutorial-back">Back</button><button type="button" class="button button-primary" data-do="tutorial-next">Next</button></div>

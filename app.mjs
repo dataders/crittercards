@@ -17,6 +17,7 @@ const shareLink = document.querySelector('#share-link');
 const shareApps = document.querySelector('#share-apps');
 const shareStatus = document.querySelector('#share-status');
 let shareData;
+const tutorialContent = rules.querySelector('.tutorial-content');
 const tutorialSteps = [...rules.querySelectorAll('[data-tutorial-step]')];
 const tutorialProgress = rules.querySelector('#tutorial-progress');
 const tutorialBack = rules.querySelector('[data-do="tutorial-back"]');
@@ -106,7 +107,7 @@ function showTutorialStep(index) {
   tutorialProgress.textContent = `Step ${index + 1} of ${tutorialSteps.length}`;
   tutorialBack.hidden = index === 0;
   tutorialNext.textContent = index === tutorialSteps.length - 1 ? 'Start playing' : 'Next';
-  rules.scrollTop = 0;
+  tutorialContent.scrollTop = 0;
 }
 
 function openTutorial() {
@@ -115,7 +116,10 @@ function openTutorial() {
   rules.querySelector('#rules-title').focus({ preventScroll: true });
 }
 
-rules.addEventListener('close', () => writeStorage(localStorage, tutorialKey, true));
+rules.addEventListener('close', () => {
+  writeStorage(localStorage, tutorialKey, true);
+  document.querySelector('.game-menu[open] [data-do="rules"], .game-menu:not([open]) summary')?.focus({ preventScroll: true });
+});
 
 function openShare(roomCode) {
   const url = new URL(location.href);
