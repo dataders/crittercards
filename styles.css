@@ -157,7 +157,7 @@ img.hero-art { mask-image: linear-gradient(90deg, transparent, #000 24%); }
 .critter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: .9rem; }
 .critter-grid:has(> :nth-child(5)) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .cousin-roster { margin-bottom: 1.5rem; }
-.cousin-roster .critter-art img { object-position: center 35%; }
+.cousin-roster .critter-art img { object-position: center 20%; }
 .critter-card {
   position: relative;
   display: flex;
@@ -360,6 +360,15 @@ dialog {
   box-shadow: 0 1.5rem 4rem #050b08a8;
 }
 dialog::backdrop { background: #07120cca; }
+.tutorial { gap: 1.15rem; padding: clamp(1.25rem, 4vw, 2rem); }
+.tutorial-top { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
+.tutorial h2 { font-size: clamp(2rem, 5vw, 2.8rem); }
+.tutorial-content section { display: grid; gap: .8rem; }
+.tutorial-content h3 { color: var(--lime); font-size: 1.4rem; }
+.tutorial-content p { line-height: 1.55; }
+.tutorial-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; padding-top: .4rem; border-top: 1px solid var(--line); }
+.tutorial-actions [data-do='tutorial-close'] { margin-right: auto; }
+.tutorial-actions .button { min-height: 2.75rem; }
 dialog ol { display: grid; gap: .65rem; margin: 0 0 .5rem; padding-left: 1.35rem; }
 .room-code {
   width: fit-content;

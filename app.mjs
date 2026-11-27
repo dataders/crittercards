@@ -1,17 +1,24 @@
 import {
   COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, STARTER_DECK, MAX_STARTING_COPIES, FRAIL_BLOCK_LOSS,
-  ENCOUNTERS, TRAIL, MERCHANTS, CAMPS, LEVEL_PERKS, TYPES, matchup, createRun, applyAction, getEncounter,
+  ENCOUNTERS, TRAIL, MERCHANTS, CAMPS, LEVEL_PERKS, HARD_PERKS, TYPES, matchup, createRun, applyAction, getEncounter,
+  hardPerkOptions, getEnemyIntent,
   getCardDescription, validateStartingDeck, canAffordCard,
 } from './game.mjs';
 import { createRoom, joinRoom, resumeRoom } from './transport.mjs';
 
 const game = document.querySelector('#game');
 const rules = document.querySelector('#rules');
+const tutorialSteps = [...rules.querySelectorAll('[data-tutorial-step]')];
+const tutorialProgress = rules.querySelector('#tutorial-progress');
+const tutorialBack = rules.querySelector('[data-do="tutorial-back"]');
+const tutorialNext = rules.querySelector('[data-do="tutorial-next"]');
+let tutorialStep = 0;
 const invite = new URL(location.href).searchParams.get('room')?.toUpperCase() ?? '';
 const collectionKey = 'crittercards.collection.v1';
 const progressKey = 'crittercards.progress.v1';
 const cardKey = 'crittercards.cards.v1';
 const roomKey = 'crittercards.room.v1';
+const tutorialKey = 'crittercards.tutorial.v1';
 const saveKey = 'crittercards.save.v1';
 const starterIds = [...Object.keys(COUSINS), 'fox', 'hare'];
 const playerName = (seat) => `Player ${seat + 1}`;
@@ -34,6 +41,23 @@ function writeStorage(storage, key, value) {
   }
 }
 
+function showTutorialStep(index) {
+  tutorialStep = index;
+  tutorialSteps.forEach((step, position) => { step.hidden = position !== index; });
+  tutorialProgress.textContent = `Step ${index + 1} of ${tutorialSteps.length}`;
+  tutorialBack.hidden = index === 0;
+  tutorialNext.textContent = index === tutorialSteps.length - 1 ? 'Start playing' : 'Next';
+  rules.scrollTop = 0;
+}
+
+function openTutorial() {
+  showTutorialStep(0);
+  if (!rules.open) rules.showModal();
+  rules.querySelector('#rules-title').focus({ preventScroll: true });
+}
+
+rules.addEventListener('close', () => writeStorage(localStorage, tutorialKey, true));
+
 const savedCollection = readStorage(localStorage, collectionKey, []);
 const collection = new Set([...starterIds, ...(Array.isArray(savedCollection) ? savedCollection : [])]);
 const cardLibrary = [...BASE_CARDS, ...Object.values(CARD_UNLOCKS).flat()];
@@ -52,6 +76,7 @@ const ui = {
   run: null,
   target: null,
   perks: [null, null],
+  hardPerks: [null, null],
   drafts: [null, null],
   recruits: [],
   newCards: [],
@@ -249,6 +274,7 @@ function allyCard(player, seat, state) {
       <strong class="unit-name">${escape(critter.name)}</strong>
       ${health(player)}
       ${effects(player)}
+      ${player.hardPerk ? `<span class="unit-meta" title="${escape(HARD_PERKS[player.hardPerk].description)}">${escape(HARD_PERKS[player.hardPerk].name)}</span>` : ''}
       <span class="unit-meta">${player.hp <= 0 ? 'Fainted' : `${player.energy} energy`}</span>
     </div>
   </div>`;
@@ -313,10 +339,13 @@ function trailMap(state) {
           ${routes.map((route) => {
             const totalGold = route.goldPerEnemy * route.enemies.length;
             const health = route.enemies.map((enemy) => `${enemy.name} ${state.players.length === 1 ? Math.ceil(enemy.hp * 0.7) : enemy.hp} HP`).join(' · ');
+            const preview = route.hardReward ? `
+              <span class="route-danger">Choose a run-long perk · ${hardPerkOptions(state.players.length).map((perk) => escape(perk.name)).join(' · ')}</span>
+              ${route.enemies.map((enemy, index) => `<span class="route-stats">${escape(enemy.name)} (${escape(TYPES[CRITTERS[enemy.animal].type].name)}) · ${escape(intentLabel(getEnemyIntent(state, route, index, 1), enemy, state))}</span>`).join('')}` : '';
             const details = `<span class="route-tag">${escape(route.difficulty)} · ${totalGold} gold total</span>
               <strong>${escape(route.name)}</strong><span>${escape(route.subtitle)}</span>
               <span class="route-stats">${escape(health)}</span>
-              ${route.goldPerEnemy > 8 ? '<span class="route-danger">Stronger attacks · triple gold</span>' : ''}`;
+              ${route.goldPerEnemy > 8 ? '<span class="route-danger">Stronger attacks · triple gold</span>' : ''}${preview}`;
             const routeClass = route.goldPerEnemy > 8 ? 'route-hard' : 'route-standard';
             return current ? `<button type="button" class="route-option ${routeClass}" data-do="route" data-id="${route.id}" ${canLead ? '' : 'disabled'}>${details}</button>` :
               `<div class="route-option ${routeClass} ${picked === route.id ? 'is-cleared' : 'is-future'}">${details}${picked === route.id ? '<span class="route-tag">Cleared</span>' : ''}</div>`;
@@ -439,6 +468,11 @@ function cardReveal() {
   return `<div class="recruit-banner" role="status"><strong>Cards unlocked</strong><span>${ui.newCards.map((id) => escape(CARDS[id].name)).join(' · ')}. Add them to starting decks on future trails.</span></div>`;
 }
 
+function rewardPerkChoices(perks, action, seat, selected, enabled) {
+  return perks.map((perk) =>
+    `<button type="button" class="level-choice" data-do="${action}" data-seat="${seat}" data-id="${escape(perk.id)}" aria-pressed="${selected === perk.id}" ${enabled ? '' : 'disabled'}><strong>${escape(perk.name)}</strong><span>${escape(perk.description)}</span></button>`).join('');
+}
+
 function rewards(state) {
   return `
     <section class="battle-head"><div><p class="eyebrow">Trainer defeated</p><h1>Level up your familiars</h1></div>${purse(state)}</section>
@@ -448,18 +482,23 @@ function rewards(state) {
       ${state.players.map((player, seat) => {
         const critter = CRITTERS[player.critterId];
         const saved = state.rewardPicks[seat];
+        const savedCard = typeof saved === 'string' ? saved : saved?.cardId;
+        const savedPerk = saved?.perkId ?? player.perks.at(-1);
+        const savedHardPerk = saved?.hardPerkId;
         const enabled = !ui.pending && !saved && (!ui.room || ui.room.seat === seat);
+        const ready = ui.perks[seat] && ui.drafts[seat] && (!state.hardReward || ui.hardPerks[seat]);
         return `<section>
           <div class="section-heading"><h2>${escape(critter.name)} · ${playerName(seat)}</h2><span class="muted">${saved ? 'Ready' : `Level ${player.level} to ${player.level + 1}`}</span></div>
-          ${saved ? `<p>Learned ${escape(CARDS[saved].name)} and chose ${escape(LEVEL_PERKS[player.perks.at(-1)]?.name)}.</p>` : `
-            <p class="muted">Choose one perk and one card, then confirm your upgrade.${state.players.length > 1 ? ' Both players must confirm to continue.' : ''}</p>
+          ${saved ? `<p>${savedCard ? `Learned ${escape(CARDS[savedCard].name)}` : 'Skipped the card'} and chose ${escape(LEVEL_PERKS[savedPerk]?.name)}${savedHardPerk ? ` and ${escape(HARD_PERKS[savedHardPerk].name)}` : ''}.</p>` : `
             <h3 class="reward-label">1. Choose a perk</h3>
-            <div class="level-options" aria-label="Level-up perk">${Object.values(LEVEL_PERKS).map((perk) =>
-              `<button type="button" class="level-choice" data-do="perk" data-seat="${seat}" data-id="${escape(perk.id)}" aria-pressed="${ui.perks[seat] === perk.id}" ${enabled ? '' : 'disabled'}><strong>${escape(perk.name)}</strong><span>${escape(perk.description)}</span></button>`).join('')}</div>
-            <h3 class="reward-label">2. Choose a card</h3>
+            <div class="level-options" aria-label="Level-up perk">${rewardPerkChoices(Object.values(LEVEL_PERKS), 'perk', seat, ui.perks[seat], enabled)}</div>
+            <h3 class="reward-label">2. Take or skip a card</h3>
             <div class="hand-grid">${state.rewardOptions[seat].map((id, index) => actionCard(state, seat, id, index, enabled, true)).join('')}</div>
-            <p class="reward-status" aria-live="polite">${!enabled ? 'Waiting for this player to choose.' : !ui.perks[seat] && !ui.drafts[seat] ? 'Select a perk and a card to continue.' : !ui.perks[seat] ? 'Card selected. Now choose a perk.' : !ui.drafts[seat] ? 'Perk selected. Now choose a card.' : `Selected ${escape(LEVEL_PERKS[ui.perks[seat]].name)} and ${escape(CARDS[ui.drafts[seat]].name)}.`}</p>
-            <div class="turn-actions">${button(`Confirm ${playerName(seat)} upgrade`, 'draft', { style: 'primary', disabled: !enabled || !ui.perks[seat] || !ui.drafts[seat], data: `data-seat="${seat}"` })}</div>
+            <div class="turn-actions">${button('Skip card', 'draft-pick', { disabled: !enabled, data: `data-seat="${seat}" data-id="skip" aria-pressed="${ui.drafts[seat] === 'skip'}"` })}</div>
+            ${state.hardReward ? `<h3 class="reward-label">3. Choose a Hard route perk</h3>
+              <div class="level-options" aria-label="Hard route perk">${rewardPerkChoices(hardPerkOptions(state.players.length), 'hard-perk', seat, ui.hardPerks[seat], enabled)}</div>` : ''}
+            <p class="reward-status" aria-live="polite">${!enabled ? 'Waiting for this player to choose.' : !ui.perks[seat] ? 'Choose a level-up perk.' : !ui.drafts[seat] ? 'Take a card or choose Skip card.' : !ready ? 'Choose a Hard route perk.' : 'Ready to confirm.'}</p>
+            <div class="turn-actions">${button(`Confirm ${playerName(seat)} upgrade`, 'draft', { style: 'primary', disabled: !enabled || !ready, data: `data-seat="${seat}"` })}</div>
           `}
         </section>`;
       }).join('')}
@@ -511,6 +550,7 @@ function acceptState(state, previous) {
   if (state?.encounter !== previous?.encounter || state?.phase !== previous?.phase) {
     ui.scrollToRoute = state?.phase === 'route' && state.encounter > 0;
     ui.perks = [null, null];
+    ui.hardPerks = [null, null];
     ui.drafts = [null, null];
     ui.recruits = [];
     ui.target = null;
@@ -598,12 +638,19 @@ document.addEventListener('click', async (event) => {
   const seat = Number(control.dataset.seat);
   const index = Number(control.dataset.index);
   const state = ui.room ? ui.room.state : ui.run;
-  if (action === 'rules') { rules.showModal(); return; }
+  if (action === 'rules') { openTutorial(); return; }
+  if (action === 'tutorial-close') { rules.close(); return; }
+  if (action === 'tutorial-back') { showTutorialStep(tutorialStep - 1); tutorialNext.focus({ preventScroll: true }); return; }
+  if (action === 'tutorial-next') {
+    if (tutorialStep === tutorialSteps.length - 1) rules.close();
+    else showTutorialStep(tutorialStep + 1);
+    return;
+  }
   ui.error = '';
   ui.notice = '';
   if (action === 'save') {
     try {
-      localStorage.setItem(saveKey, JSON.stringify({ version: 1, state, origin: ui.room?.code ?? ui.savedRunOrigin ?? 'local', perks: ui.perks, drafts: ui.drafts, target: ui.target }));
+      localStorage.setItem(saveKey, JSON.stringify({ version: 1, state, origin: ui.room?.code ?? ui.savedRunOrigin ?? 'local', perks: ui.perks, hardPerks: ui.hardPerks, drafts: ui.drafts, target: ui.target }));
       ui.notice = 'Game saved in this browser. Choose Continue saved game from the opening screen.';
     } catch {
       ui.error = 'Could not save in this browser. Check browser storage and try again.';
@@ -626,6 +673,7 @@ document.addEventListener('click', async (event) => {
     ui.savedRunOrigin = saved.origin;
     ui.target = saved.target;
     ui.perks = Array.isArray(saved.perks) ? saved.perks : [null, null];
+    ui.hardPerks = Array.isArray(saved.hardPerks) ? saved.hardPerks : [null, null];
     ui.drafts = Array.isArray(saved.drafts) ? saved.drafts : [null, null];
     ui.scrollToTop = true;
     ui.notice = 'Saved game loaded.';
@@ -672,8 +720,12 @@ document.addEventListener('click', async (event) => {
   });
   if (action === 'end') return dispatch({ type: 'endTurn', player: seat });
   if (action === 'perk') ui.perks[seat] = id;
+  if (action === 'hard-perk') ui.hardPerks[seat] = id;
   if (action === 'draft-pick') ui.drafts[seat] = id;
-  if (action === 'draft') return dispatch({ type: 'draft', player: seat, cardId: ui.drafts[seat], perkId: ui.perks[seat] });
+  if (action === 'draft') return dispatch({
+    type: 'draft', player: seat, cardId: ui.drafts[seat] === 'skip' ? null : ui.drafts[seat],
+    perkId: ui.perks[seat], hardPerkId: ui.hardPerks[seat],
+  });
   render();
 });
 
@@ -721,6 +773,10 @@ game.addEventListener('error', (event) => {
 
 render();
 const savedRoom = readStorage(sessionStorage, roomKey, null);
+if (!invite && !savedRoom && !readStorage(localStorage, tutorialKey, false) &&
+    !readStorage(localStorage, saveKey, null) && !readStorage(localStorage, collectionKey, null)) {
+  openTutorial();
+}
 if (savedRoom && (!invite || invite === savedRoom.code)) {
   runRemote(async () => {
     try { attachRoom(await resumeRoom(savedRoom.code, savedRoom.token)); }

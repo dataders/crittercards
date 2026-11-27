@@ -2,7 +2,7 @@ export const COUSINS = {
   hudson: { id: 'hudson', name: 'Hudson', role: 'Tank', maxHp: 45, type: 'stone', signature: 'shieldWall' },
   quinn: { id: 'quinn', name: 'Quinn', role: 'Witch', maxHp: 34, type: 'ember', signature: 'witchHex' },
   alba: { id: 'alba', name: 'Alba', role: 'Bard', maxHp: 32, type: 'grove', signature: 'cuttingChorus' },
-  tita: { id: 'tita', name: 'Tito', role: 'Trickster', maxHp: 35, type: 'tide', signature: 'secretStar' },
+  tita: { id: 'tita', name: 'Tito', role: 'Witch', maxHp: 35, type: 'tide', signature: 'secretStar' },
 };
 
 export const CRITTERS = {
@@ -277,6 +277,19 @@ export const LEVEL_PERKS = {
   renewal: { id: 'renewal', name: 'Renewal', description: 'Heal 3 additional HP after each victory for the rest of this run.' },
 };
 
+export const HARD_PERKS = {
+  bondWard: { id: 'bondWard', name: 'Bond Ward', block: 5, coOp: true,
+    description: 'The first Bond Strike each fight grants both familiars 5 Block per player who chose Bond Ward.' },
+  ambush: { id: 'ambush', name: 'Briar Ambush', damage: 5,
+    description: 'Your first attack hit each fight deals 5 extra base damage.' },
+  trailWard: { id: 'trailWard', name: 'Trail Ward', block: 8,
+    description: 'Start each fight with 8 extra Block.' },
+};
+
+export function hardPerkOptions(playerCount) {
+  return Object.values(HARD_PERKS).filter((perk) => playerCount > 1 || !perk.coOp);
+}
+
 export const ENCOUNTERS = [
   {
     name: 'The Toll Gate',
@@ -361,6 +374,7 @@ export const TRAIL = Array.from({ length: 20 }, (_, index) => {
         trainer: `Warden of Level ${index + 1}`,
         subtitle: `Face ${enemies.map(({ name }) => name).join(' and ')}.`,
         difficulty: perilous ? 'Hard' : 'Standard',
+        hardReward: perilous && index === 2,
         goldPerEnemy: perilous ? 24 : 8,
         enemies,
       };
@@ -481,18 +495,15 @@ function drawHand(state, player) {
   }
 }
 
-function setIntent(state, enemy, enemyIndex) {
-  if (enemy.hp === 0) {
-    enemy.intent = null;
-    return;
-  }
-  const moves = getEncounter(state).enemies[enemyIndex].moves;
-  const [type, amount] = moves[(state.round - 1) % moves.length];
-  enemy.intent = { type, amount: state.players.length === 1 && !['guard', 'shadowWard'].includes(type) ? Math.ceil(amount * 0.7) : amount };
+export function getEnemyIntent(state, encounter, enemyIndex, round) {
+  const moves = encounter.enemies[enemyIndex].moves;
+  const [type, amount] = moves[(round - 1) % moves.length];
+  const intent = { type, amount: state.players.length === 1 && !['guard', 'shadowWard'].includes(type) ? Math.ceil(amount * 0.7) : amount };
   if (type === 'attack' || type === 'frailAttack' || type === 'crownCurse') {
-    const preferred = (state.round - 1 + enemyIndex) % state.players.length;
-    enemy.intent.target = state.players[preferred].hp > 0 ? preferred : 1 - preferred;
+    const preferred = (round - 1 + enemyIndex) % state.players.length;
+    intent.target = state.players[preferred].hp > 0 ? preferred : 1 - preferred;
   }
+  return intent;
 }
 
 function startTurn(state, index) {
@@ -508,11 +519,17 @@ function beginRound(state) {
   state.bondTriggered = false;
   for (const player of state.players) {
     player.block = player.hp > 0 ? 2 * player.perks.filter((perk) => perk === 'shell').length : 0;
+    if (state.round === 1 && player.hp > 0 && player.hardPerk === 'trailWard') {
+      player.block += HARD_PERKS.trailWard.block;
+    }
     player.energy = player.hp > 0 ? TURN_ENERGY + (state.round === 1 ? player.perks.filter((perk) => perk === 'spirit').length : 0) : 0;
     if (player.hp > 0) drawHand(state, player);
   }
   startTurn(state, state.players.findIndex((player) => player.hp > 0));
-  state.enemies.forEach((enemy, index) => setIntent(state, enemy, index));
+  const encounter = getEncounter(state);
+  state.enemies.forEach((enemy, index) => {
+    enemy.intent = enemy.hp > 0 ? getEnemyIntent(state, encounter, index, state.round) : null;
+  });
 }
 
 function beginEncounter(state) {
@@ -521,6 +538,8 @@ function beginEncounter(state) {
   state.round = 1;
   state.rewardOptions = state.players.map(() => []);
   state.rewardPicks = state.players.map(() => null);
+  state.hardReward = false;
+  state.bondWardUsed = false;
   state.enemies = encounter.enemies.map((enemy) => ({
     id: enemy.animal,
     name: enemy.name,
@@ -543,6 +562,7 @@ function beginEncounter(state) {
     player.discardPile = [];
     player.hand = [];
     player.reserveEnergy = 0;
+    player.ambushUsed = false;
   }
   log(state, `${encounter.trainer} challenges the pack.`);
   beginRound(state);
@@ -616,13 +636,14 @@ function finishEncounter(state) {
     return;
   }
   state.phase = 'reward';
+  state.hardReward = getEncounter(state).hardReward === true;
   const available = TRAIL.slice(0, state.encounter + 1).flatMap((routes, level) =>
     routes.find(({ id }) => id === state.path[level]).enemies.flatMap((enemy) => CARD_UNLOCKS[enemy.animal] ?? []));
   state.rewardOptions = state.players.map(() => {
     const pool = [...new Set([...available, ...BASE_CARDS, 'spark', 'ward', 'thorns', 'moonmend', 'avalanche', 'sanctuary'])];
     return [0, 2, 3].map((cost) => shuffle(state, pool.filter((id) => CARDS[id].cost === cost))[0]);
   });
-  log(state, 'The pack prevails. Choose a card and a level perk for each critter.');
+  log(state, 'The pack prevails. Choose a level perk and take or skip a card for each critter.');
 }
 
 function playCard(state, action) {
@@ -662,7 +683,12 @@ function resolveCardEffect(state, player, card, target) {
   if (card.damage) {
     const bond = ally !== player && !state.bondTriggered && state.lastAttacker === ally.id && state.lastTarget === target;
     const woundedBonus = enemy.hp <= enemy.maxHp / 2 ? card.woundedBonus ?? 0 : 0;
-    const damage = card.damage + player.attackBonus + player.strength + woundedBonus + (enemy.marked ? MARK_DAMAGE : 0) + (bond ? BOND_DAMAGE : 0);
+    const ambush = player.hardPerk === 'ambush' && !player.ambushUsed ? HARD_PERKS.ambush.damage : 0;
+    const damage = card.damage + player.attackBonus + player.strength + woundedBonus + ambush + (enemy.marked ? MARK_DAMAGE : 0) + (bond ? BOND_DAMAGE : 0);
+    if (ambush) {
+      player.ambushUsed = true;
+      log(state, `${critterName(player)} springs a Briar Ambush.`);
+    }
     const stolen = Math.min(enemy.block, card.stealBlock ?? 0);
     enemy.block -= stolen;
     gainBlock(player, stolen);
@@ -673,6 +699,16 @@ function resolveCardEffect(state, player, card, target) {
     state.lastTarget = target;
     state.bondTriggered ||= bond;
     log(state, `${enemy.name} takes ${dealt} damage${bond ? ' with a Bond Strike' : ''}${multiplier > 1 ? ' (super effective)' : multiplier < 1 ? ' (resisted)' : ''}.`);
+    if (bond && !state.bondWardUsed) {
+      state.bondWardUsed = true;
+      const ward = HARD_PERKS.bondWard.block * state.players.filter((member) => member.hardPerk === 'bondWard').length;
+      if (ward) {
+        for (const member of state.players) {
+          const gained = gainBlock(member, ward);
+          log(state, `Bond Ward grants ${critterName(member)} ${gained} Block.`);
+        }
+      }
+    }
     if (enemy.hp === 0) {
       enemy.intent = null;
       state.gold += enemy.gold;
@@ -751,14 +787,18 @@ function finishTurn(state, playerIndex) {
   beginRound(state);
 }
 
-function draftCard(state, { player: playerIndex, cardId, perkId = 'fang' }) {
+function draftCard(state, { player: playerIndex, cardId = null, perkId = 'fang', hardPerkId = null }) {
   if (state.rewardPicks[playerIndex]) throw new Error('You have already claimed your reward.');
-  if (!state.rewardOptions[playerIndex].includes(cardId)) throw new Error('Choose a card offered to you.');
+  if (cardId !== null && !state.rewardOptions[playerIndex].includes(cardId)) throw new Error('Choose a card offered to you.');
   if (typeof perkId !== 'string' || !Object.hasOwn(LEVEL_PERKS, perkId)) throw new Error('Choose a level perk.');
+  if (state.hardReward) {
+    if (!hardPerkOptions(state.players.length).some((perk) => perk.id === hardPerkId)) throw new Error('Choose a Hard route perk.');
+  } else if (hardPerkId !== null) throw new Error('No Hard route perk is available.');
 
   const player = state.players[playerIndex];
-  state.rewardPicks[playerIndex] = cardId;
-  player.deck.push(cardId);
+  state.rewardPicks[playerIndex] = { cardId, perkId, hardPerkId };
+  if (cardId !== null) player.deck.push(cardId);
+  if (hardPerkId !== null) player.hardPerk = hardPerkId;
   player.perks.push(perkId);
   player.level += 1;
   player.maxHp += 3;
@@ -771,7 +811,9 @@ function draftCard(state, { player: playerIndex, cardId, perkId = 'fang' }) {
     heal(player, 4);
   }
   if (perkId === 'renewal') heal(player, 3);
-  log(state, `${critterName(player)} learns ${CARDS[cardId].name} and reaches level ${player.level}.`);
+  const draftResult = cardId === null ? 'skips the card' : `learns ${CARDS[cardId].name}`;
+  log(state, `${critterName(player)} ${draftResult} and reaches level ${player.level}.`);
+  if (hardPerkId !== null) log(state, `${critterName(player)} gains ${HARD_PERKS[hardPerkId].name} for the rest of the run.`);
 
   if (state.rewardPicks.every(Boolean)) {
     state.encounter += 1;

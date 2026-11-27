@@ -15,7 +15,7 @@ The four cousins are playable from the start.
 - **Hudson · Tank · 48 HP.** Shield Wall protects him and his partner.
 - **Quinn · Witch · 30 HP.** Witch’s Hex makes a rival Vulnerable and Frail.
 - **Alba · Bard · 32 HP.** Cutting Chorus sings one damaging note per energy spent.
-- **Tito · Trickster · 19 HP.** The youngest cousin’s Secret Star spends 3 energy to deal 22 base damage through Block.
+- **Tito · Witch · 35 HP.** His Secret Star spell spends 3 energy to deal 22 base damage through Block.
 
 Ember the fox and Pip the hare are available from the start, too. Recruit Bramble the badger and Latch the raccoon at your first win. The collection shows requirements for all 30 species, and your browser remembers your recruits across runs. Each animal has a signature card, a role, and its own starting health. Level-up perks include attack damage, health, starting Block, extra cards, starting energy, and healing.
 
@@ -27,7 +27,9 @@ Every animal has one type. Ember beats Grove, Grove beats Tide, Tide beats Stone
 
 Fixed costs range from 0 to 3 energy. Quick Jab and Quick Brace cost 0 and give you 2 damage or 2 Block. Briar Lunge costs 2 for 13 damage, while Root Barricade costs 2 for 11 Block for you and 10 for your partner. Crownfall spends 3 for 24 damage and 5 Block for your partner. X-cost cards spend all remaining energy and repeat once per energy spent. Wild Flurry deals four base damage per hit and moves to another rival if its target falls. Thorn Circle grants both familiars Block per energy spent.
 
-The trail map has 20 levels with two fights at every level and a difficult final boss. Hard fights appear at levels 3, 6, 10, 14, 18, and 20. Standard routes pay 8 gold per rival. Hard routes have stronger enemies and pay 24 gold per rival. The map shows each enemy’s health and the total gold available. After each fight before the boss, players gain health capacity and choose one perk and one draft card. During combat, read intents, cover your partner, and follow up on your partner’s latest target for a Bond Strike.
+The trail map has 20 levels with two fights at every level and a difficult final boss. Hard fights appear at levels 3, 6, 10, 14, 18, and 20. Standard routes pay 8 gold per rival. Hard routes have stronger enemies and pay 24 gold per rival. The map shows each enemy’s health and the total gold available. After each fight before the boss, each player levels up, gains health capacity, picks a perk, and can take or skip a card. During combat, read intents, cover your partner, and follow up on your partner’s latest target for a Bond Strike.
+
+Win the level 3 Hard fight to choose an extra run-long perk per familiar. Briar Ambush adds 5 base damage to your first attack hit each fight. Trail Ward starts every fight with 8 extra Block. In co-op, Bond Ward grants both familiars 5 Block per player who chose it on the first Bond Strike each fight.
 
 The Ash Regent uses Eclipse to damage the team and apply Vulnerable, Shadow Ward to gain Block and heal, and Crown Curse to attack one familiar and apply Frail and Vulnerable. Watch the intent shown above each turn.
 
