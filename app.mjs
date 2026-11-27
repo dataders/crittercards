@@ -1,5 +1,5 @@
 import {
-  CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, STARTER_DECK, MAX_STARTING_COPIES, FRAIL_BLOCK_LOSS,
+  COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, STARTER_DECK, MAX_STARTING_COPIES, FRAIL_BLOCK_LOSS,
   ENCOUNTERS, TRAIL, MERCHANTS, LEVEL_PERKS, createRun, applyAction, getEncounter,
   getCardDescription, validateStartingDeck, canAffordCard,
 } from './game.mjs';
@@ -12,7 +12,7 @@ const collectionKey = 'crittercards.collection.v1';
 const progressKey = 'crittercards.progress.v1';
 const cardKey = 'crittercards.cards.v1';
 const roomKey = 'crittercards.room.v1';
-const starterIds = ['fox', 'hare'];
+const starterIds = [...Object.keys(COUSINS), 'fox', 'hare'];
 const playerName = (seat) => `Player ${seat + 1}`;
 const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -108,33 +108,42 @@ function art(animal, className, fallback = animal) {
 }
 
 function collectionCount() {
-  return Object.keys(CRITTERS).filter((id) => collection.has(id)).length;
+  return Object.keys(CRITTER_UNLOCKS).filter((id) => collection.has(id)).length;
+}
+
+function rosterCard(critter, seat, picks, enabled) {
+  const selected = picks[seat] === critter.id;
+  const locked = !collection.has(critter.id) && !selected;
+  const subtitle = [critter.animal, critter.role, `${critter.maxHp} HP`].filter(Boolean).join(' · ');
+  const signature = CARDS[critter.signature];
+  return `<button class="critter-card ${locked ? 'is-locked' : ''}" type="button" data-do="pick" data-seat="${seat}" data-id="${escape(critter.id)}" aria-pressed="${selected}" ${!enabled || locked ? 'disabled' : ''}>
+    ${art(critter.id, 'critter-art', critter.name)}
+    <span class="critter-info">
+      <strong class="critter-name">${escape(critter.name)}</strong>
+      <span class="critter-role">${escape(subtitle)}</span>
+      <span class="critter-description"><strong>${escape(signature.name)}</strong> · ${signature.cost} energy<br>${escape(signature.description)}</span>
+      ${locked ? `<span class="critter-badge">◆ ${escape(recruitmentHint(critter.id))}</span>` : ''}
+    </span>
+  </button>`;
 }
 
 function roster(seat, picks, enabled) {
-  const creatures = Object.values(CRITTERS).filter(({ id }) => ui.filter === 'all' || collection.has(id) === (ui.filter === 'owned'));
+  const creatures = Object.values(CRITTERS).filter(({ id, animal }) =>
+    animal && (ui.filter === 'all' || collection.has(id) === (ui.filter === 'owned')));
   return `
-    <section aria-label="${playerName(seat)} creature selection">
-      <div class="section-heading"><h2>${playerName(seat)}</h2><span class="muted">${enabled ? 'Choose a creature' : picks[seat] ? 'Creature chosen' : 'Waiting to choose'}</span></div>
+    <section aria-label="${playerName(seat)} character selection">
+      <div class="section-heading"><h2>${playerName(seat)}</h2><span class="muted">${enabled ? 'Choose a character' : picks[seat] ? 'Character chosen' : 'Waiting to choose'}</span></div>
+      <h3>The four cousins</h3>
+      <div class="critter-grid cousin-roster">
+        ${Object.values(COUSINS).map((critter) => rosterCard(critter, seat, picks, enabled)).join('')}
+      </div>
+      <h3>Woodland familiars</h3>
       <div class="roster-filters" aria-label="Filter creatures">
         ${[['all', 'All creatures'], ['owned', 'Recruited'], ['locked', 'Unrecruited']].map(([id, label]) =>
           button(label, 'filter', { data: `data-id="${id}" aria-pressed="${ui.filter === id}"` })).join('')}
       </div>
       <div class="critter-grid" tabindex="0" aria-label="Creature collection">
-        ${creatures.map((critter) => {
-          const owned = collection.has(critter.id);
-          const selected = picks[seat] === critter.id;
-          const locked = !owned && !selected;
-          return `<button class="critter-card ${locked ? 'is-locked' : ''}" type="button" data-do="pick" data-seat="${seat}" data-id="${escape(critter.id)}" aria-pressed="${selected}" ${!enabled || locked ? 'disabled' : ''}>
-            ${art(critter.animal, 'critter-art')}
-            <span class="critter-info">
-              <strong class="critter-name">${escape(critter.name)}</strong>
-              <span class="critter-role">${escape(critter.animal)} · ${escape(critter.role)}</span>
-              <span class="critter-description">${escape(CARDS[critter.signature].name)}. ${escape(CARDS[critter.signature].description)}</span>
-              ${locked ? `<span class="critter-badge">◆ ${escape(recruitmentHint(critter.id))}</span>` : ''}
-            </span>
-          </button>`;
-        }).join('') || '<p class="muted">No creatures in this view.</p>'}
+        ${creatures.map((critter) => rosterCard(critter, seat, picks, enabled)).join('') || '<p class="muted">No creatures in this view.</p>'}
       </div>
     </section>`;
 }
@@ -147,7 +156,7 @@ function deckBuilder(seat, critterId, room) {
   const disabled = ui.pending || Boolean(room?.deck);
   return `<section class="deck-builder" aria-labelledby="deck-title">
     <div class="section-heading"><h2 id="deck-title">Build ${escape(critter.name)}’s deck</h2><span class="muted">${knownCards.size} / ${cardLibrary.length} library cards unlocked</span></div>
-    <p class="muted">Pick five library cards, with up to two copies each and at least one attack. Your animal always brings two copies of its signature.</p>
+    <p class="muted">Pick five library cards, with up to two copies each and at least one attack. Your character always brings two copies of their signature.</p>
     <p class="deck-signature"><strong>${escape(signature.name)} × 2</strong> · ${signature.cost} energy · ${escape(signature.description)}</p>
     <div class="deck-slots">${cards.map((id, index) => `<label class="field deck-slot">Card ${index + 1}<select data-deck-slot="${index}" data-seat="${seat}" ${disabled ? 'disabled' : ''}>
       ${cardLibrary.filter((cardId) => knownCards.has(cardId) || cardId === id).map((cardId) => {
@@ -174,7 +183,7 @@ function lobby() {
       <div class="hero-copy">
         <p class="eyebrow">A co-op deckbuilding roguelite</p>
         <h1>The Hollow Trail</h1>
-        <p>Choose your familiars, face the woodland’s rival trainers, and bring new creatures home.</p>
+        <p>Four cousins enter the Hollow Trail. Play as a cousin or a woodland familiar and face the rival trainers.</p>
       </div>
     </section>
     <div class="lobby-panel">
@@ -198,9 +207,9 @@ function lobby() {
           <span class="muted">${room.joined.every(Boolean) ? 'Both players joined' : 'Waiting for Player 2'} · You are ${playerName(room.seat)}</span>
         </div>` : ''}
       ${ui.mode !== 'online' || room ? `
-        <p class="collection-status"><strong>${collectionCount()} / ${Object.keys(CRITTERS).length}</strong> creatures recruited</p>
-        ${room || ui.mode === 'solo' ? '' : `<div class="seat-picker" aria-label="Choose whose creature to edit">${[0, 1].map((seat) => button(
-          `${playerName(seat)} · ${escape(CRITTERS[picks[seat]]?.name ?? 'Choose animal')}`, 'seat', { data: `data-seat="${seat}" aria-pressed="${ui.pickSeat === seat}"` }
+        <p class="collection-status"><strong>${collectionCount()} / ${Object.keys(CRITTER_UNLOCKS).length}</strong> creatures recruited</p>
+        ${room || ui.mode === 'solo' ? '' : `<div class="seat-picker" aria-label="Choose whose character to edit">${[0, 1].map((seat) => button(
+          `${playerName(seat)} · ${escape(CRITTERS[picks[seat]]?.name ?? 'Choose character')}`, 'seat', { data: `data-seat="${seat}" aria-pressed="${ui.pickSeat === seat}"` }
         )).join('')}</div>`}
         ${roster(seat, picks, !ui.pending)}
         ${deckBuilder(seat, picks[seat], room)}
@@ -230,7 +239,7 @@ function effects(unit) {
 function allyCard(player, seat, state) {
   const critter = CRITTERS[player.critterId];
   return `<div class="unit-card ${state.activePlayer === seat ? 'is-active' : ''} ${player.hp <= 0 ? 'is-defeated' : ''}">
-    ${art(critter.animal, 'unit-art')}
+    ${art(critter.id, 'unit-art', critter.name)}
     <div class="unit-info">
       <span class="combat-label">${playerName(seat)} · Lv. ${player.level}</span>
       <strong class="unit-name">${escape(critter.name)}</strong>
@@ -421,10 +430,10 @@ function conclusion(state) {
   return `<section class="end-panel">
     <p class="eyebrow">${won ? 'Trail complete' : 'Run ended'}</p>
     <h1>${won ? 'The Hollow Crown falls' : 'The woods close in'}</h1>
-    <p>${won ? 'Your familiars defeated the Ash Regent.' : 'Your familiars have fainted. Recruits you found on this run are still in your collection.'}</p>
+    <p>${won ? 'Your party defeated the Ash Regent.' : 'Your party has fainted. Recruits you found on this run are still in your collection.'}</p>
     ${recruitment()}
     ${cardReveal()}
-    <p class="collection-status"><strong>${collectionCount()} / ${Object.keys(CRITTERS).length}</strong> creatures recruited</p>
+    <p class="collection-status"><strong>${collectionCount()} / ${Object.keys(CRITTER_UNLOCKS).length}</strong> creatures recruited</p>
     ${button('Back to creature selection', 'home', { style: 'primary' })}
   </section>`;
 }

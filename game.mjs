@@ -1,4 +1,12 @@
+export const COUSINS = {
+  hudson: { id: 'hudson', name: 'Hudson', role: 'Tank', maxHp: 48, signature: 'shieldWall' },
+  quinn: { id: 'quinn', name: 'Quinn', role: 'Witch', maxHp: 30, signature: 'witchHex' },
+  alba: { id: 'alba', name: 'Alba', role: 'Bard', maxHp: 32, signature: 'cuttingChorus' },
+  tita: { id: 'tita', name: 'Tita', role: 'Trickster', maxHp: 19, signature: 'secretStar' },
+};
+
 export const CRITTERS = {
+  ...COUSINS,
   fox: { id: 'fox', name: 'Ember', animal: 'fox', role: 'Striker', description: 'Breaks through armor with hungry flame.', maxHp: 33, signature: 'ghostfire' },
   hare: { id: 'hare', name: 'Pip', animal: 'hare', role: 'Skirmisher', description: 'Darts through the fray and guards a companion.', maxHp: 32, signature: 'moonkick' },
   badger: { id: 'badger', name: 'Bramble', animal: 'badger', role: 'Guardian', description: 'Stands between the pack and the dark.', maxHp: 43, signature: 'tombguard' },
@@ -10,6 +18,10 @@ export const CRITTERS = {
 };
 
 export const CARDS = {
+  shieldWall: { id: 'shieldWall', name: 'Shield Wall', cost: 1, type: 'support', target: 'none', block: 10, allyBlock: 8 },
+  witchHex: { id: 'witchHex', name: 'Witch’s Hex', cost: 1, type: 'support', target: 'enemy', vulnerable: 1, frail: 1 },
+  cuttingChorus: { id: 'cuttingChorus', name: 'Cutting Chorus', cost: 'X', type: 'attack', target: 'enemy', damage: 5 },
+  secretStar: { id: 'secretStar', name: 'Secret Star', cost: 3, type: 'attack', target: 'enemy', damage: 22, pierce: true },
   strike: { id: 'strike', name: 'Claw Strike', cost: 1, type: 'attack', target: 'enemy', damage: 6 },
   guard: { id: 'guard', name: 'Hold Fast', cost: 1, type: 'skill', target: 'none', block: 8 },
   cover: { id: 'cover', name: 'Stand Together', cost: 1, type: 'support', target: 'none', block: 4, allyBlock: 7 },

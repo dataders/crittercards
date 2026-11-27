@@ -1,18 +1,25 @@
 # Crittercards · The Hollow Trail
 
-A two-player deckbuilding roguelite set in a dark mythic woodland. Each player brings one familiar. Beat rival trainers, draft cards, pick level-up perks, and recruit new animals for later runs.
+A two-player deckbuilding roguelite set in a dark mythic woodland. Each player brings one cousin or woodland familiar. Beat rival trainers, draft cards, pick level-up perks, and recruit new animals for later runs.
 
 ## Play
 
 Run `node server.mjs` with Node 22 or newer, then open [localhost:4173](http://localhost:4173). There are no packages to install.
 
-- **Single player.** Choose one familiar and build its deck. Ally effects apply to your own familiar, and rivals have reduced health and attack damage.
-- **Share a screen.** Pick a familiar and build a deck for each player, then choose **Begin the trail**. Take turns using the same controls. One person can also play both hands.
-- **Play with a room code.** Open the game in two browser tabs or on two devices that can reach the same server. The host creates a room, the guest joins by code, and each player picks a creature and confirms a deck. For devices on the same trusted network, start with `HOST=0.0.0.0 node server.mjs` and use the host machine’s LAN address on both devices.
+- **Single player.** Choose one character and build their deck. Ally effects apply to your own character, and rivals have reduced health and attack damage.
+- **Share a screen.** Pick a character and build a deck for each player, then choose **Begin the trail**. Take turns using the same controls. One person can also play both hands.
+- **Play with a room code.** Open the game in two browser tabs or on two devices that can reach the same server. The host creates a room, the guest joins by code, and each player picks a character and confirms a deck. For devices on the same trusted network, start with `HOST=0.0.0.0 node server.mjs` and use the host machine’s LAN address on both devices.
 
-Ember the fox and Pip the hare are your starters. Recruit Bramble the badger and Latch the raccoon at your first win. The collection shows requirements for all 30 species, and your browser remembers your recruits across runs. Each animal has a signature card, a role, and its own starting health. Level-up perks include attack damage, health, starting Block, extra cards, starting energy, and healing.
+The four cousins are playable from the start.
 
-Each starting deck contains two copies of the animal’s signature and five cards you choose from the shared library. Start with eleven library cards and unlock nine more by defeating individual rival creatures. Unlocks stay in the browser even if the run ends in defeat. Drafted cards go into your current deck.
+- **Hudson · Tank · 48 HP.** Shield Wall protects him and his partner.
+- **Quinn · Witch · 30 HP.** Witch’s Hex makes a rival Vulnerable and Frail.
+- **Alba · Bard · 32 HP.** Cutting Chorus sings one damaging note per energy spent.
+- **Tita · Trickster · 19 HP.** The youngest cousin’s Secret Star spends 3 energy to deal 22 base damage through Block.
+
+Ember the fox and Pip the hare are available from the start, too. Recruit Bramble the badger and Latch the raccoon at your first win. The collection shows requirements for all 30 species, and your browser remembers your recruits across runs. Each animal has a signature card, a role, and its own starting health. Level-up perks include attack damage, health, starting Block, extra cards, starting energy, and healing.
+
+Each starting deck contains two copies of the character’s signature and five cards you choose from the shared library. Start with eleven library cards and unlock nine more by defeating individual rival creatures. Unlocks stay in the browser even if the run ends in defeat. Drafted cards go into your current deck.
 
 Rallying Howl adds Strength, which boosts every attack for the rest of the fight. Expose applies Vulnerable, which makes the next hit deal 50% more damage. Brittle Hex applies Frail, which reduces the target’s next Block gain by 3. Ironhide and Cindermaw can apply Frail to your familiars.
 
@@ -40,4 +47,4 @@ Run `node --test` from the repository root. The tests drive game actions directl
 
 ## Artwork
 
-The trail banner and the 30 portraits are bundled in [assets/](assets/). They were made with built-in ImageGen and exported as WebP. The banner brief called for a moon gate, an ember fox, and a moon hare in a dark spruce forest. The portrait brief used four-by-two contact sheets of identifiable species with gouache texture, woodcut lines, and subtle ember, moonlight, or shadow effects.
+The trail banner and the 34 portraits are bundled in [assets/](assets/). They were made with built-in ImageGen and exported as WebP. The banner brief called for a moon gate, an ember fox, and a moon hare in a dark spruce forest. The portrait brief used four-by-two contact sheets of identifiable species with gouache texture, woodcut lines, and subtle ember, moonlight, or shadow effects.

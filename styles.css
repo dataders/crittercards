@@ -163,6 +163,8 @@ img.hero-art { mask-image: linear-gradient(90deg, transparent, #000 24%); }
   scrollbar-color: #688a53 #172a21;
   scrollbar-gutter: stable;
 }
+.cousin-roster { margin-bottom: 1.5rem; }
+.cousin-roster .critter-art img { object-position: center 35%; }
 .critter-card {
   position: relative;
   display: flex;
