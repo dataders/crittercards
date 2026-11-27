@@ -28,6 +28,11 @@ const roomKey = 'crittercards.room.v1';
 const tutorialKey = 'crittercards.tutorial.v1';
 const saveKey = 'crittercards.save.v1';
 const musicKey = 'crittercards.music.v1';
+const areaScenes = [
+  { id: 'hollow', image: 'hollow-battle.webp', alt: 'Moonlit pines and a ruined stone arch', description: 'Follow the fireflies through old pines toward a moonlit stone arch.' },
+  { id: 'canopy', image: 'drowned-canopy-battle.webp', alt: 'A flooded willow woodland with lights reflected in the water', description: 'Cross the flooded willows where lanterns glow beneath the mist.' },
+  { id: 'court', image: 'thorn-court-battle.webp', alt: 'A ruined forest court surrounded by blackthorn', description: 'Enter a ruined court where blackthorn curls around the stones.' },
+];
 const starterIds = [...Object.keys(COUSINS), 'fox', 'hare'];
 const playerName = (seat) => `Player ${seat + 1}`;
 const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -259,12 +264,12 @@ function rosterCard(critter, seat, picks, enabled) {
 function roster(seat, picks, enabled, companions) {
   const creatures = Object.values(CRITTERS).filter(({ id, animal }) =>
     animal && (ui.filter === 'all' || collection.has(id) === (ui.filter === 'owned')));
+  const cousin = Object.hasOwn(COUSINS, picks[seat] ?? '');
   return `
     <section aria-label="${playerName(seat)} character selection">
       <div class="section-heading"><h2>${playerName(seat)}</h2><span class="muted">${enabled ? 'Choose a character' : picks[seat] ? 'Character chosen' : 'Waiting to choose'}</span></div>
       <p class="type-key">Type strengths · Ember beats Grove · Grove beats Tide · Tide beats Stone · Stone beats Ember</p>
       <h3>The four cousins</h3>
-  const cousin = Object.hasOwn(COUSINS, picks[seat] ?? '');
       <div class="critter-grid cousin-roster">
         ${Object.values(COUSINS).map((critter) => rosterCard(critter, seat, picks, enabled)).join('')}
       </div>
@@ -471,10 +476,19 @@ function trailMap(state) {
   const canLead = !ui.pending && (!ui.room || ui.room.seat === 0);
   const { actIndex, act } = trailPosition(state.encounter);
   const first = actIndex * LEVELS_PER_ACT;
-  return `<section class="battle-head"><div><p class="eyebrow">Choose your route</p><h1>${escape(act.name)}</h1></div>${purse(state)}</section>
+  const area = areaScenes[actIndex];
+  return `<section class="area-overview" aria-labelledby="area-title">
+      <img class="area-art" src="assets/${area.image}" alt="${escape(area.alt)}" width="1536" height="1024" fetchpriority="high">
+      <div class="area-copy">
+        <p class="eyebrow">Act ${actIndex + 1} · Choose your route</p>
+        <h1 id="area-title">${escape(act.name)}</h1>
+        <p>${escape(area.description)}</p>
+        <p class="area-boss">Level ${LEVELS_PER_ACT} · ${escape(act.boss)}</p>
+      </div>
+      ${purse(state)}
+    </section>
     ${progress(state)}
     ${ui.room?.seat === 1 ? '<p class="muted trail-wait">Player 1 chooses the next stop.</p>' : ''}
-    <p class="map-intro">Choose a fight at each level. Defeat ${escape(act.boss)} at level ${LEVELS_PER_ACT}.</p>
     <ol class="trail-ladder" aria-label="Act ${actIndex + 1} trail map">${TRAIL.slice(first, first + LEVELS_PER_ACT).map((routes, index) => {
       const level = first + index;
       const bossLevel = index === LEVELS_PER_ACT - 1;
@@ -709,6 +723,9 @@ function render() {
   const previous = document.activeElement;
   const focus = previous?.dataset.do ? ['do', 'seat', 'id', 'index'].map((key) => previous.dataset[key]) : null;
   const state = ui.room ? ui.room.state : ui.run;
+  const battleArea = state?.phase === 'combat' ? areaScenes[trailPosition(state.encounter).actIndex]?.id : null;
+  if (battleArea) document.body.dataset.battleArea = battleArea;
+  else delete document.body.dataset.battleArea;
   syncSoundtrack(state);
   const messages = `<div class="feedback" aria-live="polite">${ui.error ? `<p class="error-line" role="alert">${escape(ui.error)}</p>` : ''}${ui.notice ? `<p class="status-line">${escape(ui.notice)}</p>` : ''}</div>`;
   const runScenes = { route: trailMap, camp: campScreen, shop: merchantShop, combat, reward: rewards, victory: conclusion, defeat: conclusion };
@@ -737,7 +754,7 @@ function render() {
 
 function acceptState(state, previous) {
   if (state?.encounter !== previous?.encounter || state?.phase !== previous?.phase) {
-    ui.scrollToRoute = state?.phase === 'route' && state.encounter > 0;
+    ui.scrollToRoute = state?.phase === 'route' && state.encounter % LEVELS_PER_ACT !== 0;
     ui.perks = [null, null];
     ui.hardPerks = [null, null];
     ui.drafts = [null, null];
