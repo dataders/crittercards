@@ -9,12 +9,20 @@
   <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
   <style>
     :root { color-scheme: dark; font: 1rem/1.5 system-ui, sans-serif; }
-    body { background: #14231c; color: #f0e9ce; margin: 0; }
+    body { background: #14231c; color: #f0e9ce; margin: 0; isolation: isolate; }
+    body::before {
+      content: '';
+      position: fixed;
+      z-index: -1;
+      inset: 0;
+      background: linear-gradient(#07130e9c, #07130e9c), url('assets/creepy-woods.webp') center 48% / cover no-repeat;
+      pointer-events: none;
+    }
     main { max-width: 48rem; margin: auto; padding: clamp(1.25rem, 5vw, 3rem); }
     .back { display: inline-block; margin-bottom: 1rem; color: #c2d19a; }
     h1, h2 { font-family: Georgia, serif; line-height: 1.15; }
     h1 { font-size: clamp(2rem, 7vw, 3.5rem); margin: 0; }
-    section { margin-top: 1.5rem; padding: 1rem; border: 1px solid #597257; border-radius: .75rem; }
+    section { margin-top: 1.5rem; padding: 1rem; border: 1px solid #597257; border-radius: .75rem; background: #14231ce8; }
     h2 { margin: 0 0 1rem; }
     dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 1rem; margin: 0; }
     dt { font-weight: 650; }
