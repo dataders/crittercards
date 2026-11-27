@@ -28,6 +28,7 @@
         <span class="brand-copy">Crittercards</span>
       </button>
       <div class="header-actions">
+        <button class="button button-ghost" id="music-toggle" type="button" data-do="music" aria-pressed="false" title="Footsteps Under Black Pines">Music</button>
         <button class="button button-secondary" type="button" data-do="share-game">Share game</button>
         <button class="button button-ghost" type="button" data-do="rules">How to play</button>
       </div>
@@ -35,6 +36,7 @@
     <main class="game-main" id="game"></main>
     <footer class="app-footer"><span>Crittercards</span><span>The Hollow Trail · Playtest build</span></footer>
   </div>
+  <audio id="soundtrack" src="assets/footsteps-under-black-pines.mp3" preload="none" loop></audio>
   <dialog id="rules" aria-labelledby="rules-title" aria-describedby="tutorial-progress">
     <div class="lobby-panel tutorial">
       <div class="tutorial-top"><span class="eyebrow">The Hollow Trail</span><span id="tutorial-progress" class="muted" aria-live="polite"></span></div>
@@ -43,7 +45,7 @@
         <section data-tutorial-step>
           <h3>Choose your team</h3>
           <p>Choose <strong>Single player</strong> for one character, or <strong>Share a screen</strong> for two. To play on separate screens, find a public match or share a private room code.</p>
-          <p>Pick a cousin or a woodland familiar. Each has a type and a signature card. The rest of the woodland creatures can be recruited as you play.</p>
+          <p>Pick a cousin or a woodland familiar. Each cousin also chooses a recruited animal companion. Each animal has a special ability it can use for free once per turn, using its own type. Other woodland creatures can be recruited as you play.</p>
         </section>
         <section data-tutorial-step hidden>
           <h3>Build a deck</h3>
@@ -70,7 +72,7 @@
           <h3>Grow and save your run</h3>
           <p>After a trainer fight, choose a level-up perk and take a card or skip it. Each player confirms their own choice. Defeating rivals also unlocks cards and creatures for future runs.</p>
           <p>Choose <strong>Save game</strong> during a run, then <strong>Continue saved game</strong> on the opening screen. Saves stay in this browser. A saved room game resumes on one shared screen.</p>
-          <p>Ready? Your goal is to cross the 20-level trail and defeat the Ash Regent.</p>
+          <p>Clear three acts of 20 levels each. Defeat each act's boss to continue. A full run is designed for 90–120 minutes, and you can save your progress along the way.</p>
         </section>
       </div>
       <div class="tutorial-actions"><button type="button" class="button button-ghost" data-do="tutorial-close">Skip tutorial</button><button type="button" class="button button-secondary" data-do="tutorial-back">Back</button><button type="button" class="button button-primary" data-do="tutorial-next">Next</button></div>

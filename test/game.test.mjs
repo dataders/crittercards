@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { applyAction, createRun } from '../game.mjs';
+import { ACTS, CAMPS, LEVELS_PER_ACT, MERCHANTS, TRAIL, applyAction, createRun, trailPosition } from '../game.mjs';
 
 function replay({ critters, seed, decks }, actions) {
   let state = createRun(critters, seed, decks);
@@ -75,7 +75,7 @@ test('a seeded solo replay clears 20 levels and defeats the Ash Regent', () => {
   }
 
   const rewards = timeline.filter(({ phase }) => phase === 'reward');
-  assert.deepEqual(rewards.map(({ encounter }) => encounter), Array.from({ length: 19 }, (_, index) => index));
+  assert.deepEqual(rewards.map(({ encounter }) => encounter), Array.from({ length: LEVELS_PER_ACT }, (_, index) => index));
 
   const purchase = timeline[actions.findIndex(({ type }) => type === 'buy')];
   assert.equal(purchase?.encounter, 3);
@@ -99,11 +99,49 @@ test('a seeded solo replay clears 20 levels and defeats the Ash Regent', () => {
   assert.equal(afterCurse.players[0].vulnerable, 1);
 
   const final = timeline.at(-1);
-  assert.equal(final.phase, 'victory');
+  assert.equal(final.phase, 'reward');
   assert.equal(final.encounter, 19);
   assert.equal(final.path.length, 20);
   assert.equal(final.path.at(-1), 'perilous');
   assert.equal(final.players[0].level, 20);
   assert.ok(final.players[0].hp > 0);
   assert.equal(final.enemies.find((enemy) => enemy.boss)?.hp, 0);
+});
+
+test('all three acts have 20 levels and only the last boss ends the campaign', () => {
+  assert.equal(TRAIL.length, 60);
+  assert.equal(CAMPS.length, 15);
+  assert.equal(Object.keys(MERCHANTS).length, 15);
+  for (const [actIndex, act] of ACTS.entries()) {
+    const encounter = (actIndex + 1) * LEVELS_PER_ACT - 1;
+    assert.deepEqual(trailPosition(encounter), { actIndex, act, level: 20, bossLevel: true });
+    let run = createRun(['fox', 'tita'], 40);
+    run.encounter = encounter;
+    run.path = Array(encounter).fill('steady');
+    run.players[0].deck[0] = 'strike+';
+    run.players[0].hardPerk = 'bondWard';
+    run.players[0].hp = 1;
+    run = applyAction(run, { type: 'route', player: 0, routeId: 'steady' });
+    assert.equal(run.enemies.find((enemy) => enemy.boss)?.name, act.boss);
+    run.players[0].hand = ['jab', 'jab'];
+    for (const enemy of run.enemies) enemy.hp = 1;
+    run = applyAction(run, { type: 'play', player: 0, cardIndex: 0, target: 0 });
+    run = applyAction(run, { type: 'play', player: 0, cardIndex: 0, target: 1 });
+    if (actIndex === ACTS.length - 1) {
+      assert.equal(run.phase, 'victory');
+      continue;
+    }
+    assert.equal(run.phase, 'reward');
+    run = applyAction(run, { type: 'draft', player: 0, cardId: null, perkId: 'fang' });
+    assert.equal(run.phase, 'reward');
+    run = applyAction(JSON.parse(JSON.stringify(run)), { type: 'draft', player: 1, cardId: null, perkId: 'fang' });
+    assert.equal(run.phase, 'route');
+    assert.equal(run.encounter, encounter + 1);
+    assert.equal(trailPosition(run.encounter).level, 1);
+    assert.equal(run.players[0].hp, run.players[0].maxHp);
+    assert.equal(run.players[0].deck[0], 'strike+');
+    assert.equal(run.players[0].hardPerk, 'bondWard');
+    assert.equal(run.players[0].attackBonus, 1);
+    assert.equal(run.gold, 16);
+  }
 });

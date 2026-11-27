@@ -248,6 +248,43 @@ function describeCard(card, attackBonus) {
   return `Spend all remaining energy and repeat for each energy spent. ${effect}${card.damage ? ' Extra hits move to the next rival.' : ''}`;
 }
 
+export const COMPANION_ABILITIES = {
+  fox: { name: 'Ember Pounce', damage: 4, pierce: true },
+  hare: { name: 'Moonbound Kick', damage: 4, allyBlock: 2 },
+  badger: { name: 'Burrow Guard', damage: 2, block: 4 },
+  owl: { name: 'Omen Peck', damage: 2, mark: true },
+  raccoon: { name: 'Pocket Pilfer', damage: 3, stealBlock: 3 },
+  magpie: { name: 'Stolen Glimmer', damage: 1, allyEnergy: 1 },
+  boar: { name: 'Bristle Charge', damage: 4, block: 2 },
+  wolf: { name: 'Pack Hunter', damage: 3, woundedBonus: 3 },
+  mouse: { name: 'Tiny Rescue', damage: 1, block: 2, allyBlock: 2 },
+  squirrel: { name: 'Hidden Cache', damage: 1, block: 2, allyEnergy: 1 },
+  frog: { name: 'Pond Remedy', damage: 1, heal: 2, allyHeal: 1 },
+  weasel: { name: 'Needle Dash', damage: 3, pierce: true, block: 1 },
+  hedgehog: { name: 'Bramble Huddle', damage: 1, block: 2, allyBlock: 4 },
+  bat: { name: 'Night Echo', damage: 1, mark: true, block: 1 },
+  crow: { name: 'Shiny Snatch', damage: 1, stealBlock: 4 },
+  heron: { name: 'Reed Spear', damage: 5, pierce: true },
+  otter: { name: 'Current Rider', damage: 1, allyBlock: 2, allyEnergy: 1 },
+  mole: { name: 'Tunnel Tap', damage: 2, pierce: true, block: 2 },
+  porcupine: { name: 'Quill Flick', damage: 3, block: 3 },
+  skunk: { name: 'Mist Cover', damage: 1, frail: 1, allyBlock: 2 },
+  coyote: { name: 'Scent Tracker', damage: 2, woundedBonus: 2, mark: true },
+  beaver: { name: 'Wooden Barricade', damage: 1, block: 3, allyBlock: 3 },
+  turtle: { name: 'Shell Tap', damage: 1, block: 5, heal: 1 },
+  salamander: { name: 'Kindle Aid', damage: 2, allyHeal: 2 },
+  viper: { name: 'Venom Prick', damage: 2, poison: 2 },
+  moth: { name: 'Moon Dust', damage: 1, allyBlock: 1, allyEnergy: 1 },
+  lynx: { name: 'Snow Pounce', damage: 3, block: 1, woundedBonus: 1 },
+  stag: { name: 'Antler Shelter', damage: 1, allyBlock: 3, allyHeal: 1 },
+  bear: { name: 'Heavy Paw', damage: 5, allyBlock: 1 },
+  wolverine: { name: 'Fierce Nip', damage: 3, woundedBonus: 2, heal: 1 },
+};
+
+export function getCompanionDescription(animalId, attackBonus = 0) {
+  return describeCard(COMPANION_ABILITIES[animalId], attackBonus);
+}
+
 for (const card of Object.values(CARDS)) {
   const upgraded = { ...card, id: `${card.id}+`, name: `${card.name}+` };
   const improvedFields = ['damage', 'block', 'allyBlock', 'heal', 'allyHeal', 'stealBlock', 'woundedBonus', 'strength'];
@@ -363,7 +400,20 @@ function woodlandEnemy(animal, level, slot, perilous) {
 
 const HARD_LEVELS = new Set([2, 5, 9, 13, 17, 19]);
 
-export const TRAIL = Array.from({ length: 20 }, (_, index) => {
+export const LEVELS_PER_ACT = 20;
+export const ACTS = [
+  { name: 'The Hollow Trail', boss: 'The Ash Regent' },
+  { name: 'The Drowned Canopy', boss: 'The Mire Matron' },
+  { name: 'The Thorn Court', boss: 'The Thorn Sovereign' },
+];
+
+export function trailPosition(encounter) {
+  const actIndex = Math.floor(encounter / LEVELS_PER_ACT);
+  const level = encounter % LEVELS_PER_ACT + 1;
+  return { actIndex, level, act: ACTS[actIndex], bossLevel: level === LEVELS_PER_ACT };
+}
+
+const openingTrail = Array.from({ length: LEVELS_PER_ACT }, (_, index) => {
   if (index >= 2 && index < 19) {
     return woodlandTeams[index - 2].map((animals, option) => {
       const alternate = option === 1;
@@ -411,7 +461,71 @@ export const TRAIL = Array.from({ length: 20 }, (_, index) => {
   ];
 });
 
-for (const [level, routes] of TRAIL.entries()) {
+const laterActs = [
+  {
+    routes: ['Reedway', 'Sunken Causeway'],
+    trainers: ['Reed Keeper', 'Mist Ferryman', 'Flood Warden'],
+    animals: ['otter', 'heron', 'weasel', 'frog', 'stag', 'beaver', 'lynx', 'turtle', 'badger', 'viper', 'salamander'],
+    turns: [
+      [['attack', 11], ['guard', 17], ['teamAttack', 13]],
+      [['guard', 14], ['frailAttack', 13], ['attack', 16]],
+      [['teamAttack', 9], ['attack', 13], ['guard', 16]],
+    ],
+    boss: [
+      { animal: 'heron', moves: [['teamAttack', 15], ['shadowWard', 24], ['crownCurse', 21], ['attack', 20]] },
+      { animal: 'beaver', moves: [['guard', 20], ['frailAttack', 15], ['teamAttack', 12]] },
+    ],
+  },
+  {
+    routes: ['Bramble Walk', 'Briar Stair'],
+    trainers: ['Thorn Knight', 'Briar Seer', 'Crown Sentinel'],
+    animals: ['porcupine', 'wolf', 'magpie', 'bear', 'lynx', 'squirrel', 'crow', 'heron', 'boar', 'stag', 'skunk'],
+    turns: [
+      [['frailAttack', 16], ['teamAttack', 14], ['guard', 23]],
+      [['attack', 19], ['crownCurse', 16], ['guard', 20]],
+      [['guard', 20], ['teamAttack', 13], ['frailAttack', 18]],
+    ],
+    boss: [
+      { animal: 'stag', moves: [['crownCurse', 25], ['eclipse', 20], ['shadowWard', 32], ['teamAttack', 23]] },
+      { animal: 'wolf', moves: [['frailAttack', 19], ['guard', 25], ['attack', 24]] },
+    ],
+  },
+];
+
+function laterTrail(config, actIndex) {
+  return Array.from({ length: LEVELS_PER_ACT }, (_, index) => {
+    const boss = index === LEVELS_PER_ACT - 1;
+    return config.routes.map((name, option) => {
+      const hard = option === 1 && HARD_LEVELS.has(index);
+      const trainer = boss ? ACTS[actIndex].boss : config.trainers[index % config.trainers.length];
+      const enemies = [0, 1].map((slot) => {
+        const rosterIndex = (index * 2 + option * 3 + slot * 5) % config.animals.length;
+        const animal = boss ? config.boss[slot].animal : config.animals[rosterIndex];
+        const baseHp = 82 + (actIndex - 1) * 72 + index * 3 + (slot === 0 ? 14 : 0);
+        const moves = boss ? config.boss[slot].moves : config.turns[(index + slot + option) % config.turns.length];
+        return {
+          animal,
+          name: boss && slot === 0 ? trainer : CRITTERS[animal].name,
+          boss: boss && slot === 0,
+          hp: Math.ceil(baseHp * (boss ? (slot === 0 ? 2.1 : 1.25) : 1) * (hard ? 1.25 : 1)),
+          moves: moves.map(([type, amount]) => [type, amount + Math.floor(index / 5) + (hard ? 4 : 0)]),
+        };
+      });
+      return {
+        id: option === 0 ? 'steady' : 'perilous',
+        name: boss ? (hard ? 'Challenge the court' : 'Enter the court') : name,
+        trainer,
+        subtitle: boss ? `Face ${trainer} and their champion.` : `Face ${enemies.map((enemy) => enemy.name).join(' and ')}.`,
+        difficulty: boss ? (hard ? 'Hard boss' : 'Boss') : (hard ? 'Hard' : 'Standard'),
+        goldPerEnemy: hard ? 24 : 8,
+        coOpHealth: boss ? 1.45 : 1.30,
+        enemies,
+      };
+    });
+  });
+}
+
+for (const [level, routes] of openingTrail.entries()) {
   if (!HARD_LEVELS.has(level)) continue;
   const hard = routes.find((route) => route.id === 'perilous');
   hard.enemies = hard.enemies.map((enemy) => ({
@@ -424,7 +538,9 @@ for (const [level, routes] of TRAIL.entries()) {
   }));
 }
 
-export const MERCHANTS = {
+export const TRAIL = [...openingTrail, ...laterActs.flatMap((act, index) => laterTrail(act, index + 1))];
+
+const openingMerchants = {
   3: { name: 'The Lantern Peddler', stock: [{ id: 'lunge', price: 6 }, { id: 'armor', price: 9 }, { id: 'circle', price: 13 }] },
   7: { name: 'The Moon Market', stock: [{ id: 'renew', price: 10 }, { id: 'sharpen', price: 12 }, { id: 'crownfall', price: 16 }] },
   11: { name: 'The Thorn Trader', stock: [{ id: 'thorns', price: 10 }, { id: 'moonmend', price: 12 }, { id: 'avalanche', price: 16 }] },
@@ -432,10 +548,24 @@ export const MERCHANTS = {
   18: { name: 'The Last Lantern', stock: [{ id: 'renew', price: 10 }, { id: 'avalanche', price: 16 }, { id: 'sanctuary', price: 16 }] },
 };
 
-export const CAMPS = [2, 6, 10, 14, 18];
+export const MERCHANTS = Object.fromEntries(ACTS.flatMap((_, actIndex) =>
+  Object.entries(openingMerchants).map(([level, merchant]) => [
+    actIndex * LEVELS_PER_ACT + Number(level),
+    actIndex === 0 ? merchant : {
+      name: actIndex === 1 ? 'The Reed Market' : 'The Briar Peddler',
+      stock: merchant.stock.map((item) => ({ ...item, price: item.price + 8 * actIndex })),
+    },
+  ]),
+));
+
+export const CAMPS = ACTS.flatMap((_, index) => [2, 6, 10, 14, 18].map((level) => index * LEVELS_PER_ACT + level));
 
 export function getEncounter(state) {
   return TRAIL[state.encounter].find((route) => route.id === state.path[state.encounter]);
+}
+
+export function rivalHealth(enemy, encounter, playerCount) {
+  return Math.ceil(enemy.hp * (playerCount === 1 ? 0.7 : encounter.coOpHealth ?? 1));
 }
 
 export const BASE_CARDS = ['strike', 'guard', 'cover', 'mark', 'howl', 'expose', 'flurry', 'jab', 'brace', 'lunge', 'barricade'];
@@ -519,6 +649,7 @@ function beginRound(state) {
   state.lastTarget = null;
   state.bondTriggered = false;
   for (const player of state.players) {
+    player.companionUsed = false;
     player.block = player.hp > 0 ? 2 * player.perks.filter((perk) => perk === 'shell').length : 0;
     if (state.round === 1 && player.hp > 0 && player.hardPerk === 'trailWard') {
       player.block += HARD_PERKS.trailWard.block;
@@ -546,8 +677,8 @@ function beginEncounter(state) {
     name: enemy.name,
     boss: enemy.boss ?? false,
     animal: enemy.animal,
-    hp: state.players.length === 1 ? Math.ceil(enemy.hp * 0.7) : enemy.hp,
-    maxHp: state.players.length === 1 ? Math.ceil(enemy.hp * 0.7) : enemy.hp,
+    hp: rivalHealth(enemy, encounter, state.players.length),
+    maxHp: rivalHealth(enemy, encounter, state.players.length),
     gold: encounter.goldPerEnemy,
     block: 0,
     marked: false,
@@ -569,18 +700,25 @@ function beginEncounter(state) {
   beginRound(state);
 }
 
-export function createRun(critterIds, seed = Date.now(), startingDecks = critterIds.map(() => STARTER_DECK)) {
+export function createRun(critterIds, seed = Date.now(), startingDecks, companions) {
   if (!Array.isArray(critterIds) || ![1, 2].includes(critterIds.length) ||
       [...critterIds].some((id) => typeof id !== 'string' || !Object.hasOwn(CRITTERS, id))) {
     throw new Error('Choose a critter for each player.');
   }
+  if (startingDecks === undefined) startingDecks = critterIds.map(() => STARTER_DECK);
+  if (companions === undefined) companions = critterIds.map(() => null);
   if (!Array.isArray(startingDecks) || startingDecks.length !== critterIds.length) throw new Error('Build a deck for each player.');
+  if (!Array.isArray(companions) || companions.length !== critterIds.length || [...companions].some((id, index) =>
+    id !== null && (!Object.hasOwn(COUSINS, critterIds[index]) || !Object.hasOwn(CRITTERS, id) || !CRITTERS[id].animal))) {
+    throw new Error('Choose an animal companion for a cousin.');
+  }
   for (const cards of startingDecks) validateStartingDeck(cards);
   const players = critterIds.map((critterId, id) => {
     const critter = CRITTERS[critterId];
     return {
       id,
       critterId,
+      companionId: companions[id],
       hp: critter.maxHp,
       maxHp: critter.maxHp,
       block: 0,
@@ -685,7 +823,7 @@ function defeatEnemy(state, enemy) {
   log(state, `${enemy.name} falls. The pack earns ${enemy.gold} gold.`);
 }
 
-function resolveCardEffect(state, player, card, target) {
+function resolveCardEffect(state, player, card, target, attackerId = player.critterId) {
   const ally = state.players[1 - player.id] ?? player;
   const enemy = state.enemies[target];
   if (card.damage) {
@@ -701,8 +839,8 @@ function resolveCardEffect(state, player, card, target) {
     enemy.block -= stolen;
     gainBlock(player, stolen);
     enemy.marked = false;
-    const multiplier = matchup(CRITTERS[player.critterId].type, CRITTERS[enemy.animal].type);
-    const dealt = hit(enemy, typedDamage(damage, CRITTERS[player.critterId].type, CRITTERS[enemy.animal].type), card.pierce);
+    const multiplier = matchup(CRITTERS[attackerId].type, CRITTERS[enemy.animal].type);
+    const dealt = hit(enemy, typedDamage(damage, CRITTERS[attackerId].type, CRITTERS[enemy.animal].type), card.pierce);
     state.lastAttacker = player.id;
     state.lastTarget = target;
     state.bondTriggered ||= bond;
@@ -835,6 +973,10 @@ function draftCard(state, { player: playerIndex, cardId = null, perkId = 'fang',
   if (hardPerkId !== null) log(state, `${critterName(player)} gains ${HARD_PERKS[hardPerkId].name} for the rest of the run.`);
 
   if (state.rewardPicks.every(Boolean)) {
+    if (trailPosition(state.encounter).bossLevel) {
+      for (const member of state.players) member.hp = member.maxHp;
+      log(state, 'The pack recovers to full health before entering the next act.');
+    }
     state.encounter += 1;
     state.enemies = [];
     state.phase = 'route';
@@ -922,11 +1064,20 @@ export function applyAction(state, action) {
     draftCard(next, action);
     return next;
   }
-  if (action.type !== 'play' && action.type !== 'endTurn') throw new Error('Unknown game action.');
+  if (action.type !== 'play' && action.type !== 'endTurn' && action.type !== 'companionStrike') throw new Error('Unknown game action.');
   if (state.phase !== 'combat') throw new Error('This action requires an active battle.');
   if (action.player !== state.activePlayer) throw new Error('Wait for your critter’s turn.');
   const next = structuredClone(state);
   if (action.type === 'play') playCard(next, action);
-  else finishTurn(next, action.player);
+  else if (action.type === 'companionStrike') {
+    const player = next.players[action.player];
+    if (!player.companionId || player.companionUsed) throw new Error('Your companion cannot strike again this turn.');
+    if (!Number.isInteger(action.target) || !next.enemies[action.target] || next.enemies[action.target].hp <= 0) throw new Error('Choose a living rival.');
+    player.companionUsed = true;
+    const ability = COMPANION_ABILITIES[player.companionId];
+    log(next, `${CRITTERS[player.companionId].name} uses ${ability.name} alongside ${critterName(player)}.`);
+    resolveCardEffect(next, player, ability, action.target, player.companionId);
+    if (next.enemies.every((enemy) => enemy.hp === 0)) finishEncounter(next);
+  } else finishTurn(next, action.player);
   return next;
 }

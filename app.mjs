@@ -1,12 +1,14 @@
 import {
   COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, STARTER_DECK, MAX_STARTING_COPIES, FRAIL_BLOCK_LOSS,
-  ENCOUNTERS, TRAIL, MERCHANTS, CAMPS, LEVEL_PERKS, HARD_PERKS, TYPES, matchup, createRun, applyAction, getEncounter,
-  hardPerkOptions, getEnemyIntent,
+  ENCOUNTERS, TRAIL, MERCHANTS, CAMPS, LEVEL_PERKS, HARD_PERKS, TYPES, matchup, COMPANION_ABILITIES, getCompanionDescription, createRun, applyAction, getEncounter,
+  ACTS, LEVELS_PER_ACT, trailPosition, hardPerkOptions, getEnemyIntent, rivalHealth,
   getCardDescription, validateStartingDeck, canAffordCard,
 } from './game.mjs';
-import { createRoom, findPublicMatch, joinRoom, resumeRoom } from './transport.mjs';
+import { createRoom, findPublicMatch, isTerminalRoomError, joinRoom, resumeRoom } from './transport.mjs';
 
 const game = document.querySelector('#game');
+const soundtrack = document.querySelector('#soundtrack');
+const musicToggle = document.querySelector('#music-toggle');
 const rules = document.querySelector('#rules');
 const shareDialog = document.querySelector('#share-dialog');
 const shareLink = document.querySelector('#share-link');
@@ -25,6 +27,7 @@ const cardKey = 'crittercards.cards.v1';
 const roomKey = 'crittercards.room.v1';
 const tutorialKey = 'crittercards.tutorial.v1';
 const saveKey = 'crittercards.save.v1';
+const musicKey = 'crittercards.music.v1';
 const starterIds = [...Object.keys(COUSINS), 'fox', 'hare'];
 const playerName = (seat) => `Player ${seat + 1}`;
 const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -45,6 +48,19 @@ function writeStorage(storage, key, value) {
     // The current game remains playable when storage is unavailable.
   }
 }
+
+let musicEnabled = readStorage(localStorage, musicKey, true);
+
+function updateMusicToggle() {
+  musicToggle.setAttribute('aria-pressed', String(!soundtrack.paused && !soundtrack.error));
+}
+
+function startMusic() {
+  if (musicEnabled && soundtrack.paused) soundtrack.play().catch(updateMusicToggle);
+}
+
+soundtrack.volume = 0.55;
+for (const event of ['play', 'pause', 'error']) soundtrack.addEventListener(event, updateMusicToggle);
 
 function showTutorialStep(index) {
   tutorialStep = index;
@@ -119,6 +135,7 @@ const knownCards = new Set([...BASE_CARDS, ...earnedCards]);
 const ui = {
   mode: invite ? 'online' : 'local',
   picks: [null, null],
+  companions: [null, null],
   startingDecks: [[...STARTER_DECK], [...STARTER_DECK]],
   pickSeat: 0,
   filter: 'all',
@@ -148,8 +165,8 @@ function unlockRecruits(state) {
   if (beats <= previous) return;
   recorded.runs[runKey] = beats;
   recorded.wins += beats - previous;
-  recorded.clears += Number(beats === TRAIL.length);
-  recorded.encounter = Math.max(recorded.encounter, beats === TRAIL.length ? 3 : Math.min(beats, 2));
+  recorded.clears += Math.floor(beats / LEVELS_PER_ACT) - Math.floor(previous / LEVELS_PER_ACT);
+  recorded.encounter = Math.max(recorded.encounter, beats >= LEVELS_PER_ACT ? 3 : Math.min(beats, 2));
   for (const [id, { kind, count }] of Object.entries(CRITTER_UNLOCKS)) {
     if (recorded[kind] >= count && !collection.has(id)) {
       collection.add(id);
@@ -176,8 +193,8 @@ function unlockCards(state) {
 
 function recruitmentHint(id) {
   const { kind, count } = CRITTER_UNLOCKS[id];
-  if (kind === 'encounter') return ['Beat the first trainer', 'Beat the second trainer', 'Finish the trail'][count - 1];
-  if (kind === 'clears') return `Complete ${count} trails`;
+  if (kind === 'encounter') return ['Beat the first trainer', 'Beat the second trainer', 'Clear Act 1'][count - 1];
+  if (kind === 'clears') return `Defeat ${count} act bosses`;
   return `Win ${count} fights total`;
 }
 
@@ -248,7 +265,7 @@ function deckBuilder(seat, critterId, room) {
         return `<li><strong>${escape(CARDS[id].name)}</strong> · ${knownCards.has(id) ? escape(CARDS[id].description) : `Defeat ${escape(rival?.name)} to unlock.`}</li>`;
       }).join('')}</ul>
     </details>
-    ${room ? `<div class="turn-actions">${button(room.deck ? 'Edit deck' : 'Confirm deck', room.deck ? 'edit-deck' : 'ready', { style: room.deck ? 'secondary' : 'primary', disabled: ui.pending })}</div>` : ''}
+    ${room ? `<div class="turn-actions">${button(room.deck ? 'Edit deck' : 'Confirm deck', room.deck ? 'edit-deck' : 'ready', { style: room.deck ? 'secondary' : 'primary', disabled: ui.pending || (Object.hasOwn(COUSINS, critterId) && !room.companions[seat]) })}</div>` : ''}
   </section>`;
 }
 
@@ -256,6 +273,8 @@ function lobby() {
   const room = ui.room;
   const picks = room ? room.picks : ui.picks;
   const seat = room?.seat ?? ui.pickSeat;
+  const companions = room?.companions ?? ui.companions;
+  const companionNeeded = (index) => Object.hasOwn(COUSINS, picks[index] ?? '') && !companions[index];
   return `
     <section class="hero">
       <img class="hero-art" src="assets/hollow-trail.webp" alt="">
@@ -266,7 +285,7 @@ function lobby() {
       </div>
     </section>
     <div class="lobby-panel">
-      ${!room && readStorage(localStorage, saveKey, null)?.state ? `<div class="save-panel"><strong>Saved trail</strong><span>Level ${readStorage(localStorage, saveKey, null).state.encounter + 1} · saved on this browser</span>${button('Continue saved game', 'continue', { style: 'primary' })}</div>` : ''}
+      ${!room && readStorage(localStorage, saveKey, null)?.state ? `<div class="save-panel"><strong>Saved trail</strong><span>${trailLocation(readStorage(localStorage, saveKey, null).state.encounter)} · saved on this browser</span>${button('Continue saved game', 'continue', { style: 'primary' })}</div>` : ''}
       <div class="mode-picker" aria-label="Play mode">
         ${button('Single player', 'solo', { style: ui.mode === 'solo' ? 'primary' : 'secondary', data: `aria-pressed="${ui.mode === 'solo'}"` })}
         ${button('Share a screen', 'local', { style: ui.mode === 'local' ? 'primary' : 'secondary', data: `aria-pressed="${ui.mode === 'local'}"` })}
@@ -294,10 +313,18 @@ function lobby() {
           `${playerName(seat)} · ${escape(CRITTERS[picks[seat]]?.name ?? 'Choose character')}`, 'seat', { data: `data-seat="${seat}" aria-pressed="${ui.pickSeat === seat}"` }
         )).join('')}</div>`}
         ${roster(seat, picks, !ui.pending)}
+        ${Object.hasOwn(COUSINS, picks[seat] ?? '') ? `<section class="companion-picker" aria-label="Animal companion">
+          <div class="section-heading"><h2>Choose ${escape(CRITTERS[picks[seat]].name)}’s animal</h2><span class="muted">Companion</span></div>
+          <p>Bring a recruited animal. Once per turn, it can use its special ability for free. Its attack uses its own type and benefits from your attack bonuses. In solo play, ally effects help you.</p>
+          <label class="field">Animal companion<select data-companion-seat="${seat}" ${ui.pending ? 'disabled' : ''}><option value="" disabled ${companions[seat] ? '' : 'selected'}>Choose an animal</option>
+            ${Object.values(CRITTERS).filter((animal) => animal.animal && (collection.has(animal.id) || companions[seat] === animal.id)).map((animal) => `<option value="${animal.id}" ${companions[seat] === animal.id ? 'selected' : ''}>${escape(animal.name)} · ${escape(TYPES[animal.type].name)} · ${escape(COMPANION_ABILITIES[animal.id].name)}</option>`).join('')}
+          </select></label>
+          ${companions[seat] ? `<div class="companion-preview">${art(companions[seat], 'companion-art')}<span><strong>${escape(CRITTERS[companions[seat]].name)} · ${escape(COMPANION_ABILITIES[companions[seat]].name)}</strong><br>${escape(TYPES[CRITTERS[companions[seat]].type].name)} type · free once per turn<br>${escape(getCompanionDescription(companions[seat]))}</span></div>` : ''}
+        </section>` : ''}
         ${deckBuilder(seat, picks[seat], room)}
         <div class="turn-actions">
           ${!room && ui.mode !== 'solo' && !picks[1 - seat] ? button(`Choose for ${playerName(1 - seat)}`, 'seat', { data: `data-seat="${1 - seat}"` }) : ''}
-          ${!room || room.seat === 0 ? button('Begin the trail', 'start', { style: 'primary', disabled: ui.pending || !(ui.mode === 'solo' ? picks[0] : picks.every(Boolean)) || (room && !room.ready.every(Boolean)) }) : ''}
+          ${!room || room.seat === 0 ? button('Begin the trail', 'start', { style: 'primary', disabled: ui.pending || !(ui.mode === 'solo' ? picks[0] : picks.every(Boolean)) || (ui.mode === 'solo' ? companionNeeded(0) : picks.some((_, index) => companionNeeded(index))) || (room && !room.ready.every(Boolean)) }) : ''}
           ${room ? `<span class="muted">${room.ready.filter(Boolean).length} of 2 decks confirmed</span>` : ''}
         </div>
       ` : ''}
@@ -330,6 +357,7 @@ function allyCard(player, seat, state) {
       ${effects(player)}
       ${player.hardPerk ? `<span class="unit-meta" title="${escape(HARD_PERKS[player.hardPerk].description)}">${escape(HARD_PERKS[player.hardPerk].name)}</span>` : ''}
       <span class="unit-meta">${player.hp <= 0 ? 'Fainted' : `${player.energy} energy`}</span>
+      ${player.companionId ? `<span class="unit-meta">With ${escape(CRITTERS[player.companionId].name)} · ${escape(TYPES[CRITTERS[player.companionId].type].name)} companion</span>` : ''}
     </div>
   </div>`;
 }
@@ -357,7 +385,7 @@ function enemyCard(enemy, index, state) {
   return `<button class="unit-card ${selected ? 'is-target selected-target' : ''} ${enemy.hp <= 0 ? 'is-defeated' : ''}" type="button" data-do="target" data-index="${index}" aria-pressed="${selected}" ${enemy.hp <= 0 ? 'disabled' : ''}>
     ${art(enemy.animal, 'unit-art')}
     <span class="unit-info">
-      <span class="combat-label">${escape(TYPES[CRITTERS[enemy.animal].type].name)} · ${bondTarget ? 'Bond Strike ready' : enemy.marked ? 'Marked' : enemy.boss ? 'Final boss' : 'Rival creature'}</span>
+      <span class="combat-label">${escape(TYPES[CRITTERS[enemy.animal].type].name)} · ${bondTarget ? 'Bond Strike ready' : enemy.marked ? 'Marked' : enemy.boss ? (state.encounter === TRAIL.length - 1 ? 'Final boss' : 'Act boss') : 'Rival creature'}</span>
       <strong class="unit-name">${escape(enemy.name)}</strong>
       ${health(enemy)}
       ${effects(enemy)}
@@ -367,9 +395,15 @@ function enemyCard(enemy, index, state) {
   </button>`;
 }
 
+function trailLocation(encounter) {
+  const { actIndex, level } = trailPosition(encounter);
+  return `Act ${actIndex + 1} · Level ${level} of ${LEVELS_PER_ACT}`;
+}
+
 function progress(state) {
-  return `<ol class="progress-track" aria-label="Trail progress">${TRAIL.map((routes, index) =>
-    `<li class="${index < state.encounter || state.phase === 'victory' ? 'is-complete' : index === state.encounter ? 'is-current' : ''}" ${index === state.encounter ? 'aria-current="step"' : ''}>${index === 19 ? 'Boss' : index + 1}</li>`).join('')}</ol>`;
+  const { actIndex, level } = trailPosition(state.encounter);
+  return `<ol class="progress-track" aria-label="Campaign progress">${ACTS.map((_, index) =>
+    `<li class="${index < actIndex ? 'is-complete' : ''}" ${index === actIndex ? 'aria-current="step"' : ''}>Act ${index + 1}${index < actIndex ? ' · Cleared' : index === actIndex ? ` · ${level}/${LEVELS_PER_ACT}` : ''}</li>`).join('')}</ol>`;
 }
 
 function purse(state) {
@@ -378,10 +412,15 @@ function purse(state) {
 
 function trailMap(state) {
   const canLead = !ui.pending && (!ui.room || ui.room.seat === 0);
-  return `<section class="battle-head"><div><p class="eyebrow">The Hollow Trail</p><h1>Choose your route</h1></div>${purse(state)}</section>
+  const { actIndex, act } = trailPosition(state.encounter);
+  const first = actIndex * LEVELS_PER_ACT;
+  return `<section class="battle-head"><div><p class="eyebrow">Choose your route</p><h1>${escape(act.name)}</h1></div>${purse(state)}</section>
+    ${progress(state)}
     ${ui.room?.seat === 1 ? '<p class="muted trail-wait">Player 1 chooses the next stop.</p>' : ''}
-    <p class="map-intro">Follow the paths through the woods. Choose a fight at each level and visit merchants along the way.</p>
-    <ol class="trail-ladder" aria-label="Trail map">${TRAIL.map((routes, level) => {
+    <p class="map-intro">Choose a fight at each level. Defeat ${escape(act.boss)} at level ${LEVELS_PER_ACT}.</p>
+    <ol class="trail-ladder" aria-label="Act ${actIndex + 1} trail map">${TRAIL.slice(first, first + LEVELS_PER_ACT).map((routes, index) => {
+      const level = first + index;
+      const bossLevel = index === LEVELS_PER_ACT - 1;
       const current = state.encounter === level;
       const picked = state.path[level];
       const merchant = MERCHANTS[level];
@@ -389,11 +428,11 @@ function trailMap(state) {
       const camp = CAMPS.includes(level);
       const campVisited = (state.visitedCamps ?? []).includes(level);
       return `<li class="trail-rung ${current ? 'is-current' : ''}" ${current ? 'aria-current="step"' : ''}>
-        <h2><span>${level === TRAIL.length - 1 ? '♛' : '✦'}</span> ${level === TRAIL.length - 1 ? 'Level 20 · Final boss' : `Level ${level + 1}`}</h2>
+        <h2><span>${bossLevel ? '♛' : '✦'}</span> Level ${index + 1}${bossLevel ? ` · ${escape(act.boss)}` : ''}</h2>
         <div class="route-options">
           ${routes.map((route) => {
             const totalGold = route.goldPerEnemy * route.enemies.length;
-            const health = route.enemies.map((enemy) => `${enemy.name} ${state.players.length === 1 ? Math.ceil(enemy.hp * 0.7) : enemy.hp} HP`).join(' · ');
+            const health = route.enemies.map((enemy) => `${enemy.name} ${rivalHealth(enemy, route, state.players.length)} HP`).join(' · ');
             const preview = route.hardReward ? `
               <span class="route-danger">Choose a run-long perk · ${hardPerkOptions(state.players.length).map((perk) => escape(perk.name)).join(' · ')}</span>
               ${route.enemies.map((enemy, index) => `<span class="route-stats">${escape(enemy.name)} (${escape(TYPES[CRITTERS[enemy.animal].type].name)}) · ${escape(intentLabel(getEnemyIntent(state, route, index, 1), enemy, state))}</span>`).join('')}` : '';
@@ -415,7 +454,7 @@ function trailMap(state) {
 }
 
 function campScreen(state) {
-  return `<section class="battle-head"><div><p class="eyebrow">Level ${state.encounter + 1} · Camp</p><h1>Rest by the fire</h1></div>${purse(state)}</section>
+  return `<section class="battle-head"><div><p class="eyebrow">${trailLocation(state.encounter)} · Camp</p><h1>Rest by the fire</h1></div>${purse(state)}</section>
     <div class="reward-panel camp-panel"><p>Each familiar chooses one. Your choice lasts for this run.</p>
       ${state.players.map((player, seat) => {
         const enabled = !ui.pending && !state.campChoices[seat] && (!ui.room || ui.room.seat === seat);
@@ -442,7 +481,7 @@ function campScreen(state) {
 function merchantShop(state) {
   const merchant = MERCHANTS[state.encounter];
   const canLead = !ui.pending && (!ui.room || ui.room.seat === 0);
-  return `<section class="battle-head"><div><p class="eyebrow">Merchant · Level ${state.encounter + 1}</p><h1>${escape(merchant.name)}</h1></div>${purse(state)}</section>
+  return `<section class="battle-head"><div><p class="eyebrow">${trailLocation(state.encounter)} · Merchant</p><h1>${escape(merchant.name)}</h1></div>${purse(state)}</section>
     <section class="lobby-panel shop-panel" aria-label="Cards for sale">
       <p class="muted">Spend from the shared wallet. Each purchase adds one card to its buyer’s deck for this run.</p>
       <div class="shop-stock">${merchant.stock.map(({ id, price }) => {
@@ -494,10 +533,12 @@ function combat(state) {
         <div class="combat-row">${state.enemies.map((enemy, index) => enemyCard(enemy, index, state)).join('')}</div>
         <h2 class="combat-label">Your familiars</h2>
         <div class="combat-row">${state.players.map((unit, index) => allyCard(unit, index, state)).join('')}</div>
+        ${state.players.filter((unit) => unit.companionId).map((unit) => `<div class="companion-battle">${art(unit.companionId, 'companion-art')}<span><strong>${escape(CRITTERS[unit.companionId].name)} · ${escape(COMPANION_ABILITIES[unit.companionId].name)}</strong><br>${escape(TYPES[CRITTERS[unit.companionId].type].name)} type · ${escape(getCompanionDescription(unit.companionId, unit.attackBonus + unit.strength))}</span></div>`).join('')}
       </section>
       <aside class="battle-sidebar">
         <div class="turn-actions">
           <p class="status-line"><strong>${playerName(seat)}’s turn</strong><br><span>${player.energy} energy</span></p>
+          ${player.companionId ? button(`${escape(COMPANION_ABILITIES[player.companionId].name)}${player.companionUsed ? ' · used' : ' · free'}`, 'companion-strike', { disabled: !enabled || player.companionUsed, data: `data-seat="${seat}"` }) : ''}
           ${button('End turn', 'end', { style: 'primary', disabled: !enabled, data: `data-seat="${seat}"` })}
         </div>
         ${purse(state)}
@@ -529,8 +570,10 @@ function rewardPerkChoices(perks, action, seat, selected, enabled) {
 }
 
 function rewards(state) {
+  const { actIndex, bossLevel } = trailPosition(state.encounter);
   return `
-    <section class="battle-head"><div><p class="eyebrow">Trainer defeated</p><h1>Level up your familiars</h1></div>${purse(state)}</section>
+    <section class="battle-head"><div><p class="eyebrow">${bossLevel ? `Act ${actIndex + 1} cleared` : 'Trainer defeated'}</p><h1>Level up your familiars</h1></div>${purse(state)}</section>
+    ${bossLevel ? `<p class="status-line">The pack recovers to full health before entering ${escape(ACTS[actIndex + 1].name)}.</p>` : ''}
     ${recruitment()}
     ${cardReveal()}
     <div class="reward-panel">
@@ -565,7 +608,7 @@ function conclusion(state) {
   return `<section class="end-panel">
     <p class="eyebrow">${won ? 'Trail complete' : 'Run ended'}</p>
     <h1>${won ? 'The Hollow Crown falls' : 'The woods close in'}</h1>
-    <p>${won ? 'Your party defeated the Ash Regent.' : 'Your party has fainted. Recruits you found on this run are still in your collection.'}</p>
+    <p>${won ? `Your party defeated ${escape(ACTS.at(-1).boss)} and cleared all ${TRAIL.length} levels.` : `The pack fell in ${trailLocation(state.encounter)}. Recruits you found on this run are still in your collection.`}</p>
     ${recruitment()}
     ${cardReveal()}
     <p class="collection-status"><strong>${collectionCount()} / ${Object.keys(CRITTER_UNLOCKS).length}</strong> creatures recruited</p>
@@ -636,7 +679,7 @@ function attachRoom(room) {
     render();
   }, (error) => {
     if (ui.room !== room) return;
-    if (waitingForPublicMatch(room) && [403, 404, 410].includes(error.status)) {
+    if (waitingForPublicMatch(room) && isTerminalRoomError(error)) {
       home('online');
       ui.notice = 'The public lobby closed. Find another match to rejoin the queue.';
       render();
@@ -680,6 +723,7 @@ function home(mode = 'local') {
   const leavingRun = Boolean(ui.run || ui.room?.state);
   if (leavingRun) {
     ui.picks = [null, null];
+    ui.companions = [null, null];
     ui.pickSeat = 0;
   }
   ui.stopWatching?.();
@@ -699,6 +743,14 @@ document.addEventListener('click', async (event) => {
   const seat = Number(control.dataset.seat);
   const index = Number(control.dataset.index);
   const state = ui.room ? ui.room.state : ui.run;
+  if (action === 'music') {
+    musicEnabled = soundtrack.paused;
+    writeStorage(localStorage, musicKey, musicEnabled);
+    if (musicEnabled) startMusic();
+    else soundtrack.pause();
+    return;
+  }
+  if (state && game.contains(control)) startMusic();
   if (action === 'share-game') { openShare(); return; }
   if (action === 'invite' && ui.room) { openShare(ui.room.code); return; }
   if (action === 'rules') { openTutorial(); return; }
@@ -740,6 +792,7 @@ document.addEventListener('click', async (event) => {
     ui.drafts = Array.isArray(saved.drafts) ? saved.drafts : [null, null];
     ui.scrollToTop = true;
     ui.notice = 'Saved game loaded.';
+    startMusic();
     render();
     return;
   }
@@ -751,7 +804,7 @@ document.addEventListener('click', async (event) => {
     if (waitingForPublicMatch(room)) {
       return runRemote(async () => {
         try { await room.act({ type: 'cancelMatch' }); }
-        catch (error) { if (![403, 404, 410].includes(error.status)) throw error; }
+        catch (error) { if (!isTerminalRoomError(error)) throw error; }
         if (ui.room === room) home(mode);
       });
     }
@@ -769,13 +822,15 @@ document.addEventListener('click', async (event) => {
   if (action === 'pick') {
     if (ui.room) return dispatch({ type: 'select', critterId: id });
     ui.picks[seat] = id;
+    ui.companions[seat] = null;
   }
   if (action === 'ready') return dispatch({ type: 'deck', cards: ui.startingDecks[ui.room.seat] });
   if (action === 'edit-deck') return dispatch({ type: 'deck', cards: null });
   if (action === 'start') {
+    startMusic();
     if (ui.room) return dispatch({ type: 'start' });
     ui.savedRunOrigin = null;
-    ui.run = createRun(ui.mode === 'solo' ? ui.picks.slice(0, 1) : ui.picks, Date.now(), ui.mode === 'solo' ? ui.startingDecks.slice(0, 1) : ui.startingDecks);
+    ui.run = createRun(ui.mode === 'solo' ? ui.picks.slice(0, 1) : ui.picks, Date.now(), ui.mode === 'solo' ? ui.startingDecks.slice(0, 1) : ui.startingDecks, ui.mode === 'solo' ? ui.companions.slice(0, 1) : ui.companions);
     acceptState(ui.run, null);
   }
   if (action === 'route') return dispatch({ type: 'route', player: 0, routeId: id });
@@ -784,6 +839,7 @@ document.addEventListener('click', async (event) => {
   if (action === 'camp-upgrade') return dispatch({ type: 'camp', player: seat, choice: 'upgrade', cardIndex: index });
   if (action === 'leave-shop') return dispatch({ type: 'leaveShop', player: 0 });
   if (action === 'target') ui.target = index;
+  if (action === 'companion-strike') return dispatch({ type: 'companionStrike', player: seat, target: ui.target });
   if (action === 'play') return dispatch({
     type: 'play', player: seat, cardIndex: index, ...(CARDS[id].target === 'enemy' ? { target: ui.target } : {}),
   });
@@ -812,6 +868,14 @@ game.addEventListener('input', (event) => {
 
 game.addEventListener('change', (event) => {
   const field = event.target;
+  if (Object.hasOwn(field.dataset, 'companionSeat')) {
+    const seat = Number(field.dataset.companionSeat);
+    if (!field.value) return;
+    if (ui.room) return dispatch({ type: 'companion', companionId: field.value });
+    ui.companions[seat] = field.value;
+    render();
+    return;
+  }
   if (!Object.hasOwn(field.dataset, 'deckSlot')) return;
   const seat = Number(field.dataset.seat);
   const index = Number(field.dataset.deckSlot);
@@ -850,6 +914,9 @@ if (savedRoom && (!invite || invite === savedRoom.code)) {
   runRemote(async () => {
     try { attachRoom(await resumeRoom(savedRoom.code, savedRoom.token)); }
     catch (error) {
+      if (!isTerminalRoomError(error)) {
+        throw new Error('Could not reconnect to your room. Reload this page to retry.', { cause: error });
+      }
       writeStorage(sessionStorage, roomKey, null);
       throw error;
     }

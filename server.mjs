@@ -4,18 +4,19 @@ import { createServer } from 'node:http';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { applyAction, createRun, CRITTERS, STARTER_DECK, validateStartingDeck } from './game.mjs';
+import { applyAction, createRun, COUSINS, CRITTERS, STARTER_DECK, validateStartingDeck } from './game.mjs';
 
 const roomLifetime = 6 * 60 * 60 * 1000;
 const publicWaitLifetime = 45 * 1000;
 const roomCapacity = 300;
 const codeAlphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-const staticFiles = new Set(['/index.html', '/styles.css', '/app.mjs', '/game.mjs', '/transport.mjs']);
+const soundtrackPath = '/assets/footsteps-under-black-pines.mp3';
+const staticFiles = new Set(['/index.html', '/styles.css', '/app.mjs', '/game.mjs', '/transport.mjs', soundtrackPath]);
 const assetPath = /^\/assets\/(?:[\w-]+\/)*[\w.-]+\.(?:avif|gif|ico|jpe?g|png|svg|webp|woff2)$/i;
 const types = {
   avif: 'image/avif', css: 'text/css; charset=utf-8', gif: 'image/gif',
   html: 'text/html; charset=utf-8', ico: 'image/x-icon', jpeg: 'image/jpeg',
-  jpg: 'image/jpeg', mjs: 'text/javascript; charset=utf-8', png: 'image/png',
+  jpg: 'image/jpeg', mjs: 'text/javascript; charset=utf-8', mp3: 'audio/mpeg', png: 'image/png',
   svg: 'image/svg+xml', webp: 'image/webp', woff2: 'font/woff2',
 };
 
@@ -81,8 +82,8 @@ function createRoom(rooms, { critterId, publicMatch, now }) {
   const code = newRoomCode(rooms);
   const token = randomBytes(32).toString('base64url');
   const room = {
-    code, tokens: [token, null], picks: [critterId, null],
-    decks: [critterId ? STARTER_DECK : null, null],
+    code, tokens: [token, null], picks: [critterId, null], companions: [null, null],
+    decks: [critterId && !COUSINS[critterId] ? STARTER_DECK : null, null],
     state: null, revision: 0, updatedAt: now, publicMatch,
   };
   rooms.set(code, room);
@@ -95,7 +96,7 @@ function joinRoom(room, critterId, now) {
   const token = randomBytes(32).toString('base64url');
   room.tokens[1] = token;
   room.picks[1] = critterId;
-  room.decks[1] = critterId ? STARTER_DECK : null;
+  room.decks[1] = critterId && !COUSINS[critterId] ? STARTER_DECK : null;
   room.updatedAt = now;
   room.revision += 1;
   return { ...snapshot(room, 1), token };
@@ -110,6 +111,7 @@ function snapshot(room, seat) {
     publicMatch: room.publicMatch,
     joined: room.tokens.map(Boolean),
     picks: room.picks,
+    companions: room.companions,
     deck: room.decks[seat],
     ready: room.decks.map(Boolean),
   };
@@ -145,12 +147,23 @@ function takeAction(room, seat, action) {
   if (action.type === 'select') {
     validateCritter(action.critterId);
     room.picks[seat] = action.critterId;
+    room.companions[seat] = null;
+    room.decks[seat] = null;
+    return;
+  }
+
+  if (action.type === 'companion') {
+    if (!Object.hasOwn(COUSINS, room.picks[seat] ?? '')) throw new RequestError(400, 'Choose a cousin first.');
+    validateCritter(action.companionId);
+    if (!CRITTERS[action.companionId].animal) throw new RequestError(400, 'Choose an animal companion.');
+    room.companions[seat] = action.companionId;
     room.decks[seat] = null;
     return;
   }
 
   if (action.type === 'deck') {
     if (!room.picks[seat]) throw new RequestError(409, 'Choose your creature first.');
+    if (COUSINS[room.picks[seat]] && !room.companions[seat]) throw new RequestError(409, 'Choose an animal companion first.');
     if (action.cards !== null) {
       try { validateStartingDeck(action.cards); }
       catch (error) { throw new RequestError(400, error.message); }
@@ -165,7 +178,8 @@ function takeAction(room, seat, action) {
     throw new RequestError(409, 'Both players need to choose a critter.');
   }
   if (!room.decks.every(Boolean)) throw new RequestError(409, 'Both players need to confirm their decks.');
-  room.state = createRun([...room.picks], randomBytes(4).readUInt32LE(), room.decks);
+  if (room.picks.some((pick, index) => COUSINS[pick] && !room.companions[index])) throw new RequestError(409, 'Each cousin needs an animal companion.');
+  room.state = createRun([...room.picks], randomBytes(4).readUInt32LE(), room.decks, room.companions);
 }
 
 async function serveStatic(request, response, pathname) {
@@ -182,12 +196,33 @@ async function serveStatic(request, response, pathname) {
     throw error;
   }
 
-  response.writeHead(200, {
+  const headers = {
     'Content-Type': types[path.split('.').at(-1).toLowerCase()],
     'Content-Length': data.length,
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-cache',
-  });
+  };
+  if (path === soundtrackPath) {
+    headers['Accept-Ranges'] = 'bytes';
+    const range = request.method === 'GET' && /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
+    if (range && (range[1] || range[2])) {
+      const size = data.length;
+      const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
+      const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+      if (start > end) {
+        response.writeHead(416, { 'Content-Range': `bytes */${size}`, 'Content-Length': 0 });
+        response.end();
+        return;
+      }
+      data = data.subarray(start, end + 1);
+      headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
+      headers['Content-Length'] = data.length;
+      response.writeHead(206, headers);
+      response.end(data);
+      return;
+    }
+  }
+  response.writeHead(200, headers);
   response.end(request.method === 'HEAD' ? undefined : data);
 }
 

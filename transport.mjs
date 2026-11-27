@@ -1,5 +1,9 @@
 const pollDelay = 800;
 
+export function isTerminalRoomError(error) {
+  return [403, 404, 410].includes(error.status);
+}
+
 async function request(path, { method = 'GET', token, data } = {}) {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -61,7 +65,7 @@ function connect(data) {
           if (stopped) return;
           if (lastError !== error.message) onError?.(error);
           lastError = error.message;
-          if ([403, 404, 410].includes(error.status)) {
+          if (isTerminalRoomError(error)) {
             stop();
             return;
           }
