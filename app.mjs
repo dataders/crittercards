@@ -403,9 +403,11 @@ function intentLabel(intent, enemy, state) {
   }
   if (intent.type === 'rally') return `Rallies · gains ${intent.amount} Strength for this fight`;
   if (intent.type === 'spentSurge') return 'Opening Surge spent';
+  if (intent.type === 'brokenGuard') return 'Guard broken · skips its action';
+  const name = (seat) => `${CRITTERS[state.players[seat].critterId].name}${state.players.length > 1 ? ` (P${seat + 1})` : ''}`;
   const damage = (seat) => Math.floor(intent.amount * matchup(CRITTERS[enemy.animal].type, CRITTERS[state.players[seat].critterId].type));
   if (['eclipse', 'teamAttack', 'openingSurge'].includes(intent.type)) {
-    const hits = state.players.filter((player) => player.hp > 0).map((player) => `P${player.id + 1} for ${damage(player.id)}`).join(', ');
+    const hits = state.players.filter((player) => player.hp > 0).map((player) => `${name(player.id)} for ${damage(player.id)}`).join(', ');
     if (intent.type === 'openingSurge') {
       const count = intent.attacksRemaining;
       const timing = count === 1 ? 'the next attack' : `the next ${count} attacks`;
@@ -414,27 +416,29 @@ function intentLabel(intent, enemy, state) {
     return `${intent.type === 'eclipse' ? 'Eclipse · ' : ''}Hits ${hits}${intent.type === 'eclipse' ? ' and applies Vulnerable' : ''}`;
   }
   const victim = state.players[intent.target]?.hp > 0 ? intent.target : state.players.findIndex((player) => player.hp > 0);
-  if (intent.type === 'crownCurse') return `Crown Curse · hits P${victim + 1} for ${damage(victim)}, applies Frail and Vulnerable`;
-  return `Hits P${victim + 1} for ${damage(victim)}${intent.type === 'frailAttack' ? ' and applies Frail' : ''}`;
+  if (intent.type === 'crownCurse') return `Crown Curse · hits ${name(victim)} for ${damage(victim)}, applies Frail and Vulnerable`;
+  return `Hits ${name(victim)} for ${damage(victim)}${intent.type === 'frailAttack' ? ' and applies Frail' : ''}`;
 }
 
 function enemyCard(enemy, index, state) {
-  const selected = ui.target === index;
+  const alive = enemy.hp > 0;
+  const selected = alive && ui.target === index;
   const healer = briarHealer(state, enemy);
   const bondTarget = state.players.length > 1 && state.lastTarget === index && state.lastAttacker !== state.activePlayer && !state.bondTriggered;
   const multiplier = matchup(CRITTERS[state.players[state.activePlayer].critterId].type, CRITTERS[enemy.animal].type);
   const effectiveness = multiplier > 1 ? 'Super effective · ×1.5' : multiplier < 1 ? 'Resisted · ×0.75' : 'Normal damage';
-  return `<button class="unit-card ${selected ? 'is-target selected-target' : ''} ${enemy.hp <= 0 ? 'is-defeated' : ''}" type="button" data-do="target" data-index="${index}" aria-pressed="${selected}" ${enemy.hp <= 0 ? 'disabled' : ''}>
+  return `<button class="unit-card rival-card ${selected ? 'is-target' : ''} ${alive ? '' : 'is-defeated'}" type="button" data-do="target" data-index="${index}" aria-pressed="${selected}" ${alive ? '' : 'disabled'}>
     ${art(enemy.animal, 'unit-art')}
     <span class="unit-info">
-      <span class="combat-label">${escape(TYPES[CRITTERS[enemy.animal].type].name)} · ${bondTarget ? 'Bond Strike ready' : enemy.marked ? 'Marked' : enemy.boss ? (state.encounter === TRAIL.length - 1 ? 'Final boss' : 'Act boss') : 'Rival creature'}</span>
+      <span class="target-label">${selected ? '✓ Selected target' : alive ? 'Select target' : 'Defeated'}</span>
       <strong class="unit-name">${escape(enemy.name)}</strong>
+      <span class="combat-label">${escape(TYPES[CRITTERS[enemy.animal].type].name)} · ${bondTarget ? 'Bond Strike ready' : enemy.marked ? 'Marked' : enemy.boss ? (state.encounter === TRAIL.length - 1 ? 'Final boss' : 'Act boss') : 'Rival creature'}</span>
       ${health(enemy)}
       ${effects(enemy)}
-      ${enemy.hp > 0 ? `<span class="type-matchup">Your attacks: ${effectiveness}</span>` : ''}
-      ${enemy.hp > 0 && healer ? `<span class="type-matchup">Briar Ward from ${escape(healer.name)} · half attack damage</span>` : ''}
-      ${enemy.hp > 0 && enemy.poison >= enemy.hp ? '<span class="type-matchup">Poison is lethal at current HP</span>' : ''}
-      <span class="intent">${enemy.hp <= 0 ? 'Defeated' : escape(intentLabel(enemy.intent, enemy, state))}</span>
+      ${alive ? `<span class="type-matchup">Your attacks · ${effectiveness}</span>
+        ${healer ? `<span class="type-matchup">Briar Ward from ${escape(healer.name)} · half attack damage</span>` : ''}
+        ${enemy.poison >= enemy.hp ? '<span class="type-matchup">Poison is lethal at current HP</span>' : ''}
+        <span class="intent"><strong>Next move</strong> · ${escape(intentLabel(enemy.intent, enemy, state))}</span>` : ''}
     </span>
   </button>`;
 }
@@ -476,16 +480,19 @@ function trailMap(state) {
         <div class="route-options">
           ${routes.map((route) => {
             const totalGold = route.goldPerEnemy * route.enemies.length;
-            const health = route.enemies.map((enemy) => `${enemy.name} ${rivalHealth(enemy, route, state.players.length)} HP${enemy.openingBlock ? ` + ${enemy.openingBlock} Block` : ''}`).join(' · ');
+            const rivals = current ? `<span class="route-rivals">${route.enemies.map((enemy) => `
+              <span class="route-rival">${art(enemy.animal, 'route-rival-art')}<span><b>${escape(enemy.name)}</b><br>${rivalHealth(enemy, route, state.players.length)} HP${enemy.openingBlock ? ` · ${enemy.openingBlock} Block` : ''}</span></span>`).join('')}</span>`
+              : `<span class="route-stats">${route.enemies.map((enemy) => `${escape(enemy.name)} ${rivalHealth(enemy, route, state.players.length)} HP${enemy.openingBlock ? ` + ${enemy.openingBlock} Block` : ''}`).join(' · ')}</span>`;
             const preview = route.hardReward ? `
               <span class="route-danger">Choose a run-long perk · ${hardPerkOptions(state.players.length).map((perk) => escape(perk.name)).join(' · ')}</span>
               ${route.enemies.map((enemy, index) => `<span class="route-stats">${escape(enemy.name)} (${escape(TYPES[CRITTERS[enemy.animal].type].name)}) · ${escape(intentLabel(getEnemyIntent(state, route, index, 1), enemy, state))}</span>`).join('')}` : '';
             const details = `<span class="route-tag">${escape(route.difficulty)} · ${totalGold} gold total</span>
               <strong>${escape(route.name)}</strong><span>${escape(route.subtitle)}</span>
-              <span class="route-stats">${escape(health)}</span>
+              ${rivals}
               ${route.trialReward ? `<span class="route-prize">Draft offer for each player · ${escape(CARDS[route.trialReward].name)}</span>` : ''}
               ${current && route.trialReward ? `<span class="route-stats">${escape(CARDS[route.trialReward].description)}</span>` : ''}
-              ${route.goldPerEnemy > 8 ? '<span class="route-danger">Stronger attacks · triple gold</span>' : ''}${preview}`;
+              ${route.goldPerEnemy > 8 ? '<span class="route-danger">Stronger attacks · triple gold</span>' : ''}${preview}
+              ${current && canLead ? '<span class="route-fight-label">Fight these rivals →</span>' : ''}`;
             const routeClass = route.trialReward ? 'route-trial' : route.goldPerEnemy > 8 ? 'route-hard' : 'route-standard';
             return current ? `<button type="button" class="route-option ${routeClass}" data-do="route" data-id="${route.id}" ${canLead ? '' : 'disabled'}>${details}</button>` :
               `<div class="route-option ${routeClass} ${picked === route.id ? 'is-cleared' : 'is-future'}">${details}${picked === route.id ? '<span class="route-tag">Cleared</span>' : ''}</div>`;
@@ -572,41 +579,52 @@ function actionCard(state, seat, cardId, index, enabled, draft = false) {
 function combat(state) {
   const seat = state.activePlayer;
   const player = state.players[seat];
-  const enabled = !ui.pending && (!ui.room || ui.room.seat === seat);
+  const canAct = !ui.room || ui.room.seat === seat;
+  const enabled = canAct && !ui.pending;
   const entry = getEncounter(state);
   const other = state.players[1 - seat];
+  const name = CRITTERS[player.critterId].name;
+  const rivals = state.enemies.filter((enemy) => enemy.hp > 0);
+  const rivalNames = rivals.map((enemy) => escape(enemy.name)).join(' &amp; ');
+  const target = state.enemies[ui.target];
+  const companionReady = player.companionId && !player.companionUsed;
+  const canPlayCard = player.hand.some((id) => canAffordCard(CARDS[id], player.energy));
+  const turnTitle = ui.room ? canAct ? `Your turn as ${name}` : `Waiting for ${name}` : `${name}’s turn`;
+  const next = seat === 0 && other?.hp > 0 ? `${CRITTERS[other.critterId].name} goes next.` : 'The rivals act next.';
   return `
-    <section class="battle-head">
-      <div><p class="eyebrow">${escape(entry.trainer)} · Round ${state.round}</p><h1>${escape(entry.name)}</h1></div>
+    <section class="battle-head fight-heading">
+      <div><p class="eyebrow">Round ${state.round} · ${escape(entry.trainer)}</p><h1>Fight ${rivalNames}</h1></div>
       ${progress(state)}
     </section>
     ${cardReveal()}
+    <section class="battlefield" aria-labelledby="rival-heading">
+      <div class="rival-heading"><h2 id="rival-heading">Rivals</h2><p>Read each rival’s next move. Select a rival to aim your attacks.</p></div>
+      <div class="combat-row">${state.enemies.map((enemy, index) => enemyCard(enemy, index, state)).join('')}</div>
+    </section>
     <div class="battle-grid">
-      <section class="battlefield" aria-label="Battlefield">
-        <p class="type-key">Ember beats Grove · Grove beats Tide · Tide beats Stone · Stone beats Ember. Enemy intents include type effects before Block and Vulnerable.</p>
-        <h2 class="combat-label">Rival creatures · select a target</h2>
-        <div class="combat-row">${state.enemies.map((enemy, index) => enemyCard(enemy, index, state)).join('')}</div>
-        <h2 class="combat-label">Your familiars</h2>
-        <div class="combat-row">${state.players.map((unit, index) => allyCard(unit, index, state)).join('')}</div>
-        ${state.players.filter((unit) => unit.companionId).map((unit) => `<div class="companion-battle">${art(unit.companionId, 'companion-art')}<span><strong>${escape(CRITTERS[unit.companionId].name)} · ${escape(COMPANION_ABILITIES[unit.companionId].name)}</strong><br>${escape(TYPES[CRITTERS[unit.companionId].type].name)} type · ${escape(getCompanionDescription(unit.companionId, unit.attackBonus + unit.strength))}</span></div>`).join('')}
-      </section>
-      <aside class="battle-sidebar">
-        <div class="turn-actions">
-          <p class="status-line"><strong>${playerName(seat)}’s turn</strong><br><span>${player.energy} energy</span></p>
-          ${player.companionId ? button(`${escape(COMPANION_ABILITIES[player.companionId].name)}${player.companionUsed ? ' · used' : ' · free'}`, 'companion-strike', { disabled: !enabled || player.companionUsed, data: `data-seat="${seat}"` }) : ''}
+      <section class="hand-panel" aria-labelledby="turn-heading">
+        <div class="hand-heading"><h2 id="turn-heading">${escape(turnTitle)}</h2>
+          <span class="turn-energy" aria-label="Energy available">${player.energy} energy</span></div>
+        <p class="turn-instructions">${!canAct ? 'You can look at the rivals while you wait.' : canPlayCard ? 'Click a card to play it. The number on the card is its energy cost.' : companionReady ? 'You can still use your companion’s free move.' : 'End your turn when you’re ready.'}</p>
+        <div class="turn-details"><span><strong>Target</strong> · ${escape(target?.name ?? 'Choose a rival above')}</span>
+          <span><strong>Health</strong> · ${player.hp}/${player.maxHp}</span>${player.block ? `<span><strong>Block</strong> · ${player.block}</span>` : ''}</div>
+        <div class="hand-grid">${player.hand.map((id, index) => actionCard(state, seat, id, index, enabled && canAffordCard(CARDS[id], player.energy))).join('') || '<p class="muted">No cards left in hand.</p>'}</div>
+        <div class="turn-actions combat-actions">
+          ${player.companionId ? button(`${escape(COMPANION_ABILITIES[player.companionId].name)} · ${player.companionUsed ? 'Used' : 'Free companion move'}`, 'companion-strike', { disabled: !enabled || !companionReady, data: `data-seat="${seat}"` }) : ''}
+          <span class="status-line">${escape(next)}</span>
           ${button('End turn', 'end', { style: 'primary', disabled: !enabled, data: `data-seat="${seat}"` })}
         </div>
+        <div class="hand-counts">${player.drawPile.length} draw · ${player.discardPile.length} discard · Attacks use ${escape(TYPES[CRITTERS[player.critterId].type].name)} type</div>
+        ${other?.hp > 0 && other.hand.length ? `<div class="secondary-hand"><strong>${escape(CRITTERS[other.critterId].name)}’s hand</strong> · ${other.hand.map((id) => escape(CARDS[id].name)).join(', ')}</div>` : ''}
+      </section>
+      <aside class="battle-sidebar" aria-label="Team and battle log">
+        <h2>Your team</h2>
+        <div class="combat-row">${state.players.map((unit, index) => allyCard(unit, index, state)).join('')}</div>
+        ${state.players.filter((unit) => unit.companionId).map((unit) => `<div class="companion-battle">${art(unit.companionId, 'companion-art')}<span><strong>${escape(CRITTERS[unit.companionId].name)} · ${escape(COMPANION_ABILITIES[unit.companionId].name)}</strong><br>${escape(TYPES[CRITTERS[unit.companionId].type].name)} type · ${escape(getCompanionDescription(unit.companionId, unit.attackBonus + unit.strength))}</span></div>`).join('')}
         ${purse(state)}
         <div class="battle-log"><h2>Battle log</h2><ol>${state.log.slice(0, 4).map((row) => `<li>${escape(row)}</li>`).join('')}</ol></div>
       </aside>
-    </div>
-    <section class="hand-panel" aria-label="Active player’s hand">
-      <div class="hand-heading"><h2>${escape(CRITTERS[player.critterId].name)}’s hand</h2>
-        <span class="hand-counts">${player.drawPile.length} draw · ${player.discardPile.length} discard</span></div>
-      <p class="type-hint">Attack cards use ${escape(TYPES[CRITTERS[player.critterId].type].name)} type. Card damage is shown before matchup effects.</p>
-      <div class="hand-grid">${player.hand.map((id, index) => actionCard(state, seat, id, index, enabled && canAffordCard(CARDS[id], player.energy))).join('') || '<p class="muted">No cards left in hand.</p>'}</div>
-      ${other?.hp > 0 && other.hand.length ? `<div class="secondary-hand"><strong>${escape(CRITTERS[other.critterId].name)}’s hand</strong> · ${other.hand.map((id) => escape(CARDS[id].name)).join(', ')}</div>` : ''}
-    </section>`;
+    </div>`;
 }
 
 function recruitment() {
@@ -713,8 +731,8 @@ function acceptState(state, previous) {
     ui.scrollToTop = true;
   }
   if (state?.encounter !== previous?.encounter) ui.newCards = [];
-  if (ui.target === null || state?.enemies[ui.target]?.hp <= 0) {
-    ui.target = state?.enemies.findIndex((enemy) => enemy.hp > 0) ?? null;
+  if (state?.phase === 'combat' && !(state.enemies[ui.target]?.hp > 0)) {
+    ui.target = state.enemies.findIndex((enemy) => enemy.hp > 0);
   }
   unlockRecruits(state);
   unlockCards(state);
