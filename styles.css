@@ -622,3 +622,13 @@ button.level-choice:hover:not(:disabled), .level-choice[aria-pressed='true'], .l
   .app-footer { width: calc(100% - 1.5rem); }
   .critter-badge { inset: .4rem .4rem auto auto; }
 }
+body:not([data-battle-area]) { isolation: isolate; }
+body:not([data-battle-area])::before {
+  content: '';
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(180deg, #07130eae, #07130e55 42%, #07130e9c),
+    url('assets/creepy-woods.webp') center 48% / cover no-repeat;
+  pointer-events: none;
+}
