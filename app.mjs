@@ -1,21 +1,23 @@
 import {
-  COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, STARTER_DECK, MAX_STARTING_COPIES,
+  COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, startingDeckFor, MAX_STARTING_COPIES,
   ENCOUNTERS, TRAIL, MERCHANTS, CAMPS, LEVEL_PERKS, HARD_PERKS, TYPES, COMPANION_ABILITIES, getCompanionDescription, createRun, applyAction, getEncounter,
   ACTS, LEVELS_PER_ACT, trailPosition, hardPerkOptions, getEnemyIntent, rivalHealth,
   getCardDescription, validateStartingDeck, canRemoveRunCard, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE,
 } from './game.mjs';
+import { createLeaderboardView, formatRunTime, packRunMove } from './leaderboard-ui.mjs';
 import { createCombatInput } from './combat-input.mjs';
 import { createAudioController } from './audio.mjs';
 import { readStorage, savedRewardChoices, savedRunStatus, saveKey, writeStorage } from './storage.mjs';
 import { actionCard, art, battleCardViews, button, cardReveal, combat, escape, playerName, progress, purse, trailLocation } from './views.mjs';
 import { captureViewState, restoreViewState, setupSelect } from './view-state.mjs';
-import { createRoom, findPublicMatch, isTerminalRoomError, joinRoom, resumeRoom, recoverRoom } from './transport.mjs';
+import { createRoom, findPublicMatch, finishTimedRun, isTerminalRoomError, joinRoom, resumeRoom, recoverRoom, startTimedRun, submitTimedRun } from './transport.mjs';
 
 const game = document.querySelector('#game');
 const runTools = document.querySelector('#run-tools');
 const soundtrack = document.querySelector('#soundtrack');
 const musicToggle = document.querySelector('#music-toggle');
 const rules = document.querySelector('#rules');
+const leaderboard = createLeaderboardView(document.querySelector('#leaderboard'));
 const shareDialog = document.querySelector('#share-dialog');
 const battleDeck = document.querySelector('#battle-deck');
 const battleDeckTitle = battleDeck.querySelector('#battle-deck-title');
@@ -151,7 +153,7 @@ const ui = {
   showSetup: Boolean(invite),
   picks: [null, null],
   companions: [null, null],
-  startingDecks: [[...STARTER_DECK], [...STARTER_DECK]],
+  startingDecks: [startingDeckFor(), startingDeckFor()],
   pickSeat: 0,
   filter: 'all',
   room: null,
@@ -168,6 +170,7 @@ const ui = {
   notice: '',
   joinCode: invite,
   savedRunOrigin: null,
+  timing: null,
 };
 let presentedBattle;
 let lastCardPlay;
@@ -281,7 +284,7 @@ function deckBuilder(seat, critterId, room) {
   const disabled = ui.pending || Boolean(room?.deck);
   return `<section class="deck-builder" aria-labelledby="deck-title">
     <div class="section-heading"><h2 id="deck-title">Build ${escape(critter.name)}’s deck</h2><span class="muted">${knownCards.size} / ${cardLibrary.length} library cards unlocked</span></div>
-    <p class="muted">Pick five library cards, with up to two copies each and at least one attack.</p>
+    <p class="muted">Keep this starter deck or swap cards. Pick five library cards, with up to two copies each and at least one attack.</p>
     <p class="deck-signature"><strong>${escape(signature.name)} × ${critter.signatureCopies ?? 2}</strong> · ${signature.cost} energy · ${escape(signature.description)}</p>
     <div class="deck-slots">${cards.map((id, index) => `<label class="field deck-slot">Card ${index + 1}<select data-deck-slot="${index}" data-seat="${seat}" ${disabled ? 'disabled' : ''}>
       ${cardLibrary.filter((cardId) => knownCards.has(cardId) || cardId === id).map((cardId) => {
@@ -315,6 +318,7 @@ function lobby() {
       ${saved ? button('Continue saved game', 'continue', { style: 'primary' }) : ''}
       ${corrupt ? `<div class="save-panel"><p>This saved game could not be loaded.</p>${button('Clear saved game', 'clear-save')}</div>` : ''}
       ${modes}
+      ${button('Leaderboard', 'leaderboard', { style: 'ghost' })}
     </div>
   </section>`;
   const picks = room ? room.picks : ui.picks;
@@ -529,6 +533,8 @@ function rewards(state) {
 
 function conclusion(state) {
   const won = state.phase === 'victory';
+  const time = ui.room?.clearTimeMs ?? ui.timing?.receipt?.timeMs;
+  const canSubmit = ui.room ? ui.room.seat === 0 && Boolean(time) : Boolean(ui.timing);
   return `<section class="end-panel">
     <p class="eyebrow">${won ? 'Trail complete' : 'Run ended'}</p>
     <h1>${won ? 'The Hollow Crown falls' : 'The woods close in'}</h1>
@@ -536,7 +542,11 @@ function conclusion(state) {
     ${recruitment()}
     ${cardReveal(ui.newCards)}
     <p class="collection-status"><strong>${collectionCount()} / ${Object.keys(CRITTER_UNLOCKS).length}</strong> creatures recruited</p>
-    ${button('Back to title', 'home', { style: 'primary' })}
+    ${won && time ? `<p><strong>Clear time</strong> ${formatRunTime(time)}</p>` : ''}
+    <div class="turn-actions">
+      ${button('Back to title', 'home', { style: 'primary' })}
+      ${won ? button(canSubmit ? 'Post time' : 'Leaderboard', canSubmit ? 'record-time' : 'leaderboard') : ''}
+    </div>
   </section>`;
 }
 
@@ -724,7 +734,9 @@ function attachRoom(room) {
   ui.reconnect = null;
   ui.mode = 'online';
   ui.savedRunOrigin = null;
-  if (room.deck) ui.startingDecks[room.seat] = [...room.deck];
+  ui.timing = null;
+  let latestPick = room.picks[room.seat];
+  ui.startingDecks[room.seat] = room.deck ? [...room.deck] : startingDeckFor(latestPick);
   let latestState = room.state;
   let deferredRender;
   writeStorage(sessionStorage, roomKey, { code: room.code, token: room.token });
@@ -744,6 +756,11 @@ function attachRoom(room) {
 
   ui.stopWatching = room.watch(() => {
     if (ui.room !== room) return;
+    const pick = room.picks[room.seat];
+    if (pick !== latestPick) {
+      ui.startingDecks[room.seat] = room.deck ? [...room.deck] : startingDeckFor(pick);
+      latestPick = pick;
+    }
     acceptState(room.state, latestState);
     latestState = room.state;
     ui.error = '';
@@ -788,6 +805,15 @@ async function runRemote(operation) {
   }
 }
 
+function finishLocalTime(timing = ui.timing) {
+  if (timing.receipt) return Promise.resolve(timing.receipt);
+  return timing.request ??= finishTimedRun(timing.ticket, timing.moves).then((receipt) => {
+    timing.receipt = receipt;
+    if (ui.timing === timing && ui.run?.phase === 'victory') render();
+    return receipt;
+  }).finally(() => { timing.request = null; });
+}
+
 function dispatch(action) {
   if (action.type === 'play') lastCardPlay = { state: ui.room ? ui.room.state : ui.run, index: action.cardIndex };
   if (ui.room) {
@@ -797,6 +823,10 @@ function dispatch(action) {
   try {
     const previous = ui.run;
     ui.run = applyAction(previous, action);
+    if (ui.timing) {
+      ui.timing.moves.push(packRunMove(action));
+      if (ui.run.phase === 'victory') finishLocalTime().catch(() => {});
+    }
     acceptState(ui.run, previous);
   } catch (error) {
     ui.error = error.message;
@@ -813,7 +843,7 @@ function home(mode = 'local', showSetup = mode === 'online') {
   }
   ui.stopWatching?.();
   writeStorage(sessionStorage, roomKey, null);
-  Object.assign(ui, { room: null, reconnect: null, run: null, mode, showSetup, recruits: [], newCards: [], notice: '', error: '', savedRunOrigin: null });
+  Object.assign(ui, { room: null, reconnect: null, run: null, mode, showSetup, recruits: [], newCards: [], notice: '', error: '', savedRunOrigin: null, timing: null });
   const url = new URL(location.href);
   url.searchParams.delete('room');
   history.replaceState(null, '', url);
@@ -901,6 +931,17 @@ document.addEventListener('click', async (event) => {
   if (state && game.contains(control)) startMusic(state);
   if (action === 'share-game') { openShare(); return; }
   if (action === 'invite' && ui.room) { openShare(ui.room.code); return; }
+  if (action === 'leaderboard') { leaderboard.open(null, control); return; }
+  if (action === 'record-time' && state?.phase === 'victory') {
+    if (ui.room?.seat === 0 && ui.room.clearTimeMs) {
+      const room = ui.room;
+      leaderboard.open((name) => room.submitTime(name), control);
+    } else if (!ui.room && ui.timing) {
+      const timing = ui.timing;
+      leaderboard.open(async (name) => submitTimedRun((await finishLocalTime(timing)).ticket, name), control);
+    }
+    return;
+  }
   if (action === 'rules') { openTutorial(); return; }
   if (action === 'tutorial-close') { rules.close(); return; }
   if (action === 'tutorial-back') { showTutorialStep(tutorialStep - 1); tutorialNext.focus({ preventScroll: true }); return; }
@@ -930,7 +971,7 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'save') {
     try {
-      localStorage.setItem(saveKey, JSON.stringify({ version: 1, state, origin: ui.room?.code ?? ui.savedRunOrigin ?? 'local', perks: ui.perks, hardPerks: ui.hardPerks, drafts: ui.drafts }));
+      localStorage.setItem(saveKey, JSON.stringify({ version: 1, state, origin: ui.room?.code ?? ui.savedRunOrigin ?? 'local', perks: ui.perks, hardPerks: ui.hardPerks, drafts: ui.drafts, timing: ui.timing && { ticket: ui.timing.ticket, moves: ui.timing.moves } }));
       ui.notice = 'Game saved in this browser. Choose Continue saved game from the opening screen.';
     } catch {
       ui.error = 'Could not save in this browser. Check browser storage and try again.';
@@ -956,6 +997,8 @@ document.addEventListener('click', async (event) => {
     writeStorage(sessionStorage, roomKey, null);
     ui.room = null;
     ui.run = saved.state;
+    ui.timing = typeof saved.timing?.ticket === 'string' && Array.isArray(saved.timing.moves)
+      ? { ticket: saved.timing.ticket, moves: saved.timing.moves } : null;
     ui.mode = saved.state.players.length === 1 ? 'solo' : 'local';
     ui.savedRunOrigin = typeof saved.origin === 'string' ? saved.origin : 'local';
     Object.assign(ui, savedRewardChoices(saved));
@@ -990,6 +1033,7 @@ document.addEventListener('click', async (event) => {
   if (action === 'create') return runRemote(async () => attachRoom(await createRoom()));
   if (action === 'pick') {
     if (ui.room) return dispatch({ type: 'select', critterId: id });
+    if (ui.picks[seat] !== id) ui.startingDecks[seat] = startingDeckFor(id);
     ui.picks[seat] = id;
     ui.companions[seat] = null;
   }
@@ -1002,9 +1046,18 @@ document.addEventListener('click', async (event) => {
   if (action === 'start') {
     startMusic(state);
     if (ui.room) return dispatch({ type: 'start' });
-    ui.savedRunOrigin = null;
-    ui.run = createRun(ui.mode === 'solo' ? ui.picks.slice(0, 1) : ui.picks, Date.now(), ui.mode === 'solo' ? ui.startingDecks.slice(0, 1) : ui.startingDecks, ui.mode === 'solo' ? ui.companions.slice(0, 1) : ui.companions);
-    acceptState(ui.run, null);
+    const mode = ui.mode;
+    const seats = mode === 'solo' ? 1 : 2;
+    const setup = { critters: ui.picks.slice(0, seats), decks: ui.startingDecks.slice(0, seats), companions: ui.companions.slice(0, seats) };
+    return runRemote(async () => {
+      const timed = await startTimedRun(setup).catch(() => null);
+      if (!ui.showSetup || ui.room || ui.mode !== mode) return;
+      ui.savedRunOrigin = null;
+      ui.timing = timed ? { ticket: timed.ticket, moves: [] } : null;
+      ui.run = createRun(setup.critters, timed?.seed ?? Date.now(), setup.decks, setup.companions);
+      acceptState(ui.run, null);
+      if (!timed) ui.notice = 'This run is available offline. Leaderboard timing requires a connection at the start.';
+    });
   }
   if (action === 'route') return dispatch({ type: 'route', player: 0, routeId: id });
   if (action === 'buy') return dispatch({ type: 'buy', player: seat, cardId: id });

@@ -647,3 +647,44 @@ export const CARD_UNLOCKS = {
   badger: ['armor', 'brittle'], raccoon: ['bite'], boar: ['cleave'], magpie: ['rush', 'circle'], owl: ['renew'], wolf: ['sharpen', 'crownfall'],
 };
 export const deckLibrary = new Set([...BASE_CARDS, ...Object.values(CARD_UNLOCKS).flat()]);
+
+const characterDecks = {
+  hudson: ['guard', 'cover', 'brace', 'mark', 'jab'],
+  quinn: ['jab', 'guard', 'expose', 'strike', 'lunge'],
+  alba: ['brace', 'jab', 'howl', 'flurry', 'cover'],
+  tita: ['jab', 'brace', 'guard', 'mark', 'lunge'],
+  fox: ['strike', 'strike', 'guard', 'mark', 'flurry'],
+  hare: ['jab', 'jab', 'cover', 'brace', 'expose'],
+  badger: ['guard', 'guard', 'barricade', 'strike', 'brace'],
+  owl: ['mark', 'expose', 'jab', 'guard', 'brace'],
+  raccoon: ['mark', 'jab', 'jab', 'expose', 'cover'],
+  magpie: ['jab', 'brace', 'brace', 'howl', 'flurry'],
+  boar: ['lunge', 'lunge', 'brace', 'strike', 'guard'],
+  wolf: ['mark', 'mark', 'lunge', 'expose', 'guard'],
+  mouse: ['jab', 'jab', 'brace', 'brace', 'guard'],
+  squirrel: ['cover', 'cover', 'howl', 'jab', 'brace'],
+  frog: ['guard', 'cover', 'cover', 'jab', 'lunge'],
+  weasel: ['strike', 'jab', 'jab', 'expose', 'flurry'],
+  hedgehog: ['guard', 'cover', 'barricade', 'jab', 'brace'],
+  bat: ['mark', 'mark', 'jab', 'flurry', 'brace'],
+  crow: ['mark', 'expose', 'strike', 'strike', 'brace'],
+  heron: ['lunge', 'lunge', 'mark', 'brace', 'cover'],
+  otter: ['brace', 'brace', 'cover', 'jab', 'strike'],
+  mole: ['guard', 'barricade', 'brace', 'strike', 'lunge'],
+  porcupine: ['guard', 'guard', 'cover', 'strike', 'howl'],
+  skunk: ['mark', 'expose', 'expose', 'jab', 'guard'],
+  coyote: ['howl', 'mark', 'lunge', 'jab', 'guard'],
+  beaver: ['barricade', 'barricade', 'cover', 'jab', 'brace'],
+  turtle: ['guard', 'guard', 'cover', 'jab', 'brace'],
+  salamander: ['cover', 'brace', 'strike', 'expose', 'howl'],
+  viper: ['jab', 'mark', 'strike', 'expose', 'flurry'],
+  moth: ['cover', 'brace', 'howl', 'jab', 'mark'],
+  lynx: ['strike', 'strike', 'lunge', 'expose', 'brace'],
+  stag: ['barricade', 'guard', 'cover', 'mark', 'strike'],
+  bear: ['lunge', 'strike', 'strike', 'guard', 'barricade'],
+  wolverine: ['howl', 'howl', 'jab', 'flurry', 'guard'],
+};
+
+export function startingDeckFor(critterId) {
+  return [...(Object.hasOwn(characterDecks, critterId) ? characterDecks[critterId] : STARTER_DECK)];
+}

@@ -47,6 +47,13 @@ Optional camps appear at levels 3, 7, 11, 15, and 19 of each act. Each familiar 
 
 Room state lives in one server process and expires after six hours of inactivity. A reload can recover your seat in the same tab while the room still exists. Restarting the process clears the rooms. Collection progress is saved in the browser and stays with that browser.
 
+### Fastest clears
+
+Open **Leaderboard** from the title or menu. A clear counts after the final boss of Act III. The timer uses elapsed wall time from starting the trail, including time away from a saved run. Solo and shared-screen finishes are checked by replaying the recorded moves on the server. Online room finishes use the server's room timer, and the host may post the team time. Players can choose to post under a display name.
+
+The standalone server saves the top 30 to `.crittercards-data/leaderboard.json`. Set `LEADERBOARD_FILE` to a file on a persistent writable volume to retain times across replacements of the hosting instance. The JSON store is intended for one server instance. Set a stable `LEADERBOARD_SECRET` or reuse `ROOM_RECOVERY_SECRET` to keep signed timing tickets valid across restarts. Existing saves without a timing ticket remain playable.
+
+
 Use **Save game** during a run and **Continue saved game** on the opening screen to resume on the same browser. One manual save is kept, and saving again replaces it. A saved room game resumes as shared-screen play, with both players controlled on that browser.
 
 ## Tests

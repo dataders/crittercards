@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyAction, CARD_REMOVAL_PRICE, CARDS, CRITTERS, createRun, matchup, TYPES } from '../game.mjs';
+import { applyAction, CARD_REMOVAL_PRICE, CARDS, CRITTERS, createRun, matchup, STARTER_DECK, TYPES } from '../game.mjs';
 
 test('types apply before Vulnerable and Block to each individual hit', () => {
   assert.equal(Object.values(CRITTERS).every(({ type }) => Object.hasOwn(TYPES, type)), true);
@@ -20,7 +20,7 @@ test('types apply before Vulnerable and Block to each individual hit', () => {
 });
 
 test('co-op camp choices apply once and an upgraded copy reaches the next fight', () => {
-  let state = createRun(['fox', 'hare'], 12);
+  let state = createRun(['fox', 'hare'], 12, [STARTER_DECK, STARTER_DECK]);
   state.encounter = 2;
   state.path = ['steady', 'steady'];
   state.players[0].hp = 0;
@@ -39,7 +39,7 @@ test('co-op camp choices apply once and an upgraded copy reaches the next fight'
 });
 
 test('camp removal affects only the chosen deck and persists through a save and into combat', () => {
-  const run = createRun(['fox', 'hare'], 12);
+  const run = createRun(['fox', 'hare'], 12, [STARTER_DECK, STARTER_DECK]);
   run.gold = CARD_REMOVAL_PRICE - 1;
   run.encounter = 2;
   const camp = applyAction(run, { type: 'route', player: 0, routeId: 'camp' });
@@ -76,7 +76,7 @@ test('camp removal keeps at least five cards and an attack', () => {
 });
 
 test('merchant removal costs shared gold, targets one deck and rejects invalid purchases', () => {
-  const run = createRun(['fox', 'hare'], 12);
+  const run = createRun(['fox', 'hare'], 12, [STARTER_DECK, STARTER_DECK]);
   run.encounter = 3;
   run.gold = 29;
   const shop = applyAction(run, { type: 'route', player: 0, routeId: 'merchant' });

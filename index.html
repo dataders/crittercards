@@ -34,6 +34,7 @@
         <button class="button button-ghost" id="music-toggle" type="button" data-do="music" aria-pressed="false">Music</button>
         <a class="button button-ghost" href="soundtrack.html" target="_blank" rel="noopener" data-do="open-soundtrack" aria-label="Soundtrack (opens in a new tab)">Soundtrack</a>
         <button class="button button-secondary" type="button" data-do="share-game">Share game</button>
+        <button class="button button-ghost" type="button" data-do="leaderboard">Leaderboard</button>
         <button class="button button-ghost" type="button" data-do="rules">How to play</button>
         </div>
       </details>
@@ -41,6 +42,21 @@
     <main class="game-main" id="game"></main>
   </div>
   <audio id="soundtrack" preload="none" loop></audio>
+  <dialog id="leaderboard" aria-labelledby="leaderboard-title">
+    <div class="leaderboard-panel">
+      <div class="section-heading">
+        <h2 id="leaderboard-title">Fastest clears</h2>
+        <form method="dialog"><button class="button button-ghost" autofocus>Close</button></form>
+      </div>
+      <p>Top 30 times for all three acts. Time runs from Begin the trail to victory, including breaks and time away from a saved run.</p>
+      <form id="leaderboard-submit" class="form-row" hidden>
+        <label class="field">Display name<input name="name" maxlength="24" required></label>
+        <button class="button button-primary" type="submit">Post time</button>
+      </form>
+      <p id="leaderboard-status" role="status"></p>
+      <ol id="leaderboard-list" aria-label="Ranked campaign clear times" tabindex="0"></ol>
+    </div>
+  </dialog>
   <dialog id="battle-deck" aria-labelledby="battle-deck-title">
     <div class="battle-deck-content">
       <div class="section-heading"><h2 id="battle-deck-title">Your deck</h2><form method="dialog"><button class="button button-ghost" autofocus>Close</button></form></div>
@@ -75,13 +91,13 @@
           <div class="tutorial-lesson">
             <figure class="tutorial-visual">
               <button class="tutorial-enlarge" type="button" data-enlarge-picture aria-haspopup="dialog" aria-controls="tutorial-picture">
-                <img src="assets/tutorial/build-deck.webp" width="990" height="409" alt="The deck builder shows a signature card and five card slots with dropdowns." loading="lazy">
+                <img src="assets/tutorial/build-deck.webp" width="990" height="448" alt="The deck builder shows a signature card and five card slots with dropdowns." loading="lazy">
                 <span>Enlarge picture</span>
               </button>
               <figcaption>Use the five card slots to adjust your starting deck.</figcaption>
             </figure>
             <div class="tutorial-copy">
-              <p>Choose five cards for each character. You can keep the starting selection or change it. Most characters bring two signature cards. Tito brings one Secret Star per fight.</p>
+              <p>Each character has their own five-card starting deck. Keep it or swap cards to suit your plan. Most characters bring two signature cards. Tito brings one Secret Star per fight.</p>
               <p>Include at least one attack, and use no more than two copies of any library card. Then choose <strong>Begin the trail</strong>.</p>
             </div>
           </div>

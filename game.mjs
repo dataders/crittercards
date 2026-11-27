@@ -2,7 +2,7 @@ import {
   COUSINS, CRITTERS, CARDS, matchup, FRAIL_BLOCK_LOSS,
   COMPANION_ABILITIES, LEVEL_PERKS, HARD_PERKS, hardPerkOptions, trailPosition,
   FLOODGATE_RECOIL_PERCENT, TRAIL, MERCHANTS, CAMPS, getEncounter,
-  rivalHealth, briarHealer, BASE_CARDS, STARTER_DECK, MAX_STARTING_COPIES,
+  rivalHealth, briarHealer, BASE_CARDS, STARTER_DECK, startingDeckFor, MAX_STARTING_COPIES,
   MIN_RUN_DECK_SIZE, CARD_UNLOCKS, MARK_DAMAGE, describeCard, deckLibrary,
 } from './data.mjs';
 
@@ -11,7 +11,7 @@ export {
   matchup, FRAIL_BLOCK_LOSS, COMPANION_ABILITIES, getCompanionDescription, LEVEL_PERKS,
   HARD_PERKS, hardPerkOptions, ENCOUNTERS, LEVELS_PER_ACT, ACTS,
   trailPosition, FLOODGATE_RECOIL_PERCENT, TRAIL, MERCHANTS, CAMPS,
-  getEncounter, rivalHealth, briarHealer, BASE_CARDS, STARTER_DECK,
+  getEncounter, rivalHealth, briarHealer, BASE_CARDS, STARTER_DECK, startingDeckFor,
   MAX_STARTING_COPIES, MIN_RUN_DECK_SIZE, CARD_UNLOCKS,
 } from './data.mjs';
 
@@ -198,7 +198,7 @@ export function createRun(critterIds, seed = Date.now(), startingDecks, companio
       [...critterIds].some((id) => typeof id !== 'string' || !Object.hasOwn(CRITTERS, id))) {
     throw new Error('Choose a critter for each player.');
   }
-  if (startingDecks === undefined) startingDecks = critterIds.map(() => STARTER_DECK);
+  if (startingDecks === undefined) startingDecks = critterIds.map(startingDeckFor);
   if (companions === undefined) companions = critterIds.map(() => null);
   if (!Array.isArray(startingDecks) || startingDecks.length !== critterIds.length) throw new Error('Build a deck for each player.');
   if (!Array.isArray(companions) || companions.length !== critterIds.length || [...companions].some((id, index) =>
