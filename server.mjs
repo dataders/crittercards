@@ -364,7 +364,7 @@ export function createGameServer() {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT ?? process.argv[2] ?? 4173);
-  const host = process.env.HOST ?? '127.0.0.1';
+  const host = process.env.HOST ?? (process.env.RENDER === 'true' ? '0.0.0.0' : '127.0.0.1');
   const server = createGameServer();
   server.listen(port, host, () => {
     const address = server.address();
