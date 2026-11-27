@@ -677,7 +677,12 @@ body:not([data-battle-area])::before {
 }
 
 /* The viewport is the game screen. Long lists scroll inside their own scene. */
-.app-shell { height: 100dvh; min-height: 0; overflow: hidden; }
+.app-shell {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
 .site-header {
   position: relative;
   z-index: 12;
@@ -736,6 +741,17 @@ body:not([data-battle-area])::before {
   border-radius: .4rem;
   background: var(--forest-deep);
 }
+.game-main:has(> .feedback:not(:empty) + .game-stage[data-scene='combat']) {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.game-main > .feedback:not(:empty):has(+ .game-stage[data-scene='combat']) {
+  position: static;
+  width: auto;
+  max-width: none;
+  margin: .25rem .25rem 0;
+  padding: .25rem .55rem;
+  transform: none;
+}
 .game-stage .hero { min-height: clamp(12rem, 36dvh, 23rem); }
 .game-stage .area-overview { min-height: clamp(9rem, 27dvh, 16rem); }
 .current-route { margin: 0 0 .85rem; max-width: none; padding: 0; border: 1px solid var(--line); }
@@ -754,8 +770,6 @@ body:not([data-battle-area])::before {
 .combat-info { z-index: 9; }
 .combat-info-panel { width: min(28rem, 90vw); }
 .combat-info-panel h2 { font-size: 1.15rem; }
-.compact-card-text { display: none; }
-.compact-card-text ul { margin: .4rem 0 0; padding-left: 1.2rem; font-size: .83rem; }
 .combat-info-panel .companion-battle, .combat-info-panel .secondary-hand { margin-top: 0; }
 .arena-scroll {
   display: flex;
@@ -810,7 +824,7 @@ body:not([data-battle-area])::before {
 .rival-intent[data-intent='mendRivals'], .rival-intent[data-intent='rally'] { color: var(--lime); }
 .combat-screen .hand-panel {
   gap: .35rem;
-  padding: .55rem .7rem max(.45rem, env(safe-area-inset-bottom));
+  padding: .55rem .7rem .45rem;
   border-radius: .7rem .7rem 0 0;
   border-color: #72977d80;
   background: linear-gradient(160deg, #1d3326, #101d16 70%);
@@ -844,6 +858,7 @@ body:not([data-battle-area])::before {
 }
 .combat-screen .button:hover:not(:disabled) { border-color: #c9d9c9; background: #365c5e; }
 .combat-screen .button:focus-visible { outline: 2px solid var(--paper); outline-offset: 3px; }
+.combat-screen .play-card:focus-visible, .combat-screen .rival-card:focus-visible { outline: 2px solid var(--paper); outline-offset: -3px; }
 .combat-screen .button[data-do='end'] {
   flex: none;
   border-color: #f7d885;
@@ -923,14 +938,14 @@ body:not([data-battle-area])::before {
 .combat-screen .combat-hand .play-card:hover:not(:disabled),
 .combat-screen .combat-hand .play-card[aria-pressed='true'] { border-color: var(--lime); box-shadow: inset 0 0 0 2px var(--lime), 0 .2rem .35rem #0a110d; }
 .combat-screen .combat-hand .card-title { padding: .25rem .3rem; border-radius: .2rem; background: #192820; font-size: 1rem; }
-.combat-screen .combat-hand .card-effect { align-self: stretch; padding: .25rem .3rem; border-radius: .2rem; background: #e6dec5; color: #20281c; font-size: .74rem; }
+.combat-screen .combat-hand .card-effect { align-self: stretch; padding: .25rem .3rem; border-radius: .2rem; background: #e6dec5; color: #20281c; font-size: .84rem; }
 .combat-screen .combat-actions { justify-content: space-between; gap: .35rem; margin: 0; }
 .combat-screen .combat-actions .button { padding: .25rem .5rem; font-size: .77rem; }
 .combat-screen .combat-deck-actions { gap: .35rem; margin: 0; }
 .combat-screen .combat-deck-actions .button { padding: .25rem .65rem; font-size: .78rem; }
 .combat-screen .hand-counts:last-child { margin-left: auto; }
 .hand-pagination { display: flex; gap: .2rem; }
-.hand-pagination .button { padding: .08rem .45rem; font-size: 1.25rem; line-height: 1.2; }
+.hand-pagination .button { min-inline-size: 2.25rem; padding: .08rem .45rem; font-size: 1.25rem; line-height: 1.2; }
 .combat-hand .muted { grid-column: 1/-1; min-width: max-content; }
 .attack-preview { width: max-content; max-width: min(14rem, 100vw); }
 
@@ -950,7 +965,7 @@ body:not([data-battle-area])::before {
   .combat-screen .rival-heading p { font-size: .72rem; }
   .combat-screen .rival-card .unit-art { width: 100%; height: clamp(2.5rem, 10dvh, 5.2rem); min-height: 0; }
   .combat-screen .rival-card .unit-info { gap: .18rem; padding: .3rem; }
-  .combat-screen .rival-card .unit-info > :not(.unit-name, .health-bar, .rival-aim-label) { font-size: .68rem; }
+  .combat-screen .rival-card .unit-info > :not(.unit-name, .health-bar, .rival-aim-label) { font-size: .75rem; }
   .combat-screen .hand-panel { padding-inline: .4rem; }
   .combat-screen .hand-heading { gap: .3rem; }
   .combat-screen .hand-heading [data-do='end'] { padding: .26rem .4rem; font-size: .76rem; }
@@ -962,17 +977,23 @@ body:not([data-battle-area])::before {
   .combat-screen .combat-hand { grid-auto-columns: clamp(5.4rem, 29vw, 8.4rem); gap: .35rem; }
   .combat-screen .combat-hand .play-card { padding: .3rem; gap: .25rem; }
   .combat-screen .combat-hand .card-title { font-size: .9rem; }
-  .combat-screen .combat-hand .card-effect { font-size: .68rem; }
+  .combat-screen .combat-hand .card-effect { font-size: .8rem; }
   .combat-screen .combat-hand .card-type { font-size: .65rem; }
   .combat-screen .card-cost { width: 1.2rem; height: 1.2rem; font-size: .82rem; }
   .combat-screen .hand-counts { font-size: .68rem; }
 }
 
-@media (max-height: 480px) {
-  .compact-card-text { display: block; }
+@media (max-height: 36rem) {
+  .game-stage[data-scene='combat'] { overflow: auto; }
+  .combat-screen { height: auto; min-height: 100%; grid-template-rows: auto minmax(8rem, 1fr) auto; }
+  .combat-screen .arena-scroll { overflow: visible; }
+  .combat-screen .battlefield { padding: .35rem; gap: .35rem; }
+  .combat-screen .rival-card .unit-art { width: clamp(2.6rem, 12vw, 4.6rem); min-width: 0; min-height: 0; height: auto; }
+  .combat-screen .rival-card .unit-info { gap: .2rem; padding: .4rem; }
+  .combat-screen .rival-heading { min-height: 1.5rem; }
+  .combat-screen .rival-heading h2 { font-size: 1.05rem; }
   .combat-screen .combat-actions .hand-counts, .combat-screen .combat-actions:not(:has(.button)) { display: none; }
   .combat-screen .combat-hand .play-card { min-height: 5.6rem; }
-  .combat-screen .combat-hand .card-effect { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.2; }
   .combat-screen .hand-panel { gap: .2rem; }
   .combat-screen .turn-instructions { font-size: .7rem; line-height: 1.2; }
 }

@@ -198,6 +198,7 @@ let aimedMove;
 let suppressDragClick = false;
 let presentedBattle;
 let lastCardPlay;
+let battleDeckSeat;
 
 function unlockRecruits(state) {
   if (!state) return;
@@ -651,7 +652,6 @@ function combat(state) {
       <details class="combat-info"><summary class="button button-ghost">Battle info</summary>
         <div class="combat-info-panel">
           ${progress(state)}${purse(state)}
-          <div class="compact-card-text"><h2>Cards in hand</h2><ul>${[...new Set(player.hand)].map((id) => `<li><strong>${escape(CARDS[id].name)}</strong> · ${escape(getCardDescription(state, seat, id))}</li>`).join('')}</ul></div>
           <h2>Your team</h2><div class="combat-row">${state.players.map((unit, index) => allyCard(unit, index, state)).join('')}</div>
           ${state.players.filter((unit) => unit.companionId).map((unit) => `<div class="companion-battle">${art(unit.companionId, 'companion-art')}<span><strong>${escape(CRITTERS[unit.companionId].name)} · ${escape(COMPANION_ABILITIES[unit.companionId].name)}</strong><br>${escape(TYPES[CRITTERS[unit.companionId].type].name)} type · ${escape(getCompanionDescription(unit.companionId, unit.attackBonus + unit.strength))}</span></div>`).join('')}
           ${other?.hp > 0 && other.hand.length ? `<p class="secondary-hand"><strong>${escape(CRITTERS[other.critterId].name)}’s hand</strong> · ${other.hand.map((id) => escape(CARDS[id].name)).join(', ')}</p>` : ''}
@@ -666,7 +666,7 @@ function combat(state) {
       <div class="combat-row">${state.enemies.map((enemy, index) => enemyCard(enemy, index, state)).join('')}</div>
       </section>
     </div>
-    <section class="hand-panel" aria-labelledby="turn-heading">
+    <section class="hand-panel" aria-labelledby="turn-heading" tabindex="-1">
         <div class="hand-heading" data-block-drop>
           ${art(player.critterId, 'hud-portrait', name)}
           <div class="hud-familiar"><h2 id="turn-heading">${escape(turnTitle)}</h2><span class="turn-details">${player.hp}/${player.maxHp} HP${player.block ? ` · ${player.block} Block` : ''}</span></div>
@@ -854,9 +854,12 @@ function render() {
   const stageTop = game.querySelector('.game-stage')?.scrollTop ?? 0;
   const arenaTop = game.querySelector('.arena-scroll')?.scrollTop ?? 0;
   const handLeft = game.querySelector('.combat-hand')?.scrollLeft ?? 0;
-  const previousTurn = game.querySelector('.combat-screen')?.dataset.turn;
+  const previousBattle = game.querySelector('.combat-screen');
+  const previousTurn = previousBattle?.dataset.turn;
   const battleInfoOpen = game.querySelector('.combat-info')?.open;
   const previous = document.activeElement;
+  const hadBattleFocus = previousBattle?.contains(previous);
+  const focusedBattleInfo = previous?.matches('.combat-info summary');
   const focusInRunTools = runTools.contains(previous);
   const focusInCollection = previous?.closest('.creature-library');
   const focus = previous?.dataset.do ? ['do', 'seat', 'id', 'index'].map((key) => previous.dataset[key]) : null;
@@ -886,11 +889,27 @@ function render() {
     }
   }
   ui.scrollToTop = false;
-  if (focus) {
-    const focusRoot = focusInRunTools ? runTools : focusInCollection ? game.querySelector('.creature-library') : game;
-    const equivalent = [...(focusRoot?.querySelectorAll('[data-do]') ?? [])].find((node) =>
-      ['do', 'seat', 'id', 'index'].every((key, i) => node.dataset[key] === focus[i]));
-    equivalent?.focus({ preventScroll: true });
+  if (!document.querySelector('dialog[open]')) {
+    let equivalent = focusedBattleInfo ? game.querySelector('.combat-info summary') : null;
+    if (focus) {
+      const focusRoot = focusInRunTools ? runTools : focusInCollection ? game.querySelector('.creature-library') : game;
+      equivalent = [...(focusRoot?.querySelectorAll('[data-do]:not(:disabled):not([hidden])') ?? [])].find((node) =>
+        ['do', 'seat', 'id', 'index'].every((key, i) => node.dataset[key] === focus[i]) && node.tabIndex >= 0);
+    }
+    if (equivalent) equivalent.focus({ preventScroll: true });
+    else if (state?.phase === 'combat' && (!previousBattle || hadBattleFocus)) {
+      const cardInSlot = focus?.[0] === 'play' && previousTurn === game.querySelector('.combat-screen').dataset.turn
+        ? game.querySelector(`.combat-hand [data-index="${Number(focus[3])}"]:not(:disabled)`) : null;
+      const nextCard = cardInSlot ?? game.querySelector('.combat-hand [data-do="play"]:not(:disabled)');
+      const info = game.querySelector('.combat-info summary');
+      const nextControl = nextCard ?? game.querySelector('[data-do="end"]:not(:disabled)') ?? info;
+      if (previousBattle) (ui.pending ? game.querySelector('.hand-panel') : nextControl)?.focus();
+      else {
+        const cardBounds = nextCard?.getBoundingClientRect();
+        const stageBounds = game.querySelector('.game-stage').getBoundingClientRect();
+        (cardBounds && cardBounds.bottom <= stageBounds.bottom ? nextCard : info)?.focus({ preventScroll: true });
+      }
+    }
   }
   if (motion) animateCombatMotion(motion);
 }
@@ -1052,12 +1071,12 @@ function clearAttackDrag() {
 
 function drawAttackDrag() {
   const drag = attackDrag;
-  const arena = game.querySelector('.arena-scroll');
-  const { top, bottom, height } = arena.getBoundingClientRect();
+  const { scrollPane } = drag;
+  const { top, bottom, height } = scrollPane.getBoundingClientRect();
   if (drag.targeted && drag.y >= top && drag.y <= bottom) {
     const edge = Math.min(48, height / 4);
     const scrollDistance = Math.min(0, drag.y - top - edge) + Math.max(0, drag.y - bottom + edge);
-    if (scrollDistance) arena.scrollTop += Math.sign(scrollDistance) * Math.min(14, Math.abs(scrollDistance) / 3);
+    if (scrollDistance) scrollPane.scrollTop += Math.sign(scrollDistance) * Math.min(14, Math.abs(scrollDistance) / 3);
   }
   const dropTarget = combatDropTarget(drag, drag.x, drag.y);
   if (dropTarget !== drag.dropTarget) {
@@ -1087,7 +1106,9 @@ game.addEventListener('pointerdown', (event) => {
   const source = event.target.closest(':is([data-aim], [data-block-drag]):not(:disabled)');
   if (!source || !event.isPrimary || event.button !== 0 || attackDrag) return;
   const { pointerId, clientX: x, clientY: y } = event;
-  attackDrag = { source, targeted: source.hasAttribute('data-aim'), pointerId, startX: x, startY: y, x, y };
+  const stage = source.closest('.game-stage');
+  const scrollPane = getComputedStyle(stage).overflowY === 'auto' ? stage : game.querySelector('.arena-scroll');
+  attackDrag = { source, scrollPane, targeted: source.hasAttribute('data-aim'), pointerId, startX: x, startY: y, x, y };
   source.setPointerCapture(pointerId);
 });
 
@@ -1131,6 +1152,11 @@ window.addEventListener('keydown', (event) => {
   cancelAim();
 });
 
+battleDeck.addEventListener('close', () => {
+  game.querySelector(`[data-do="view-battle-deck"][data-seat="${battleDeckSeat}"]`)?.focus();
+  battleDeckSeat = undefined;
+});
+
 document.addEventListener('click', async (event) => {
   const control = event.target.closest('[data-do]');
   if (!control || control.disabled) return;
@@ -1139,6 +1165,9 @@ document.addEventListener('click', async (event) => {
   const index = Number(control.dataset.index);
   const state = ui.room ? ui.room.state : ui.run;
   if (action === 'view-battle-deck' && state?.phase === 'combat' && state.players[seat]) {
+    clearAttackDrag();
+    setAimedMove();
+    battleDeckSeat = seat;
     const player = state.players[seat];
     const counts = new Map();
     for (const cardId of player.deck) counts.set(cardId, (counts.get(cardId) ?? 0) + 1);
