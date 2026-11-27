@@ -271,7 +271,7 @@ export const COMPANION_ABILITIES = {
   skunk: { name: 'Mist Cover', damage: 1, frail: 1, allyBlock: 2 },
   coyote: { name: 'Scent Tracker', damage: 3, woundedBonus: 2, mark: true, block: 1 },
   beaver: { name: 'Wooden Barricade', damage: 1, block: 3, allyBlock: 3 },
-  turtle: { name: 'Shell Tap', damage: 1, block: 4, heal: 1 },
+  turtle: { name: 'Shell Tap', damage: 1, block: 3, heal: 1 },
   salamander: { name: 'Kindle Aid', damage: 2, allyHeal: 2 },
   viper: { name: 'Venom Prick', damage: 2, poison: 2 },
   moth: { name: 'Moon Dust', damage: 1, allyBlock: 1, allyEnergy: 1 },
