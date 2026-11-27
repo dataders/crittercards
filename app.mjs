@@ -13,6 +13,9 @@ const musicToggle = document.querySelector('#music-toggle');
 const rules = document.querySelector('#rules');
 const shareDialog = document.querySelector('#share-dialog');
 const battleDeck = document.querySelector('#battle-deck');
+const battleDeckTitle = battleDeck.querySelector('#battle-deck-title');
+const battleDeckSummary = battleDeck.querySelector('#battle-deck-summary');
+const battleDeckCards = battleDeck.querySelector('#battle-deck-cards');
 const shareLink = document.querySelector('#share-link');
 const shareApps = document.querySelector('#share-apps');
 const shareStatus = document.querySelector('#share-status');
@@ -23,6 +26,12 @@ const tutorialProgress = rules.querySelector('#tutorial-progress');
 const tutorialBack = rules.querySelector('[data-do="tutorial-back"]');
 const tutorialNext = rules.querySelector('[data-do="tutorial-next"]');
 let tutorialStep = 0;
+const tutorialPicture = document.querySelector('#tutorial-picture');
+const pictureTitle = tutorialPicture.querySelector('#tutorial-picture-title');
+const pictureScroll = tutorialPicture.querySelector('#tutorial-picture-scroll');
+const pictureImage = pictureScroll.querySelector('img');
+const pictureZoom = tutorialPicture.querySelector('[data-picture-zoom]');
+let pictureTrigger;
 const invite = new URL(location.href).searchParams.get('room')?.toUpperCase() ?? '';
 const collectionKey = 'crittercards.collection.v1';
 const progressKey = 'crittercards.progress.v1';
@@ -121,6 +130,28 @@ rules.addEventListener('close', () => {
   document.querySelector('.game-menu[open] [data-do="rules"], .game-menu:not([open]) summary')?.focus({ preventScroll: true });
 });
 
+function setPictureZoom(zoomed) {
+  pictureScroll.classList.toggle('is-zoomed', zoomed);
+  pictureZoom.textContent = zoomed ? 'Fit picture' : 'Zoom in';
+  pictureScroll.scrollTo(0, 0);
+}
+
+rules.addEventListener('click', (event) => {
+  const trigger = event.target.closest('[data-enlarge-picture]');
+  if (!trigger) return;
+  pictureTrigger = trigger;
+  const thumbnail = trigger.querySelector('img');
+  pictureTitle.textContent = tutorialSteps[tutorialStep].querySelector('h3').textContent;
+  pictureImage.alt = thumbnail.alt;
+  pictureImage.src = thumbnail.src;
+  pictureImage.style.setProperty('--picture-width', `${thumbnail.getAttribute('width')}px`);
+  setPictureZoom(false);
+  tutorialPicture.showModal();
+});
+
+pictureZoom.addEventListener('click', () => setPictureZoom(!pictureScroll.classList.contains('is-zoomed')));
+tutorialPicture.addEventListener('close', () => pictureTrigger?.focus({ preventScroll: true }));
+
 function openShare(roomCode) {
   const url = new URL(location.href);
   url.search = '';
@@ -202,7 +233,12 @@ let aimedMove;
 let suppressDragClick = false;
 let presentedBattle;
 let lastCardPlay;
-let battleDeckSeat;
+const battleCardViews = {
+  deck: { key: 'deck', label: 'deck', summary: 'All cards in this deck, including your hand, draw pile, and discard pile.' },
+  draw: { key: 'drawPile', label: 'draw pile', summary: 'Cards available to draw, listed by name.' },
+  discard: { key: 'discardPile', label: 'discard pile', summary: 'Cards here are shuffled back into the draw pile when you need to draw and it is empty.' },
+};
+let battleCardsView;
 
 function unlockRecruits(state) {
   if (!state) return;
@@ -629,15 +665,16 @@ function actionCard(state, seat, cardId, index, enabled, draft = false) {
   </button>`;
 }
 
-function combatPile(kind, label, count) {
-  return `<div class="combat-pile" role="group" data-pile="${kind}" aria-label="${label} pile, ${count} cards">
+function combatPile(kind, label, count, seat) {
+  return `<button type="button" class="combat-pile" data-do="view-battle-deck" data-id="${kind}" data-seat="${seat}" data-pile="${kind}" aria-haspopup="dialog" aria-label="View ${label.toLowerCase()} pile, ${count} ${count === 1 ? 'card' : 'cards'}">
     <span class="pile-stack" aria-hidden="true">${count}</span><span>${label}</span>
-  </div>`;
+  </button>`;
 }
 
 function combat(state) {
   const seat = state.activePlayer;
   const player = state.players[seat];
+  const waitingSeat = ui.room && ui.room.seat !== seat ? ui.room.seat : null;
   const canAct = !ui.room || ui.room.seat === seat;
   const enabled = canAct && !ui.pending;
   const entry = getEncounter(state);
@@ -682,15 +719,17 @@ function combat(state) {
         </div>
         <div class="hud-instructions"><p class="turn-instructions" id="attack-instructions">${!canAct ? 'You can look at the rivals while you wait.' : [canAim && 'Drag a targeted move onto a rival, or tap it to aim.', canTap && 'Tap untargeted moves. You can also drag Block cards onto your familiar.'].filter(Boolean).join(' ') || 'End your turn when you’re ready.'}</p>${button('Cancel aim', 'cancel-aim', { data: 'hidden' })}</div>
         <div class="card-table">
-          ${combatPile('draw', 'Draw', player.drawPile.length)}
+          ${combatPile('draw', 'Draw', player.drawPile.length, seat)}
           <div class="hand-grid combat-hand" aria-label="Hand">${player.hand.map((id, index) => actionCard(state, seat, id, index, enabled && canAffordCard(CARDS[id], player.energy))).join('') || '<p class="muted">No cards left in hand.</p>'}</div>
-          ${combatPile('discard', 'Discard', player.discardPile.length)}
+          ${combatPile('discard', 'Discard', player.discardPile.length, seat)}
         </div>
         <div class="turn-actions combat-actions">
           ${companion ? button(`${escape(companion.name)} · ${player.companionUsed ? 'Used' : 'Free companion move'}`, 'companion-strike', { disabled: !enabled || !companionReady, data: `data-seat="${seat}" data-aim="${escape(companion.name)}" aria-pressed="false" aria-describedby="attack-instructions"` }) : ''}
           <span class="hand-counts">${escape(TYPES[CRITTERS[player.critterId].type].name)} type</span>
         </div>
-        <div class="turn-actions combat-deck-actions">${state.players.map((member, index) => button(`View ${escape(CRITTERS[member.critterId].name)}’s deck (${member.deck.length})`, 'view-battle-deck', { data: `data-seat="${index}"` })).join('')}</div>
+        <div class="turn-actions combat-deck-actions">${state.players.map((member, index) => button(`View ${escape(CRITTERS[member.critterId].name)}’s deck (${member.deck.length})`, 'view-battle-deck', { data: `data-seat="${index}" data-id="deck" aria-haspopup="dialog"` })).join('')}
+          ${waitingSeat === null ? '' : ['draw', 'discard'].map((kind) => button(`Your ${battleCardViews[kind].label}`, 'view-battle-deck', { data: `data-seat="${waitingSeat}" data-id="${kind}" aria-haspopup="dialog"` })).join('')}
+        </div>
     </section>
   </div>`;
 }
@@ -915,6 +954,7 @@ function render() {
       }
     }
   }
+  if (battleDeck.open) renderBattleCards(state);
   if (motion) animateCombatMotion(motion);
 }
 
@@ -1156,9 +1196,36 @@ window.addEventListener('keydown', (event) => {
   cancelAim();
 });
 
+function renderBattleCards(state) {
+  const { seat, kind } = battleCardsView;
+  const player = state?.phase === 'combat' ? state.players[seat] : null;
+  if (!player) {
+    battleDeck.close();
+    return;
+  }
+  const { key, label, summary } = battleCardViews[kind];
+  const pile = player[key];
+  const counts = new Map();
+  for (const cardId of pile) counts.set(cardId, (counts.get(cardId) ?? 0) + 1);
+  const entries = [...counts];
+  if (kind === 'draw') entries.sort(([left], [right]) => CARDS[left].name.localeCompare(CARDS[right].name));
+  battleDeckTitle.textContent = `${CRITTERS[player.critterId].name}’s ${label} · ${pile.length} ${pile.length === 1 ? 'card' : 'cards'}`;
+  battleDeckSummary.textContent = summary;
+  battleDeckCards.innerHTML = entries.length ? entries.map(([cardId, count]) => {
+    const card = CARDS[cardId];
+    return `<article class="battle-deck-card"><strong>${escape(card.name)}${count > 1 ? ` × ${count}` : ''}</strong><span>${escape(card.cost)} energy · ${escape(card.type)}</span><p>${escape(getCardDescription(state, seat, cardId))}</p></article>`;
+  }).join('') : `<p class="muted">This ${label} is empty.</p>`;
+}
+
 battleDeck.addEventListener('close', () => {
-  game.querySelector(`[data-do="view-battle-deck"][data-seat="${battleDeckSeat}"]`)?.focus();
-  battleDeckSeat = undefined;
+  if (battleDeck.open) return;
+  const { seat, kind } = battleCardsView;
+  const trigger = game.querySelector(`[data-do="view-battle-deck"][data-id="${kind}"][data-seat="${seat}"]`);
+  const nextFocus = trigger ?? game.querySelector(`[data-pile="${kind}"]`)
+    ?? game.querySelector('.combat-info summary')
+    ?? game.querySelector('.game-stage button:not(:disabled)');
+  nextFocus?.focus({ preventScroll: true });
+  battleCardsView = undefined;
 });
 
 document.addEventListener('click', async (event) => {
@@ -1168,19 +1235,13 @@ document.addEventListener('click', async (event) => {
   const seat = Number(control.dataset.seat);
   const index = Number(control.dataset.index);
   const state = ui.room ? ui.room.state : ui.run;
-  if (action === 'view-battle-deck' && state?.phase === 'combat' && state.players[seat]) {
+  if (action === 'view-battle-deck' && state?.phase === 'combat' && state.players[seat] && Object.hasOwn(battleCardViews, id)) {
     clearAttackDrag();
     setAimedMove();
-    battleDeckSeat = seat;
-    const player = state.players[seat];
-    const counts = new Map();
-    for (const cardId of player.deck) counts.set(cardId, (counts.get(cardId) ?? 0) + 1);
-    document.querySelector('#battle-deck-title').textContent = `${CRITTERS[player.critterId].name}’s deck · ${player.deck.length} cards`;
-    document.querySelector('#battle-deck-cards').innerHTML = [...counts].map(([cardId, count]) => {
-      const card = CARDS[cardId];
-      return `<article class="battle-deck-card"><strong>${escape(card.name)}${count > 1 ? ` × ${count}` : ''}</strong><span>${escape(card.cost)} energy · ${escape(card.type)}</span><p>${escape(getCardDescription(state, seat, cardId))}</p></article>`;
-    }).join('');
+    battleCardsView = { seat, kind: id };
+    renderBattleCards(state);
     battleDeck.showModal();
+    battleDeck.scrollTop = 0;
     return;
   }
   if (control.hasAttribute('data-aim')) {

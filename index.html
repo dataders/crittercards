@@ -44,7 +44,7 @@
   <dialog id="battle-deck" aria-labelledby="battle-deck-title">
     <div class="battle-deck-content">
       <div class="section-heading"><h2 id="battle-deck-title">Your deck</h2><form method="dialog"><button class="button button-ghost" autofocus>Close</button></form></div>
-      <p class="muted">All cards in this deck for the current run, including cards in your hand, draw pile, and discard pile.</p>
+      <p id="battle-deck-summary" class="muted"></p>
       <div id="battle-deck-cards" class="battle-deck-cards"></div>
     </div>
   </dialog>
@@ -57,7 +57,10 @@
           <h3>Choose your team</h3>
           <div class="tutorial-lesson">
             <figure class="tutorial-visual">
-              <img src="assets/tutorial/choose-team.webp" width="990" height="599" alt="The character screen shows play modes and portrait cards for the four cousins.">
+              <button class="tutorial-enlarge" type="button" data-enlarge-picture aria-haspopup="dialog" aria-controls="tutorial-picture">
+                <img src="assets/tutorial/choose-team.webp" width="990" height="599" alt="The character screen shows play modes and portrait cards for the four cousins.">
+                <span>Enlarge picture</span>
+              </button>
               <figcaption>Choose a play mode, then pick a character.</figcaption>
             </figure>
             <div class="tutorial-copy">
@@ -71,7 +74,10 @@
           <h3>Build a deck</h3>
           <div class="tutorial-lesson">
             <figure class="tutorial-visual">
-              <img src="assets/tutorial/build-deck.webp" width="990" height="409" alt="The deck builder shows a signature card and five card slots with dropdowns." loading="lazy">
+              <button class="tutorial-enlarge" type="button" data-enlarge-picture aria-haspopup="dialog" aria-controls="tutorial-picture">
+                <img src="assets/tutorial/build-deck.webp" width="990" height="409" alt="The deck builder shows a signature card and five card slots with dropdowns." loading="lazy">
+                <span>Enlarge picture</span>
+              </button>
               <figcaption>Use the five card slots to adjust your starting deck.</figcaption>
             </figure>
             <div class="tutorial-copy">
@@ -84,7 +90,10 @@
           <h3>Choose a path</h3>
           <div class="tutorial-lesson">
             <figure class="tutorial-visual">
-              <img src="assets/tutorial/choose-path.webp" width="1040" height="260" alt="Two routes appear side by side with rival portraits and their difficulty." loading="lazy">
+              <button class="tutorial-enlarge" type="button" data-enlarge-picture aria-haspopup="dialog" aria-controls="tutorial-picture">
+                <img src="assets/tutorial/choose-path.webp" width="1040" height="260" alt="Two routes appear side by side with rival portraits and their difficulty." loading="lazy">
+                <span>Enlarge picture</span>
+              </button>
               <figcaption>Pick a route to fight the rivals shown on it.</figcaption>
             </figure>
             <div class="tutorial-copy">
@@ -97,7 +106,10 @@
           <h3>Play a turn</h3>
           <div class="tutorial-lesson">
             <figure class="tutorial-visual">
-              <img src="assets/tutorial/play-turn.webp" width="1048" height="326" alt="The battle HUD shows energy and End turn above the hand, with Draw and Discard on either side." loading="lazy">
+              <button class="tutorial-enlarge" type="button" data-enlarge-picture aria-haspopup="dialog" aria-controls="tutorial-picture">
+                <img src="assets/tutorial/play-turn.webp" width="1048" height="326" alt="The battle HUD shows energy and End turn above the hand, with Draw and Discard on either side." loading="lazy">
+                <span>Enlarge picture</span>
+              </button>
               <figcaption>Hold Fast is a Block card. Tap it to gain 8 Block.</figcaption>
             </figure>
             <div class="tutorial-copy">
@@ -112,7 +124,10 @@
           <h3>Types and effects</h3>
           <div class="tutorial-lesson">
             <figure class="tutorial-visual">
-              <img src="assets/tutorial/types-effects.webp" width="464" height="235" alt="Ironhide is a Stone rival with 19 HP. Next move shows Hits Ember for 9, and Your attacks shows Resisted, times 0.75." loading="lazy">
+              <button class="tutorial-enlarge" type="button" data-enlarge-picture aria-haspopup="dialog" aria-controls="tutorial-picture">
+                <img src="assets/tutorial/types-effects.webp" width="464" height="235" alt="Ironhide is a Stone rival with 19 HP. Next move shows Hits Ember for 9, and Your attacks shows Resisted, times 0.75." loading="lazy">
+                <span>Enlarge picture</span>
+              </button>
               <figcaption>Read Next move and Your attacks under the rival’s HP.</figcaption>
             </figure>
             <div class="tutorial-copy">
@@ -125,7 +140,10 @@
           <h3>Grow and save your run</h3>
           <div class="tutorial-lesson">
             <figure class="tutorial-visual">
-              <img src="assets/tutorial/grow-save.webp" width="1040" height="829" alt="The level-up screen shows perks, three draft cards, a Skip card button, and a confirmation button." loading="lazy">
+              <button class="tutorial-enlarge" type="button" data-enlarge-picture aria-haspopup="dialog" aria-controls="tutorial-picture">
+                <img src="assets/tutorial/grow-save.webp" width="1040" height="829" alt="The level-up screen shows perks, three draft cards, a Skip card button, and a confirmation button." loading="lazy">
+                <span>Enlarge picture</span>
+              </button>
               <figcaption>Choose a perk even if you decide to skip the card.</figcaption>
             </figure>
             <div class="tutorial-copy">
@@ -137,6 +155,16 @@
         </section>
       </div>
       <div class="tutorial-actions"><button type="button" class="button button-ghost" data-do="tutorial-close">Skip tutorial</button><button type="button" class="button button-secondary" data-do="tutorial-back">Back</button><button type="button" class="button button-primary" data-do="tutorial-next">Next</button></div>
+    </div>
+  </dialog>
+  <dialog id="tutorial-picture" aria-labelledby="tutorial-picture-title">
+    <div class="tutorial-picture-header">
+      <h2 id="tutorial-picture-title"></h2>
+      <button class="button button-secondary" type="button" data-picture-zoom aria-controls="tutorial-picture-scroll">Zoom in</button>
+      <form method="dialog"><button class="button button-primary" autofocus>Close</button></form>
+    </div>
+    <div id="tutorial-picture-scroll" class="tutorial-picture-scroll" role="region" aria-label="Tutorial picture" tabindex="0">
+      <img alt="">
     </div>
   </dialog>
   <dialog id="share-dialog" aria-labelledby="share-title">
