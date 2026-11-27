@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 
-import { STARTER_DECK } from '../../../../game.mjs';
+import { dealStartingDeck } from '../../../../game.mjs';
 import { createGameServer } from '../../../../server.mjs';
 
 const server = createGameServer();
@@ -49,8 +49,8 @@ try {
   const playerTwo = client(guest.token);
   const hostPick = await playerOne.act(guest.revision, { type: 'select', critterId: 'fox' });
   const guestPick = await playerTwo.act(hostPick.revision, { type: 'select', critterId: 'hare' });
-  const hostReady = await playerOne.act(guestPick.revision, { type: 'deck', cards: STARTER_DECK });
-  const ready = await playerTwo.act(hostReady.revision, { type: 'deck', cards: STARTER_DECK });
+  const hostReady = await playerOne.act(guestPick.revision, { type: 'deck', cards: dealStartingDeck(1) });
+  const ready = await playerTwo.act(hostReady.revision, { type: 'deck', cards: dealStartingDeck(2) });
   assert.deepEqual(ready.ready, [true, true]);
 
   await playerTwo.act(ready.revision, { type: 'start' }, 403);

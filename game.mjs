@@ -2,7 +2,7 @@ import {
   COUSINS, CRITTERS, CARDS, matchup, FRAIL_BLOCK_LOSS,
   COMPANION_ABILITIES, LEVEL_PERKS, HARD_PERKS, hardPerkOptions, trailPosition,
   FLOODGATE_RECOIL_PERCENT, TRAIL, MERCHANTS, CAMPS, getEncounter,
-  rivalHealth, briarHealer, BASE_CARDS, STARTER_DECK, startingDeckFor, MAX_STARTING_COPIES,
+  rivalHealth, briarHealer, BASE_CARDS, STARTER_DECK, STARTING_DECK_SIZE, MIN_STARTING_ONE_COST, MAX_STARTING_COPIES,
   MIN_RUN_DECK_SIZE, CARD_UNLOCKS, MARK_DAMAGE, describeCard, deckLibrary,
 } from './data.mjs';
 
@@ -11,7 +11,7 @@ export {
   matchup, FRAIL_BLOCK_LOSS, COMPANION_ABILITIES, getCompanionDescription, LEVEL_PERKS,
   HARD_PERKS, hardPerkOptions, ENCOUNTERS, LEVELS_PER_ACT, ACTS,
   trailPosition, FLOODGATE_RECOIL_PERCENT, TRAIL, MERCHANTS, CAMPS,
-  getEncounter, rivalHealth, briarHealer, BASE_CARDS, STARTER_DECK, startingDeckFor,
+  getEncounter, rivalHealth, briarHealer, BASE_CARDS, STARTER_DECK, STARTING_DECK_SIZE, MIN_STARTING_ONE_COST,
   MAX_STARTING_COPIES, MIN_RUN_DECK_SIZE, CARD_UNLOCKS,
 } from './data.mjs';
 
@@ -25,14 +25,19 @@ function typedDamage(amount, attackerType, defenderType) {
   return Math.floor(amount * matchup(attackerType, defenderType));
 }
 
-export function validateStartingDeck(cards) {
-  if (!Array.isArray(cards) || cards.length !== STARTER_DECK.length || [...cards].some((id) => !deckLibrary.has(id))) {
-    throw new Error('Choose five cards from the deck library.');
+export function validateStartingDeck(cards, { allowLegacy = false } = {}) {
+  const legacy = allowLegacy && cards?.length === STARTER_DECK.length;
+  if (!Array.isArray(cards) || (!legacy && cards.length !== STARTING_DECK_SIZE) ||
+      [...cards].some((id) => !deckLibrary.has(id))) {
+    throw new Error(`Choose ${STARTING_DECK_SIZE} cards from the deck library.`);
   }
   if (cards.some((id) => cards.filter((card) => card === id).length > MAX_STARTING_COPIES)) {
     throw new Error('A starting deck can have up to two copies of each card.');
   }
   if (!cards.some((id) => CARDS[id].damage)) throw new Error('Include at least one attack card.');
+  if (!legacy && cards.filter((id) => CARDS[id].cost === 1).length < MIN_STARTING_ONE_COST) {
+    throw new Error(`Include at least ${MIN_STARTING_ONE_COST} cards that cost 1 energy.`);
+  }
 }
 
 export function getCardDescription(state, playerIndex, cardId) {
@@ -81,6 +86,20 @@ function shuffle(state, values) {
     [shuffled[index], shuffled[swap]] = [shuffled[swap], shuffled[index]];
   }
   return shuffled;
+}
+
+export function dealStartingDeck(seed = Date.now(), unlocked = BASE_CARDS) {
+  const pool = [...new Set([...BASE_CARDS, ...unlocked])].filter((id) => deckLibrary.has(id));
+  const copies = pool.flatMap((id) => Array(MAX_STARTING_COPIES).fill(id));
+  const rng = { seed: seed >>> 0 };
+  const oneCost = shuffle(rng, copies.filter((id) => CARDS[id].cost === 1));
+  const deck = oneCost.splice(0, MIN_STARTING_ONE_COST);
+  const remaining = shuffle(rng, [...oneCost, ...copies.filter((id) => CARDS[id].cost !== 1)]);
+  deck.push(...remaining.splice(0, STARTING_DECK_SIZE - deck.length));
+  if (!deck.some((id) => CARDS[id].damage)) {
+    deck[deck.length - 1] = remaining.find((id) => CARDS[id].damage);
+  }
+  return shuffle(rng, deck);
 }
 
 function drawHand(state, player) {
@@ -198,14 +217,14 @@ export function createRun(critterIds, seed = Date.now(), startingDecks, companio
       [...critterIds].some((id) => typeof id !== 'string' || !Object.hasOwn(CRITTERS, id))) {
     throw new Error('Choose a critter for each player.');
   }
-  if (startingDecks === undefined) startingDecks = critterIds.map(startingDeckFor);
+  if (startingDecks === undefined) startingDecks = critterIds.map((_, seat) => dealStartingDeck(seed + seat));
   if (companions === undefined) companions = critterIds.map(() => null);
   if (!Array.isArray(startingDecks) || startingDecks.length !== critterIds.length) throw new Error('Build a deck for each player.');
   if (!Array.isArray(companions) || companions.length !== critterIds.length || [...companions].some((id, index) =>
     id !== null && (!Object.hasOwn(COUSINS, critterIds[index]) || !Object.hasOwn(CRITTERS, id) || !CRITTERS[id].animal))) {
     throw new Error('Choose an animal companion for a cousin.');
   }
-  for (const cards of startingDecks) validateStartingDeck(cards);
+  for (const cards of startingDecks) validateStartingDeck(cards, { allowLegacy: true });
   const players = critterIds.map((critterId, id) => {
     const critter = CRITTERS[critterId];
     return {

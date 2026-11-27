@@ -1,9 +1,10 @@
 import {
-  COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, startingDeckFor, MAX_STARTING_COPIES,
+  COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, dealStartingDeck, STARTING_DECK_SIZE, MIN_STARTING_ONE_COST, MAX_STARTING_COPIES,
   ENCOUNTERS, TRAIL, MERCHANTS, CAMPS, LEVEL_PERKS, HARD_PERKS, TYPES, COMPANION_ABILITIES, getCompanionDescription, createRun, applyAction, getEncounter,
   ACTS, LEVELS_PER_ACT, trailPosition, hardPerkOptions, getEnemyIntent, rivalHealth,
   getCardDescription, validateStartingDeck, canRemoveRunCard, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE,
 } from './game.mjs';
+import { deckLibrary } from './data.mjs';
 import { createCombatInput } from './combat-input.mjs';
 import { createAudioController } from './audio.mjs';
 import { readStorage, savedRewardChoices, savedRunStatus, saveKey, writeStorage } from './storage.mjs';
@@ -141,17 +142,18 @@ function waitingForPublicMatch(room) {
 
 const savedCollection = readStorage(localStorage, collectionKey, []);
 const collection = new Set([...starterIds, ...(Array.isArray(savedCollection) ? savedCollection : [])]);
-const cardLibrary = [...BASE_CARDS, ...Object.values(CARD_UNLOCKS).flat()];
+const cardLibrary = [...deckLibrary];
 const savedCards = readStorage(localStorage, cardKey, []);
 const earnedCards = Object.values(CARD_UNLOCKS).filter((group) =>
   Array.isArray(savedCards) && group.some((id) => savedCards.includes(id))).flat();
 const knownCards = new Set([...BASE_CARDS, ...earnedCards]);
+const newStartingDeck = () => dealStartingDeck(crypto.getRandomValues(new Uint32Array(1))[0], knownCards);
 const ui = {
   mode: invite ? 'online' : 'local',
   showSetup: Boolean(invite),
   picks: [null, null],
   companions: [null, null],
-  startingDecks: [startingDeckFor(), startingDeckFor()],
+  startingDecks: [null, null],
   pickSeat: 0,
   filter: 'all',
   room: null,
@@ -278,10 +280,12 @@ function deckBuilder(seat, critterId, room) {
   const critter = CRITTERS[critterId];
   const signature = CARDS[critter.signature];
   const cards = room?.deck ?? ui.startingDecks[seat];
+  const oneCost = cards.filter((id) => CARDS[id].cost === 1).length;
   const disabled = ui.pending || Boolean(room?.deck);
   return `<section class="deck-builder" aria-labelledby="deck-title">
     <div class="section-heading"><h2 id="deck-title">Build ${escape(critter.name)}’s deck</h2><span class="muted">${knownCards.size} / ${cardLibrary.length} library cards unlocked</span></div>
-    <p class="muted">Keep this starter deck or swap cards. Pick five library cards, with up to two copies each and at least one attack.</p>
+    <p class="muted">Keep your random cards or swap them. A new deck needs ${STARTING_DECK_SIZE} library cards, at least ${MIN_STARTING_ONE_COST} that cost 1 energy, and at least one attack. Use up to two copies of a card.</p>
+    <p class="muted">${oneCost} cards cost 1 energy.</p>
     <p class="deck-signature"><strong>${escape(signature.name)} × ${critter.signatureCopies ?? 2}</strong> · ${signature.cost} energy · ${escape(signature.description)}</p>
     <div class="deck-slots">${cards.map((id, index) => `<label class="field deck-slot">Card ${index + 1}<select data-deck-slot="${index}" data-seat="${seat}" ${disabled ? 'disabled' : ''}>
       ${cardLibrary.filter((cardId) => knownCards.has(cardId) || cardId === id).map((cardId) => {
@@ -725,7 +729,7 @@ function attachRoom(room) {
   ui.mode = 'online';
   ui.savedRunOrigin = null;
   let latestPick = room.picks[room.seat];
-  ui.startingDecks[room.seat] = room.deck ? [...room.deck] : startingDeckFor(latestPick);
+  ui.startingDecks[room.seat] = room.deck?.length === STARTING_DECK_SIZE ? [...room.deck] : latestPick ? newStartingDeck() : null;
   let latestState = room.state;
   let deferredRender;
   writeStorage(sessionStorage, roomKey, { code: room.code, token: room.token });
@@ -747,7 +751,7 @@ function attachRoom(room) {
     if (ui.room !== room) return;
     const pick = room.picks[room.seat];
     if (pick !== latestPick) {
-      ui.startingDecks[room.seat] = room.deck ? [...room.deck] : startingDeckFor(pick);
+      ui.startingDecks[room.seat] = room.deck?.length === STARTING_DECK_SIZE ? [...room.deck] : pick ? newStartingDeck() : null;
       latestPick = pick;
     }
     acceptState(room.state, latestState);
@@ -996,7 +1000,7 @@ document.addEventListener('click', async (event) => {
   if (action === 'create') return runRemote(async () => attachRoom(await createRoom()));
   if (action === 'pick') {
     if (ui.room) return dispatch({ type: 'select', critterId: id });
-    if (ui.picks[seat] !== id) ui.startingDecks[seat] = startingDeckFor(id);
+    if (ui.picks[seat] !== id) ui.startingDecks[seat] = newStartingDeck();
     ui.picks[seat] = id;
     ui.companions[seat] = null;
   }

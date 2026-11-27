@@ -34,8 +34,8 @@ test('solo defeat stops the enemy turn after the last familiar falls', () => {
 
 test('Tito can draw one powerful Secret Star in the opening hand or on round two', () => {
   assert.ok(Object.values(CRITTERS).every(({ id, maxHp }) => id === 'tita' || maxHp > CRITTERS.tita.maxHp));
-  // Seed 17 rolls between 1 in 4 and 1 in 3, so it exercises the higher chance.
-  for (const [seed, drawsEarly] of [[1, false], [17, true]]) {
+  // These seeds exercise both Secret Star draw timings with the fifteen-card deal.
+  for (const [seed, drawsEarly] of [[1, false], [6, true]]) {
     const run = createRun(['tita'], seed);
     assert.equal(run.players[0].hp, 24);
     assert.equal(run.players[0].deck.filter((id) => id === 'secretStar').length, 1);
@@ -83,7 +83,7 @@ test('a saved co-op deck with two Secret Stars keeps its upgraded copy and draws
 
 test('Venom Ward protects both witches and Poison ticks before the rival acts', () => {
   const player = 0;
-  const combat = applyAction(createRun(['hudson', 'quinn'], 1), { type: 'route', player, routeId: 'steady' });
+  const combat = applyAction(createRun(['hudson', 'quinn'], 3), { type: 'route', player, routeId: 'steady' });
   const cardIndex = combat.players[player].hand.indexOf('shieldWall');
   assert.ok(cardIndex >= 0);
   const warded = applyAction(combat, { type: 'play', player, cardIndex, target: 0 });

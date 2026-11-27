@@ -6,7 +6,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { gzipSync, gunzipSync } from 'node:zlib';
 
-import { applyAction, createRun, COUSINS, CRITTERS, startingDeckFor, validateStartingDeck } from './game.mjs';
+import { applyAction, createRun, COUSINS, CRITTERS, dealStartingDeck, validateStartingDeck } from './game.mjs';
 
 const roomLifetime = 6 * 60 * 60 * 1000;
 const publicWaitLifetime = 45 * 1000;
@@ -102,7 +102,7 @@ function createRoom(rooms, { critterId, publicMatch, now }) {
   const token = randomBytes(32).toString('base64url');
   const room = {
     code, tokens: [token, null], picks: [critterId, null], companions: [null, null],
-    decks: [critterId && !COUSINS[critterId] ? startingDeckFor(critterId) : null, null],
+    decks: [critterId && !COUSINS[critterId] ? dealStartingDeck(randomBytes(4).readUInt32LE()) : null, null],
     state: null, revision: 0, updatedAt: now, publicMatch,
   };
   rooms.set(code, room);
@@ -115,7 +115,7 @@ function joinRoom(room, critterId, now) {
   const token = randomBytes(32).toString('base64url');
   room.tokens[1] = token;
   room.picks[1] = critterId;
-  room.decks[1] = critterId && !COUSINS[critterId] ? startingDeckFor(critterId) : null;
+  room.decks[1] = critterId && !COUSINS[critterId] ? dealStartingDeck(randomBytes(4).readUInt32LE()) : null;
   room.updatedAt = now;
   room.revision += 1;
   return { ...snapshot(room, 1), token };
