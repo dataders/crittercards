@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { applyAction, createRun, CRITTERS, STARTER_DECK, validateStartingDeck } from './game.mjs';
 
 const roomLifetime = 6 * 60 * 60 * 1000;
+const publicWaitLifetime = 45 * 1000;
 const roomCapacity = 300;
 const codeAlphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 const staticFiles = new Set(['/index.html', '/styles.css', '/app.mjs', '/game.mjs', '/transport.mjs']);
@@ -67,12 +68,46 @@ function newRoomCode(rooms) {
   return code;
 }
 
+function isWaitingForPublicMatch(room) {
+  return room.publicMatch && !room.state && !room.tokens[1];
+}
+
+function isExpired(room, now) {
+  const lifetime = isWaitingForPublicMatch(room) ? publicWaitLifetime : roomLifetime;
+  return now - room.updatedAt >= lifetime;
+}
+
+function createRoom(rooms, { critterId, publicMatch, now }) {
+  const code = newRoomCode(rooms);
+  const token = randomBytes(32).toString('base64url');
+  const room = {
+    code, tokens: [token, null], picks: [critterId, null],
+    decks: [critterId ? STARTER_DECK : null, null],
+    state: null, revision: 0, updatedAt: now, publicMatch,
+  };
+  rooms.set(code, room);
+  return { ...snapshot(room, 0), token };
+}
+
+function joinRoom(room, critterId, now) {
+  if (room.tokens[1]) throw new RequestError(409, 'This room is full.');
+  if (critterId !== null) validateCritter(critterId);
+  const token = randomBytes(32).toString('base64url');
+  room.tokens[1] = token;
+  room.picks[1] = critterId;
+  room.decks[1] = critterId ? STARTER_DECK : null;
+  room.updatedAt = now;
+  room.revision += 1;
+  return { ...snapshot(room, 1), token };
+}
+
 function snapshot(room, seat) {
   return {
     code: room.code,
     seat,
     state: room.state,
     revision: room.revision,
+    publicMatch: room.publicMatch,
     joined: room.tokens.map(Boolean),
     picks: room.picks,
     deck: room.decks[seat],
@@ -167,21 +202,25 @@ export function createGameServer() {
         return;
       }
 
-      if (request.method === 'POST' && pathname === '/api/rooms') {
+      const publicMatch = pathname === '/api/matchmaking';
+      if (request.method === 'POST' && (pathname === '/api/rooms' || publicMatch)) {
         const { critterId = null } = await readJson(request);
         if (critterId !== null) validateCritter(critterId);
 
         const now = Date.now();
         for (const [code, room] of rooms) {
-          if (now - room.updatedAt >= roomLifetime) rooms.delete(code);
+          if (isExpired(room, now)) rooms.delete(code);
+        }
+        if (publicMatch) {
+          const waitingRoom = [...rooms.values()].find(isWaitingForPublicMatch);
+          if (waitingRoom) {
+            sendJson(response, 200, joinRoom(waitingRoom, critterId, now));
+            return;
+          }
         }
         if (rooms.size >= roomCapacity) throw new RequestError(503, 'All rooms are currently in use.');
 
-        const code = newRoomCode(rooms);
-        const token = randomBytes(32).toString('base64url');
-        const room = { code, tokens: [token, null], picks: [critterId, null], decks: [critterId ? STARTER_DECK : null, null], state: null, revision: 0, updatedAt: now };
-        rooms.set(code, room);
-        sendJson(response, 201, { ...snapshot(room, 0), token });
+        sendJson(response, 201, createRoom(rooms, { critterId, publicMatch, now }));
         return;
       }
 
@@ -196,22 +235,14 @@ export function createGameServer() {
       const body = isPost ? await readJson(request) : null;
       const room = rooms.get(code);
       if (!room) throw new RequestError(404, 'Room not found.');
-      if (Date.now() - room.updatedAt >= roomLifetime) {
+      const now = Date.now();
+      if (isExpired(room, now)) {
         rooms.delete(code);
         throw new RequestError(410, 'This room has expired.');
       }
 
       if (operation === 'join') {
-        if (room.tokens[1]) throw new RequestError(409, 'This room is full.');
-        const { critterId = null } = body;
-        if (critterId !== null) validateCritter(critterId);
-        const token = randomBytes(32).toString('base64url');
-        room.tokens[1] = token;
-        room.picks[1] = critterId;
-        room.decks[1] = critterId ? STARTER_DECK : null;
-        room.updatedAt = Date.now();
-        room.revision += 1;
-        sendJson(response, 200, { ...snapshot(room, 1), token });
+        sendJson(response, 200, joinRoom(room, body.critterId ?? null, now));
         return;
       }
 
@@ -221,9 +252,19 @@ export function createGameServer() {
           sendJson(response, 409, { message: 'The room changed. Review the update and try again.', snapshot: snapshot(room, seat) });
           return;
         }
+        if (body.action?.type === 'cancelMatch') {
+          if (seat !== 0 || !isWaitingForPublicMatch(room)) {
+            throw new RequestError(409, 'This room is no longer waiting for a public match.');
+          }
+          rooms.delete(code);
+          sendJson(response, 200, snapshot(room, seat));
+          return;
+        }
         takeAction(room, seat, body.action);
-        room.updatedAt = Date.now();
+        room.updatedAt = now;
         room.revision += 1;
+      } else if (seat === 0 && isWaitingForPublicMatch(room)) {
+        room.updatedAt = now;
       }
       sendJson(response, 200, snapshot(room, seat));
     } catch (error) {

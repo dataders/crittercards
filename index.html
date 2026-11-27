@@ -28,6 +28,7 @@
         <span class="brand-copy">Crittercards</span>
       </button>
       <div class="header-actions">
+        <button class="button button-secondary" type="button" data-do="share-game">Share game</button>
         <button class="button button-ghost" type="button" data-do="rules">How to play</button>
       </div>
     </header>
@@ -41,7 +42,7 @@
       <div class="tutorial-content" aria-live="polite">
         <section data-tutorial-step>
           <h3>Choose your team</h3>
-          <p>Choose <strong>Single player</strong> for one character, or <strong>Share a screen</strong> for two. You can also create a room to play on separate screens.</p>
+          <p>Choose <strong>Single player</strong> for one character, or <strong>Share a screen</strong> for two. To play on separate screens, find a public match or share a private room code.</p>
           <p>Pick a cousin or a woodland familiar. Each has a type and a signature card. The rest of the woodland creatures can be recruited as you play.</p>
         </section>
         <section data-tutorial-step hidden>
@@ -73,6 +74,22 @@
         </section>
       </div>
       <div class="tutorial-actions"><button type="button" class="button button-ghost" data-do="tutorial-close">Skip tutorial</button><button type="button" class="button button-secondary" data-do="tutorial-back">Back</button><button type="button" class="button button-primary" data-do="tutorial-next">Next</button></div>
+    </div>
+  </dialog>
+  <dialog id="share-dialog" aria-labelledby="share-title">
+    <div class="lobby-panel">
+      <div class="form-row">
+        <h2 id="share-title">Share game</h2>
+        <form method="dialog"><button class="button button-ghost">Close</button></form>
+      </div>
+      <label class="field">Link<input id="share-link" type="url" readonly></label>
+      <div class="form-row">
+        <button class="button button-primary" type="button" id="share-apps" hidden>Share to apps</button>
+        <a class="button button-secondary" id="share-email">Email</a>
+        <button class="button button-secondary" type="button" id="share-copy">Copy link</button>
+      </div>
+      <p class="muted">Copy the link to paste into Messages, Instagram, TikTok, or another app.</p>
+      <p id="share-status" class="muted" role="status"></p>
     </div>
   </dialog>
   <script type="module" src="app.mjs"></script>

@@ -4,10 +4,15 @@ import {
   hardPerkOptions, getEnemyIntent,
   getCardDescription, validateStartingDeck, canAffordCard,
 } from './game.mjs';
-import { createRoom, joinRoom, resumeRoom } from './transport.mjs';
+import { createRoom, findPublicMatch, joinRoom, resumeRoom } from './transport.mjs';
 
 const game = document.querySelector('#game');
 const rules = document.querySelector('#rules');
+const shareDialog = document.querySelector('#share-dialog');
+const shareLink = document.querySelector('#share-link');
+const shareApps = document.querySelector('#share-apps');
+const shareStatus = document.querySelector('#share-status');
+let shareData;
 const tutorialSteps = [...rules.querySelectorAll('[data-tutorial-step]')];
 const tutorialProgress = rules.querySelector('#tutorial-progress');
 const tutorialBack = rules.querySelector('[data-do="tutorial-back"]');
@@ -57,6 +62,52 @@ function openTutorial() {
 }
 
 rules.addEventListener('close', () => writeStorage(localStorage, tutorialKey, true));
+
+function openShare(roomCode) {
+  const url = new URL(location.href);
+  url.search = '';
+  url.hash = '';
+  if (roomCode) url.searchParams.set('room', roomCode);
+  const title = 'Crittercards · The Hollow Trail';
+  const text = roomCode ? 'Join my Crittercards room.' : 'Play Crittercards with me.';
+  shareData = { title, text, url: url.href };
+  document.querySelector('#share-title').textContent = roomCode ? 'Share invite' : 'Share game';
+  document.querySelector('#share-email').href =
+    `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`${text}\r\n\r\n${url.href}`)}`;
+  shareLink.value = url.href;
+  shareApps.hidden = typeof navigator.share !== 'function' || navigator.canShare?.(shareData) === false;
+  shareStatus.textContent = '';
+  shareDialog.showModal();
+}
+
+shareApps.addEventListener('click', async () => {
+  const data = shareData;
+  try {
+    await navigator.share(data);
+    if (shareData === data) shareDialog.close();
+  } catch (error) {
+    if (shareData === data && error.name !== 'AbortError') {
+      shareStatus.textContent = 'Choose Email or copy the link to share it.';
+    }
+  }
+});
+
+document.querySelector('#share-copy').addEventListener('click', async () => {
+  const data = shareData;
+  try {
+    await navigator.clipboard.writeText(data.url);
+    if (shareData === data) shareStatus.textContent = 'Link copied.';
+  } catch {
+    if (shareData !== data || !shareDialog.open) return;
+    shareLink.focus();
+    shareLink.select();
+    shareStatus.textContent = 'The link is selected. Copy it to share.';
+  }
+});
+
+function waitingForPublicMatch(room) {
+  return room?.publicMatch && room.seat === 0 && !room.joined[1];
+}
 
 const savedCollection = readStorage(localStorage, collectionKey, []);
 const collection = new Set([...starterIds, ...(Array.isArray(savedCollection) ? savedCollection : [])]);
@@ -220,6 +271,7 @@ function lobby() {
         ${button('Single player', 'solo', { style: ui.mode === 'solo' ? 'primary' : 'secondary', data: `aria-pressed="${ui.mode === 'solo'}"` })}
         ${button('Share a screen', 'local', { style: ui.mode === 'local' ? 'primary' : 'secondary', data: `aria-pressed="${ui.mode === 'local'}"` })}
         ${button('Play with a room code', 'online', { style: ui.mode === 'online' ? 'primary' : 'secondary', data: `aria-pressed="${ui.mode === 'online'}"` })}
+        ${!room ? button('Find a public match', 'public-match', { disabled: ui.pending }) : ''}
       </div>
       ${ui.mode === 'online' && !room ? `
         <div class="form-row">
@@ -232,8 +284,9 @@ function lobby() {
       ${room ? `
         <div class="form-row">
           <span>Room <strong class="room-code">${escape(room.code)}</strong></span>
-          ${button('Copy invite', 'invite')}
-          <span class="muted">${room.joined.every(Boolean) ? 'Both players joined' : 'Waiting for Player 2'} · You are ${playerName(room.seat)}</span>
+          ${button('Share invite', 'invite')}
+          ${waitingForPublicMatch(room) ? button('Leave queue', 'leave-queue', { disabled: ui.pending }) : ''}
+          <span class="muted">${room.publicMatch ? 'Public match · ' : ''}${room.joined[1] ? 'Both players joined' : 'Waiting for Player 2'} · You are ${playerName(room.seat)}</span>
         </div>` : ''}
       ${ui.mode !== 'online' || room ? `
         <p class="collection-status"><strong>${collectionCount()} / ${Object.keys(CRITTER_UNLOCKS).length}</strong> creatures recruited</p>
@@ -581,6 +634,12 @@ function attachRoom(room) {
     render();
   }, (error) => {
     if (ui.room !== room) return;
+    if (waitingForPublicMatch(room) && [403, 404, 410].includes(error.status)) {
+      home('online');
+      ui.notice = 'The public lobby closed. Find another match to rejoin the queue.';
+      render();
+      return;
+    }
     ui.error = error.message;
     render();
   });
@@ -638,6 +697,8 @@ document.addEventListener('click', async (event) => {
   const seat = Number(control.dataset.seat);
   const index = Number(control.dataset.index);
   const state = ui.room ? ui.room.state : ui.run;
+  if (action === 'share-game') { openShare(); return; }
+  if (action === 'invite' && ui.room) { openShare(ui.room.code); return; }
   if (action === 'rules') { openTutorial(); return; }
   if (action === 'tutorial-close') { rules.close(); return; }
   if (action === 'tutorial-back') { showTutorialStep(tutorialStep - 1); tutorialNext.focus({ preventScroll: true }); return; }
@@ -681,22 +742,28 @@ document.addEventListener('click', async (event) => {
     return;
   }
   if (action === 'home' && state && !['victory', 'defeat'].includes(state.phase) && !confirm('Leave this run and return to creature selection?')) return;
-  if (action === 'home' || action === 'local') { home(); return; }
-  if (action === 'solo') { ui.pickSeat = 0; home('solo'); return; }
+  if (['home', 'local', 'solo', 'leave-queue'].includes(action)) {
+    const mode = action === 'solo' ? 'solo' : action === 'leave-queue' ? 'online' : 'local';
+    if (mode === 'solo') ui.pickSeat = 0;
+    const room = ui.room;
+    if (waitingForPublicMatch(room)) {
+      return runRemote(async () => {
+        try { await room.act({ type: 'cancelMatch' }); }
+        catch (error) { if (![403, 404, 410].includes(error.status)) throw error; }
+        if (ui.room === room) home(mode);
+      });
+    }
+    if (action !== 'leave-queue') home(mode);
+    return;
+  }
   if (action === 'online') ui.mode = 'online';
+  if (action === 'public-match' && !ui.room) {
+    ui.mode = 'online';
+    return runRemote(async () => attachRoom(await findPublicMatch()));
+  }
   if (action === 'seat') ui.pickSeat = seat;
   if (action === 'filter') ui.filter = id;
   if (action === 'create') return runRemote(async () => attachRoom(await createRoom()));
-  if (action === 'invite') {
-    const url = new URL(location.href);
-    url.searchParams.set('room', ui.room.code);
-    try {
-      await navigator.clipboard.writeText(url.href);
-      ui.notice = 'Invite copied.';
-    } catch {
-      ui.notice = `Share room code ${ui.room.code} with your partner.`;
-    }
-  }
   if (action === 'pick') {
     if (ui.room) return dispatch({ type: 'select', critterId: id });
     ui.picks[seat] = id;

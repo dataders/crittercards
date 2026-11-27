@@ -105,6 +105,10 @@ export async function createRoom(critterId) {
   return connect(await request('/api/rooms', { method: 'POST', data: { critterId } }));
 }
 
+export async function findPublicMatch() {
+  return connect(await request('/api/matchmaking', { method: 'POST', data: {} }));
+}
+
 export async function joinRoom(code, critterId) {
   return connect(await request(`${roomPath(code)}/join`, { method: 'POST', data: { critterId } }));
 }
