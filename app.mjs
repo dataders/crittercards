@@ -50,13 +50,44 @@ function writeStorage(storage, key, value) {
 }
 
 let musicEnabled = readStorage(localStorage, musicKey, true);
+const actSoundtracks = [
+  {
+    trail: ['footsteps-under-black-pines', 'Footsteps Under Black Pines'],
+    boss: ['ash-regents-eclipse', 'The Ash Regent’s Eclipse'],
+  },
+  {
+    trail: ['lanterns-below-the-water', 'Lanterns Below the Water'],
+    boss: ['mire-matron-rises', 'The Mire Matron Rises'],
+  },
+  {
+    trail: ['an-empty-court', 'An Empty Court'],
+    boss: ['thorn-sovereigns-hunt', 'The Thorn Sovereign’s Hunt'],
+  },
+];
 
 function updateMusicToggle() {
   musicToggle.setAttribute('aria-pressed', String(!soundtrack.paused && !soundtrack.error));
 }
 
-function startMusic() {
-  if (musicEnabled && soundtrack.paused) soundtrack.play().catch(updateMusicToggle);
+function playSoundtrack() {
+  soundtrack.play().catch(updateMusicToggle);
+}
+
+function syncSoundtrack(state) {
+  const { actIndex, bossLevel } = trailPosition(state?.encounter ?? 0);
+  const tracks = actSoundtracks[actIndex];
+  const [file, title] = state?.phase === 'combat' && bossLevel ? tracks.boss : tracks.trail;
+  const source = `assets/${file}.mp3`;
+  if (soundtrack.getAttribute('src') === source) return;
+  const resume = musicEnabled && !soundtrack.paused;
+  musicToggle.title = title;
+  soundtrack.src = source;
+  if (resume) playSoundtrack();
+}
+
+function startMusic(state) {
+  syncSoundtrack(state);
+  if (musicEnabled && soundtrack.paused) playSoundtrack();
 }
 
 soundtrack.volume = 0.55;
@@ -621,6 +652,7 @@ function render() {
   const previous = document.activeElement;
   const focus = previous?.dataset.do ? ['do', 'seat', 'id', 'index'].map((key) => previous.dataset[key]) : null;
   const state = ui.room ? ui.room.state : ui.run;
+  syncSoundtrack(state);
   const messages = `<div class="feedback" aria-live="polite">${ui.error ? `<p class="error-line" role="alert">${escape(ui.error)}</p>` : ''}${ui.notice ? `<p class="status-line">${escape(ui.notice)}</p>` : ''}</div>`;
   const runScenes = { route: trailMap, camp: campScreen, shop: merchantShop, combat, reward: rewards, victory: conclusion, defeat: conclusion };
   const scene = state ? runScenes[state.phase](state) : lobby();
@@ -746,11 +778,11 @@ document.addEventListener('click', async (event) => {
   if (action === 'music') {
     musicEnabled = soundtrack.paused;
     writeStorage(localStorage, musicKey, musicEnabled);
-    if (musicEnabled) startMusic();
+    if (musicEnabled) startMusic(state);
     else soundtrack.pause();
     return;
   }
-  if (state && game.contains(control)) startMusic();
+  if (state && game.contains(control)) startMusic(state);
   if (action === 'share-game') { openShare(); return; }
   if (action === 'invite' && ui.room) { openShare(ui.room.code); return; }
   if (action === 'rules') { openTutorial(); return; }
@@ -792,7 +824,7 @@ document.addEventListener('click', async (event) => {
     ui.drafts = Array.isArray(saved.drafts) ? saved.drafts : [null, null];
     ui.scrollToTop = true;
     ui.notice = 'Saved game loaded.';
-    startMusic();
+    startMusic(ui.run);
     render();
     return;
   }
@@ -827,7 +859,7 @@ document.addEventListener('click', async (event) => {
   if (action === 'ready') return dispatch({ type: 'deck', cards: ui.startingDecks[ui.room.seat] });
   if (action === 'edit-deck') return dispatch({ type: 'deck', cards: null });
   if (action === 'start') {
-    startMusic();
+    startMusic(state);
     if (ui.room) return dispatch({ type: 'start' });
     ui.savedRunOrigin = null;
     ui.run = createRun(ui.mode === 'solo' ? ui.picks.slice(0, 1) : ui.picks, Date.now(), ui.mode === 'solo' ? ui.startingDecks.slice(0, 1) : ui.startingDecks, ui.mode === 'solo' ? ui.companions.slice(0, 1) : ui.companions);

@@ -10,9 +10,8 @@ const roomLifetime = 6 * 60 * 60 * 1000;
 const publicWaitLifetime = 45 * 1000;
 const roomCapacity = 300;
 const codeAlphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-const soundtrackPath = '/assets/footsteps-under-black-pines.mp3';
-const staticFiles = new Set(['/index.html', '/styles.css', '/app.mjs', '/game.mjs', '/transport.mjs', soundtrackPath]);
-const assetPath = /^\/assets\/(?:[\w-]+\/)*[\w.-]+\.(?:avif|gif|ico|jpe?g|png|svg|webp|woff2)$/i;
+const staticFiles = new Set(['/index.html', '/styles.css', '/app.mjs', '/game.mjs', '/transport.mjs']);
+const assetPath = /^\/assets\/(?:[\w-]+\/)*[\w.-]+\.(?:avif|gif|ico|jpe?g|mp3|png|svg|webp|woff2)$/i;
 const types = {
   avif: 'image/avif', css: 'text/css; charset=utf-8', gif: 'image/gif',
   html: 'text/html; charset=utf-8', ico: 'image/x-icon', jpeg: 'image/jpeg',
@@ -202,7 +201,7 @@ async function serveStatic(request, response, pathname) {
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-cache',
   };
-  if (path === soundtrackPath) {
+  if (headers['Content-Type'] === 'audio/mpeg') {
     headers['Accept-Ranges'] = 'bytes';
     const range = request.method === 'GET' && /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
     if (range && (range[1] || range[2])) {

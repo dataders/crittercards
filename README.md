@@ -6,7 +6,7 @@ A two-player deckbuilding roguelite set in a dark mythic woodland. Each player b
 
 Run `node server.mjs` with Node 22 or newer, then open [localhost:4173](http://localhost:4173). There are no packages to install.
 
-**Music** in the header toggles *Footsteps Under Black Pines*, an original instrumental loop synthesized for Crittercards without third-party recordings or samples. The setting is saved in your browser.
+**Music** in the header toggles the original instrumental soundtrack. Each act has a trail theme and a faster arrangement for its boss fight. All six loops were synthesized for Crittercards without third-party recordings or samples. The setting is saved in your browser.
 
 - **Single player.** Choose one character and build their deck. Ally effects apply to your own character, and rivals have reduced health and attack damage.
 - **Share a screen.** Pick a character and build a deck for each player, then choose **Begin the trail**. Take turns using the same controls. One person can also play both hands.
