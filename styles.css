@@ -849,22 +849,16 @@ body:not([data-battle-area])::before {
   padding: .4rem .3rem;
 }
 .combat-screen .battlefield {
-  width: min(100%, 59rem);
-  margin: auto;
-  padding: .65rem;
-  border-color: #72977d68;
-  background: #10201893;
+  width: min(100%, 52rem);
+  margin: 0 auto auto;
+  padding: .35rem;
+  gap: .4rem;
+  border: 0;
+  background: transparent;
 }
 .combat-screen .rival-heading { min-height: 2rem; align-items: center; }
 .combat-screen .rival-heading .button { padding: .2rem .5rem; }
-.combat-screen .rival-card {
-  border-color: #a18a62;
-  background: linear-gradient(130deg, #29231bec, #171e17f2);
-  box-shadow: 0 .35rem 1.2rem #080c08a0;
-}
 .combat-screen :is(.is-drag-aiming, .is-choosing-target) .rival-card:not(:disabled) { border-color: var(--lime); }
-.combat-screen .rival-card .unit-art { width: 42%; min-height: clamp(7rem, 26dvh, 14rem); }
-.combat-screen .rival-card .unit-name { font-size: clamp(1.15rem, 2.4vw, 1.85rem); }
 .combat-metric-label {
   color: #c3cfbf;
   font-size: .73em;
@@ -884,9 +878,14 @@ body:not([data-battle-area])::before {
 .rival-intent {
   display: grid;
   gap: .15rem;
-  padding: .35rem 0 .2rem;
-  border-top: 1px solid #b9a38050;
-  line-height: 1.25;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: .3rem .45rem;
+  border: 1px solid #a78d69;
+  border-radius: .35rem;
+  background: #17252b;
+  text-align: start;
+  line-height: 1.2;
 }
 .rival-intent strong { color: #c3cfbf; font-size: .73em; letter-spacing: .06em; text-transform: uppercase; }
 .rival-intent[data-intent='guard'], .rival-intent[data-intent='shadowWard'] { color: #b8dce5; }
@@ -1017,8 +1016,6 @@ body:not([data-battle-area])::before {
 .combat-screen .combat-hand .card-effect { align-self: stretch; padding: .25rem .3rem; border-radius: .2rem; background: #e6dec5; color: #20281c; font-size: .84rem; }
 .combat-screen .combat-actions { justify-content: space-between; gap: .35rem; margin: 0; }
 .combat-screen .combat-actions .button { padding: .25rem .5rem; font-size: .77rem; }
-.combat-screen .combat-deck-actions { gap: .35rem; margin: 0; }
-.combat-screen .combat-deck-actions .button { padding: .25rem .65rem; font-size: .78rem; }
 .combat-screen .hand-counts:last-child { margin-left: auto; }
 .hand-pagination { display: flex; gap: .2rem; }
 .hand-pagination .button { min-inline-size: 2.25rem; padding: .08rem .45rem; font-size: 1.25rem; line-height: 1.2; }
@@ -1035,13 +1032,9 @@ body:not([data-battle-area])::before {
   .current-route .route-option { padding: .5rem; }
   .combat-screen .fight-heading { padding-block: .3rem; }
   .combat-screen .fight-heading .button { padding: .25rem .45rem; font-size: .76rem; }
-  .combat-screen .battlefield { padding: .35rem; gap: .3rem; }
   .combat-screen .rival-heading { gap: .3rem; }
   .combat-screen .rival-heading h2 { font-size: .95rem; }
   .combat-screen .rival-heading p { font-size: .72rem; }
-  .combat-screen .rival-card .unit-art { width: 100%; height: clamp(2.5rem, 10dvh, 5.2rem); min-height: 0; }
-  .combat-screen .rival-card .unit-info { gap: .18rem; padding: .3rem; }
-  .combat-screen .rival-card .unit-info > :not(.unit-name, .health-bar, .rival-aim-label) { font-size: .75rem; }
   .combat-screen .hand-panel { padding-inline: .4rem; }
   .combat-screen .hand-heading { gap: .3rem; }
   .combat-screen .hand-heading [data-do='end'] { padding: .26rem .4rem; font-size: .76rem; }
@@ -1063,9 +1056,6 @@ body:not([data-battle-area])::before {
   .game-stage[data-scene='combat'] { overflow: auto; }
   .combat-screen { height: auto; min-height: 100%; grid-template-rows: auto minmax(8rem, 1fr) auto; }
   .combat-screen .arena-scroll { overflow: visible; }
-  .combat-screen .battlefield { padding: .35rem; gap: .35rem; }
-  .combat-screen .rival-card .unit-art { width: clamp(2.6rem, 12vw, 4.6rem); min-width: 0; min-height: 0; height: auto; }
-  .combat-screen .rival-card .unit-info { gap: .2rem; padding: .4rem; }
   .combat-screen .rival-heading { min-height: 1.5rem; }
   .combat-screen .rival-heading h2 { font-size: 1.05rem; }
   .combat-screen .combat-actions .hand-counts, .combat-screen .combat-actions:not(:has(.button)) { display: none; }
@@ -1076,8 +1066,6 @@ body:not([data-battle-area])::before {
 
 @media (max-width: 38rem) and (max-height: 480px) {
   .site-header { padding-block: .2rem; }
-  .combat-screen .rival-card { flex-direction: row; }
-  .combat-screen .rival-card .unit-art { width: 2.25rem; min-width: 0; height: auto; }
   .combat-screen .rival-heading { min-height: 1.25rem; }
 }
 
@@ -1137,9 +1125,6 @@ body:not([data-battle-area])::before {
 .solo-goals summary { color: var(--lime); cursor: pointer; }
 .solo-goals ul { display: grid; gap: .4rem; margin: .6rem 0 0; padding-left: 1.15rem; }
 
-.rival-entry { display: grid; grid-template-rows: 1fr auto; min-width: 0; }
-.rival-entry > .rival-card { width: 100%; }
-.rival-effects { margin-top: .27rem; }
 .unit-effects > button {
   min-height: 2rem;
   padding: .22rem .45rem;
@@ -1171,8 +1156,6 @@ body:not([data-battle-area])::before {
 .combat-terms dd { margin: 0; }
 
 @media (max-width: 38rem) {
-  .combat-screen .rival-card .unit-art { height: clamp(2.5rem, 7dvh, 3.8rem); }
-  .combat-screen .battlefield { margin-block: 0 auto; }
   .unit-effects > button { min-height: 2.75rem; }
 }
 
@@ -1208,4 +1191,175 @@ body:not([data-battle-area])::before {
   .solo-reward .level-choice { min-height: 4.2rem; padding: .55rem; font-size: .84rem; gap: .25rem; }
   .solo-reward .hand-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem; }
   .solo-reward .play-card { min-height: 5.2rem; }
+}
+
+/* Moonlit Clearing. The base battle fits the compact rival list. */
+.game-stage[data-scene='combat'] {
+  background: linear-gradient(180deg, #09161bc7, #12202623 36%, #0c191ee0),
+    var(--battle-art, url('assets/hollow-battle.webp')) center 48% / cover no-repeat;
+  border: 1px solid #69817a7d;
+  border-radius: .65rem .65rem 0 0;
+}
+.combat-screen .fight-heading { padding-inline: .65rem; background: #152229ee; border-bottom: 1px solid #687d7585; }
+.clearing-party { display: none; }
+.clearing-rivals { grid-template-columns: minmax(0, 1fr); gap: .35rem; }
+.rival-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(5.25rem, 31%);
+  gap: .28rem;
+  min-width: 0;
+  align-items: center;
+  border: 1px solid #ae9574;
+  border-radius: .45rem;
+  padding: .25rem;
+  background: #162327f2;
+}
+.rival-entry .rival-card { flex-direction: row; min-height: 2.75rem; border: 1px solid transparent; border-radius: .28rem; background: transparent; box-shadow: none; }
+.rival-entry .rival-card:disabled { grid-column: 1 / -1; }
+.rival-entry .rival-card .unit-art {
+  width: clamp(2.65rem, 11vw, 3.75rem);
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid #a88e6d;
+  border-radius: .3rem;
+}
+.rival-entry .rival-card .unit-info { padding: .15rem .35rem; gap: .16rem; }
+.rival-entry .rival-card .unit-name { font-size: clamp(.96rem, 2.6vw, 1.15rem); }
+.rival-entry .combat-label { font-size: .72rem; }
+.rival-entry .health-label, .rival-entry .type-matchup { font-size: .75rem; }
+.rival-entry .rival-intent { align-content: center; background: #252326; font-size: .8rem; }
+.rival-intent:hover { border-color: var(--gold); }
+.rival-effects { grid-column: 1 / -1; padding-inline-start: .25rem; }
+
+.combat-screen .hand-panel {
+  background: linear-gradient(155deg, #283d45, #111e28 78%);
+  border-color: #819895;
+}
+.combat-screen .turn-energy strong {
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  aspect-ratio: 1;
+  border: 1px solid var(--gold);
+  border-radius: 50%;
+  background: #0d1920;
+  font-family: var(--display);
+}
+.combat-screen .combat-hand .play-card {
+  background: linear-gradient(155deg, #fbefcc, #d6be91);
+  color: #241a12;
+  box-shadow: inset 0 0 0 2px #f3dfb1, 0 .2rem .35rem #071016;
+}
+.combat-screen .combat-hand .play-card:focus-visible { outline-color: #275b79; }
+.combat-screen .combat-hand .card-type { color: #493628; }
+.combat-screen .combat-hand .card-title,
+.combat-screen .combat-hand .card-effect { background: transparent; color: inherit; padding: 0 .15rem; }
+.card-emblem {
+  grid-column: 1 / -1;
+  display: grid;
+  place-items: center;
+  min-height: 1.45rem;
+  border: 1px solid #32291c66;
+  border-radius: .2rem;
+  background: radial-gradient(ellipse at center, #fff3, transparent 74%), var(--card-accent, #9cb17b);
+  color: #201912;
+  font: 700 1.1rem/1 var(--display);
+}
+@media (max-width: 38rem) {
+  .combat-screen .hand-heading [data-do='end'], .combat-screen .combat-actions .button { min-height: 2.75rem; }
+  .combat-screen .hand-pagination .button { min-height: 2.75rem; }
+  .combat-screen .combat-actions .hand-counts { display: none; }
+}
+
+@media (min-width: 47rem) and (min-height: 34rem) {
+  .combat-screen:not(.has-crowded-rivals) .battlefield {
+    width: min(100%, 68rem);
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    gap: clamp(.4rem, 2dvh, 1.25rem) clamp(1rem, 6vw, 5rem);
+    align-items: start;
+    margin: auto;
+    padding: .5rem 1rem;
+  }
+  .combat-screen:not(.has-crowded-rivals) .battlefield > :is(.rival-heading, .recruit-banner) { grid-column: 1 / -1; }
+  .combat-screen:not(.has-crowded-rivals) .rival-heading { min-height: 0; }
+  .combat-screen:not(.has-crowded-rivals) .rival-heading:has(#aim-status:empty) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .combat-screen:not(.has-crowded-rivals) .rival-heading h2 { color: var(--paper); text-shadow: 0 2px 4px #081016; }
+  .combat-screen:not(.has-crowded-rivals) .clearing-party {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    align-self: center;
+    gap: clamp(.35rem, 1.5vw, 1rem);
+  }
+  .clearing-familiar { display: grid; gap: .3rem; flex: 0 1 12rem; min-width: 0; }
+  .clearing-familiar.is-defeated { opacity: .55; filter: saturate(.35); }
+  .clearing-familiar.is-active .clearing-nameplate { border-color: var(--gold); }
+  .clearing-portrait {
+    display: block;
+    width: min(100%, clamp(5rem, 17dvh, 12rem));
+    aspect-ratio: 1;
+    justify-self: center;
+    overflow: hidden;
+    border: 2px solid #b0c3ae;
+    border-radius: 50% 50% 10% 10% / 43% 43% 10% 10%;
+    background: #293e39;
+    box-shadow: 0 .5rem 1.3rem #040d14b0;
+  }
+  .clearing-portrait img { width: 100%; height: 100%; object-fit: cover; object-position: center 33%; }
+  .clearing-nameplate {
+    display: grid;
+    gap: .3rem;
+    border: 1px solid #a7b8aa;
+    border-radius: .3rem;
+    padding: .35rem .55rem;
+    background: #14232ae8;
+    text-align: center;
+  }
+  .combat-screen:not(.has-crowded-rivals) .clearing-rivals { grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: clamp(.4rem, 2vw, 1.35rem); }
+  .combat-screen:not(.has-crowded-rivals) .rival-entry {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    max-width: 15rem;
+    width: 100%;
+    justify-self: center;
+    gap: .3rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  .combat-screen:not(.has-crowded-rivals) .rival-entry .rival-card {
+    flex-direction: column;
+    align-items: center;
+    gap: .25rem;
+    overflow: visible;
+    text-align: center;
+  }
+  .combat-screen:not(.has-crowded-rivals) .rival-entry .unit-art {
+    width: min(100%, clamp(5rem, 17dvh, 12.25rem));
+    aspect-ratio: 1.12;
+    border: 2px solid #b7c6b4;
+    border-radius: 50% 50% 10% 10% / 44% 44% 10% 10%;
+    box-shadow: 0 .5rem 1.3rem #040d14b0;
+  }
+  .combat-screen:not(.has-crowded-rivals) .rival-entry .unit-info {
+    width: 100%;
+    border: 1px solid #91a69e;
+    border-radius: .35rem;
+    background: #14232aef;
+    padding: .32rem .55rem;
+  }
+  .combat-screen:not(.has-crowded-rivals) .rival-entry .unit-name { font-size: clamp(1.05rem, 2vw, 1.45rem); }
+  .combat-screen:not(.has-crowded-rivals) .rival-intent { order: -1; align-self: center; text-align: center; }
+  .combat-screen:not(.has-crowded-rivals) .rival-effects { justify-content: center; padding: 0; }
+}
+
+@media (pointer: coarse) {
+  .combat-hand [data-aim]:not(:disabled) { touch-action: pan-x; }
 }

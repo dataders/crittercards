@@ -49,7 +49,7 @@ function allyCard(player, seat, state) {
   </div>`;
 }
 
-function intentLabel(intent, enemy, state) {
+function intentLabel(intent, enemy, state, brief = false) {
   if (!intent) return '';
   if (intent.type === 'guard') return `Gains ${Math.max(0, intent.amount - (enemy.frail ? FRAIL_BLOCK_LOSS : 0))} Block`;
   if (intent.type === 'shadowWard') return `Shadow Ward · gains ${Math.max(0, intent.amount - (enemy.frail ? FRAIL_BLOCK_LOSS : 0))} Block and heals 8`;
@@ -67,6 +67,7 @@ function intentLabel(intent, enemy, state) {
     if (intent.type === 'openingSurge') {
       const count = intent.attacksRemaining;
       const timing = count === 1 ? 'the next attack' : `the next ${count} attacks`;
+      if (brief) return `Opening Surge · hits ${hits} after ${timing}`;
       const rush = count === 2 ? 'Aim both attacks here' : intent.focusedAttacks === 1 ? 'Aim the next attack here' : '';
       const recoil = rush ? ` ${rush}. If nobody fully blocks, recoil deals ${FLOODGATE_RECOIL_PERCENT}% max HP to both rivals through Block.` : '';
       return `Opening Surge · hits ${hits} after ${timing} or at round end. Fully block one hit to strip rival Block and make them Vulnerable.${recoil}`;
@@ -76,6 +77,25 @@ function intentLabel(intent, enemy, state) {
   const victim = state.players[intent.target]?.hp > 0 ? intent.target : state.players.findIndex((player) => player.hp > 0);
   if (intent.type === 'crownCurse') return `Crown Curse · hits ${name(victim)} for ${damage(victim)}, applies Frail and Vulnerable`;
   return `Hits ${name(victim)} for ${damage(victim)}${intent.type === 'frailAttack' ? ' and applies Frail' : ''}`;
+}
+
+function rivalIntent(enemy, index, state) {
+  const { intent } = enemy;
+  if (!intent || enemy.hp === 0) return '';
+  const description = intentLabel(intent, enemy, state);
+  const summary = intent.type === 'openingSurge'
+    ? intentLabel(intent, enemy, state, true)
+    : description;
+  const descriptionId = `intent-description-${index}`;
+  return `<button class="intent rival-intent" type="button" data-intent="${escape(intent.type)}" aria-label="${escape(enemy.name)}’s intent: ${escape(summary)}" aria-describedby="${descriptionId}"><strong>Next move</strong><span>${escape(summary)}</span></button><span id="${descriptionId}" hidden>${escape(description)}</span>`;
+}
+
+function clearingFamiliar(player, active) {
+  const { id, name } = CRITTERS[player.critterId];
+  return `<div class="clearing-familiar${active ? ' is-active' : ''}${player.hp ? '' : ' is-defeated'}">
+    ${art(id, 'clearing-portrait', name)}
+    <div class="clearing-nameplate"><strong class="unit-name">${escape(name)}</strong><span class="rival-vitals">${health(player)}</span></div>
+  </div>`;
 }
 
 function attackEffectiveness(attacker, defender) {
@@ -102,13 +122,12 @@ function enemyCard(enemy, index, state) {
       <strong class="unit-name">${escape(enemy.name)}</strong>
       <span class="combat-label">${escape(TYPES[defenderType].name)}${bondTarget ? ' · Bond Strike ready' : enemy.boss ? (state.encounter === TRAIL.length - 1 ? ' · Final boss' : ' · Act boss') : ''}</span>
       <span class="rival-vitals">${health(enemy)}</span>
-      ${alive && enemy.intent ? `<span class="intent rival-intent" data-intent="${escape(enemy.intent.type)}"><strong>Next move</strong><span>${escape(intentLabel(enemy.intent, enemy, state))}</span></span>` : ''}
       ${alive ? `${effectiveness ? `<span class="type-matchup">${effectiveness}</span>` : ''}
         ${companionEffectiveness ? `<span class="type-matchup">${escape(companion.name)}’s attacks · ${companionEffectiveness}</span>` : ''}
         ${healer ? `<span class="type-matchup">Briar Ward from ${escape(healer.name)} · half attack damage</span>` : ''}
         ${enemy.poison >= enemy.hp ? '<span class="type-matchup">Poison is lethal at current HP</span>' : ''}` : ''}
     </span>
-  </button>${alive ? effects(enemy, `rival-${index}`, 'rival-effects') : ''}</div>`;
+  </button>${rivalIntent(enemy, index, state)}${alive ? effects(enemy, `rival-${index}`, 'rival-effects') : ''}</div>`;
 }
 
 export function trailLocation(encounter) {
@@ -132,10 +151,12 @@ export function actionCard(state, seat, cardId, index, enabled, draft = false, s
   const energyLabel = card.cost === 'X' ? 'X energy, spends all remaining energy' : `${card.cost} energy`;
   const aim = !draft && card.target === 'enemy' ? `data-aim="${escape(card.name)}" aria-pressed="false" aria-describedby="attack-instructions"` : '';
   const blockDrag = !draft && card.target === 'none' && (card.block || card.allyBlock);
+  const emblem = blockDrag ? '⛨' : ({ attack: '⚔', support: '✦', skill: '☾' })[card.type] ?? '✦';
   const block = blockDrag ? `data-block-drag="${escape(card.name)}" aria-describedby="attack-instructions"` : '';
   return `<button type="button" class="play-card card-${escape(card.type)}" data-do="${draft ? 'draft-pick' : 'play'}" data-seat="${seat}" data-id="${escape(cardId)}" data-index="${index}" ${aim} ${block} ${draft ? `aria-pressed="${active}"` : ''} ${enabled ? '' : 'disabled'}>
     <span class="card-cost" aria-label="${energyLabel}">${card.cost}</span>
     <span class="card-type">${active ? '✓ Selected · ' : ''}${blockDrag ? 'Block' : escape(card.type)}</span>
+    ${draft ? '' : `<span class="card-emblem" aria-hidden="true">${emblem}</span>`}
     <strong class="card-title">${escape(card.name)}</strong>
     <span class="card-effect">${escape(getCardDescription(state, seat, cardId, { compact: !draft }))}</span>
   </button>`;
@@ -164,7 +185,7 @@ export function combat(state, { room, pending, newCards }) {
   const canTap = playableCards.some((id) => CARDS[id].target !== 'enemy');
   const turnTitle = room ? canAct ? `Your turn as ${name}` : `Waiting for ${name}` : `${name}’s turn`;
   const next = seat === 0 && other?.hp > 0 ? `${CRITTERS[other.critterId].name} goes next.` : 'The rivals act next.';
-  return `<div class="combat-screen" data-turn="${state.round}:${seat}">
+  return `<div class="combat-screen${state.enemies.length >= 3 ? ' has-crowded-rivals' : ''}" data-turn="${state.round}:${seat}">
     <header class="fight-heading">
       <div><p class="eyebrow">Act ${trailPosition(state.encounter).actIndex + 1} · Round ${state.round}</p><h1>${escape(entry.name)}</h1></div>
       <details class="combat-info" data-view-state="combat-info"><summary class="button button-ghost">Battle info</summary>
@@ -184,10 +205,11 @@ export function combat(state, { room, pending, newCards }) {
       </details>
     </header>
     <div class="arena-scroll" tabindex="0" aria-label="Battle arena">
-      <section class="battlefield" aria-labelledby="rival-heading">
-      ${cardReveal(newCards)}
-      <div class="rival-heading"><h2 id="rival-heading">Rivals</h2><p id="aim-status" role="status"></p></div>
-      <div class="combat-row">${state.enemies.map((enemy, index) => enemyCard(enemy, index, state)).join('')}</div>
+      <section class="battlefield" aria-label="Battlefield">
+        ${cardReveal(newCards)}
+        <div class="rival-heading"><h2>Rivals</h2><p id="aim-status" role="status"></p></div>
+        <section class="clearing-party" aria-label="Your party">${state.players.map((member, index) => clearingFamiliar(member, index === seat)).join('')}</section>
+        <div class="combat-row clearing-rivals">${state.enemies.map((enemy, index) => enemyCard(enemy, index, state)).join('')}</div>
       </section>
     </div>
     <section class="hand-panel" aria-labelledby="turn-heading" tabindex="-1">
@@ -214,8 +236,7 @@ export function combat(state, { room, pending, newCards }) {
         <div class="turn-actions combat-actions">
           ${freeMove ? button(`${escape(freeMove.name)} · ${player.companionUsed ? 'Used' : 'Free move'}`, 'companion-strike', { disabled: !enabled || !freeMoveReady, data: `data-seat="${seat}" data-aim="${escape(freeMove.name)}" aria-pressed="false" aria-describedby="attack-instructions"` }) : ''}
           <span class="hand-counts">${escape(TYPES[CRITTERS[player.critterId].type].name)} type</span>
-        </div>
-        <div class="turn-actions combat-deck-actions">${state.players.map((member, index) => button(`View ${escape(CRITTERS[member.critterId].name)}’s deck (${member.deck.length})`, 'view-battle-deck', { data: `data-seat="${index}" data-id="deck" aria-haspopup="dialog"` })).join('')}
+          ${state.players.map((member, index) => button(`${state.players.length === 1 ? 'Deck' : escape(CRITTERS[member.critterId].name) + '’s deck'} (${member.deck.length})`, 'view-battle-deck', { data: `data-seat="${index}" data-id="deck" aria-haspopup="dialog"` })).join('')}
           ${waitingSeat === null ? '' : ['draw', 'discard'].map((kind) => button(`Your ${battleCardViews[kind].label}`, 'view-battle-deck', { data: `data-seat="${waitingSeat}" data-id="${kind}" aria-haspopup="dialog"` })).join('')}
         </div>
     </section>

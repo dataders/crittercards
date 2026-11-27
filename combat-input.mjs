@@ -1,3 +1,5 @@
+const helpControl = 'button[data-effect], button[data-intent]';
+
 export function createCombatInput(game, playCombatMove) {
   let attackDrag;
   let aimedMove;
@@ -14,7 +16,7 @@ export function createCombatInput(game, playCombatMove) {
     game.querySelector('#aim-status').textContent = aiming ? `${control.dataset.aim} selected. Choose a highlighted rival.` : '';
     game.querySelector('[data-do="cancel-aim"]').hidden = !aiming;
     for (const rival of game.querySelectorAll(livingRival)) rival.tabIndex = aiming ? 0 : -1;
-    for (const chip of game.querySelectorAll('[data-effect]')) chip.tabIndex = aiming ? -1 : 0;
+    for (const chip of game.querySelectorAll(helpControl)) chip.tabIndex = aiming ? -1 : 0;
   }
 
   function cancelAim() {
@@ -131,7 +133,7 @@ export function createCombatInput(game, playCombatMove) {
       if (!firstRival) return;
       setAimedMove(control);
       if (clickCount === 0) firstRival.focus();
-      else firstRival.closest('.battlefield').scrollIntoView({ block: 'nearest' });
+      else firstRival.closest('.rival-entry').scrollIntoView({ block: 'nearest' });
       return;
     }
     if (action === 'cancel-aim') return cancelAim();
@@ -151,7 +153,7 @@ export function createEffectHelp(game, tooltip) {
   let active;
   let pinned;
   let closing;
-  const effectButton = (node) => node?.closest?.('[data-effect]');
+  const helpButton = (node) => node?.closest?.(helpControl);
 
   function close() {
     clearTimeout(closing);
@@ -179,25 +181,25 @@ export function createEffectHelp(game, tooltip) {
   }
 
   game.addEventListener('pointerover', (event) => {
-    const button = effectButton(event.target);
+    const button = helpButton(event.target);
     if (event.pointerType === 'mouse' && button && !pinned) show(button);
   });
   game.addEventListener('pointerout', (event) => {
-    const button = effectButton(event.target);
+    const button = helpButton(event.target);
     if (button === active && button && !button.contains(event.relatedTarget) &&
         document.activeElement !== button) scheduleClose();
   });
   tooltip.addEventListener('pointerenter', () => clearTimeout(closing));
   tooltip.addEventListener('pointerleave', scheduleClose);
   game.addEventListener('focusin', (event) => {
-    const button = effectButton(event.target);
+    const button = helpButton(event.target);
     if (button && !pinned) show(button);
   });
   game.addEventListener('focusout', (event) => {
-    if (effectButton(event.target) === active) close();
+    if (helpButton(event.target) === active) close();
   });
   document.addEventListener('click', (event) => {
-    const button = effectButton(event.target);
+    const button = helpButton(event.target);
     if (button && game.contains(button)) {
       if (button === pinned) close();
       else {
