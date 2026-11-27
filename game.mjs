@@ -214,6 +214,10 @@ for (const card of Object.values(CARDS)) {
 export const LEVEL_PERKS = {
   fang: { id: 'fang', name: 'Fang', description: 'Your attacks deal +1 damage for the rest of this run.' },
   bark: { id: 'bark', name: 'Bark', description: 'Gain 4 additional max HP and heal 4 more.' },
+  shell: { id: 'shell', name: 'Shell', description: 'Start each round with 2 Block for the rest of this run.' },
+  keen: { id: 'keen', name: 'Keen Senses', description: 'Draw 1 extra card each round for the rest of this run.' },
+  spirit: { id: 'spirit', name: 'Spirit', description: 'Start each fight with 1 extra energy for the rest of this run.' },
+  renewal: { id: 'renewal', name: 'Renewal', description: 'Heal 3 additional HP after each victory for the rest of this run.' },
 };
 
 export const ENCOUNTERS = [
@@ -252,23 +256,108 @@ const perilousRoutes = [
   { name: 'The Ashen Summit', subtitle: 'Hollow Eye hits both harder and Cindermaw opens with a heavy strike.', moves: [['teamAttack', 11], ['attack', 16]] },
 ];
 
-export const TRAIL = ENCOUNTERS.map((encounter, index) => {
-  const alternate = perilousRoutes[index];
+const woodlandTeams = [
+  [['weasel', 'hedgehog'], ['bat', 'crow']],
+  [['heron', 'otter'], ['frog', 'mole']],
+  [['porcupine', 'skunk'], ['coyote', 'beaver']],
+  [['turtle', 'salamander'], ['viper', 'mouse']],
+  [['moth', 'squirrel'], ['lynx', 'stag']],
+  [['bear', 'wolverine'], ['weasel', 'frog']],
+  [['bat', 'otter'], ['heron', 'hedgehog']],
+  [['crow', 'mole'], ['porcupine', 'salamander']],
+  [['skunk', 'mouse'], ['turtle', 'viper']],
+  [['coyote', 'moth'], ['lynx', 'squirrel']],
+  [['beaver', 'stag'], ['bear', 'weasel']],
+  [['wolverine', 'frog'], ['bat', 'heron']],
+  [['otter', 'crow'], ['mole', 'hedgehog']],
+  [['porcupine', 'viper'], ['salamander', 'skunk']],
+  [['mouse', 'turtle'], ['coyote', 'squirrel']],
+  [['moth', 'beaver'], ['lynx', 'bear']],
+  [['stag', 'wolverine'], ['frog', 'porcupine']],
+];
+
+function woodlandEnemy(animal, level, slot, perilous) {
+  const critter = CRITTERS[animal];
+  const scale = 1 + Math.floor(level / 4) * 0.12;
+  const damage = Math.ceil((slot ? 7 : 9) * scale);
+  const defense = Math.ceil((slot ? 6 : 8) * scale);
+  const opening = perilous ? ['frailAttack', damage + 2] : ['attack', damage];
+  return {
+    animal,
+    name: `${critter.name} of the Wilds`,
+    hp: Math.ceil((slot ? 24 : 30) * scale) + (perilous ? 4 : 0),
+    moves: [opening, slot ? ['teamAttack', Math.ceil(damage * 0.7)] : ['guard', defense], ['attack', damage + 2]],
+  };
+}
+
+const HARD_LEVELS = new Set([2, 5, 9, 13, 17, 19]);
+
+export const TRAIL = Array.from({ length: 20 }, (_, index) => {
+  if (index >= 2 && index < 19) {
+    return woodlandTeams[index - 2].map((animals, option) => {
+      const alternate = option === 1;
+      const perilous = alternate && HARD_LEVELS.has(index);
+      const enemies = animals.map((animal, slot) => woodlandEnemy(animal, index, slot, perilous));
+      return {
+        id: alternate ? 'perilous' : 'steady',
+        name: `Level ${index + 1} · ${alternate ? 'Shadow' : 'Moonlit'} Grove`,
+        trainer: `Warden of Level ${index + 1}`,
+        subtitle: `Face ${enemies.map(({ name }) => name).join(' and ')}.`,
+        difficulty: perilous ? 'Hard' : 'Standard',
+        goldPerEnemy: perilous ? 24 : 8,
+        enemies,
+      };
+    });
+  }
+  const template = index === 19 ? 2 : index % 2;
+  const encounter = ENCOUNTERS[template];
+  const alternate = perilousRoutes[template];
+  const scale = 1 + Math.floor(index / 4) * 0.12;
+  const baseEnemies = encounter.enemies.map((enemy) => ({
+    ...enemy,
+    hp: Math.ceil(enemy.hp * scale * (index === 19 ? 1.3 : 1)),
+    moves: enemy.moves.map(([type, amount]) => [type, Math.ceil(amount * scale * (index === 19 ? 1.15 : 1))]),
+  }));
+  if (index === 19) {
+    baseEnemies[0] = {
+      ...baseEnemies[0], name: 'The Ash Regent', boss: true,
+      moves: [['eclipse', 12], ['shadowWard', 16], ['crownCurse', 16]],
+    };
+  }
+  const label = index === 19 ? 'Final boss' : `Level ${index + 1}`;
   return [
-    { ...encounter, id: 'steady', difficulty: 'Steady', goldPerEnemy: 8 },
+    { ...encounter, name: `${label} · ${encounter.name}`, enemies: baseEnemies, id: 'steady', difficulty: index === 19 ? 'Boss' : 'Standard', goldPerEnemy: 8 },
     {
-      ...encounter, id: 'perilous', difficulty: 'Perilous', goldPerEnemy: 12,
-      name: alternate.name, subtitle: alternate.subtitle,
-      enemies: encounter.enemies.map((enemy, slot) => ({
-        ...enemy, hp: enemy.hp + 4, moves: [alternate.moves[slot], ...enemy.moves.slice(1)],
+      ...encounter, id: 'perilous', difficulty: index === 19 ? 'Hard boss' : 'Standard', goldPerEnemy: index === 19 ? 24 : 8,
+      name: `${label} · ${alternate.name}`, subtitle: index === 19 ? 'The Ash Regent begins with a devastating Eclipse.' : alternate.subtitle,
+      enemies: baseEnemies.map((enemy, slot) => ({
+        ...enemy, hp: enemy.hp + 4 + Math.floor(index / 4), moves: index === 19 && slot === 0
+          ? [['eclipse', 16], ...enemy.moves.slice(1)]
+          : [[alternate.moves[slot][0], Math.ceil(alternate.moves[slot][1] * scale * (index === 19 ? 1.15 : 1))], ...enemy.moves.slice(1)],
       })),
     },
   ];
 });
 
+for (const [level, routes] of TRAIL.entries()) {
+  if (!HARD_LEVELS.has(level)) continue;
+  const hard = routes.find((route) => route.id === 'perilous');
+  hard.enemies = hard.enemies.map((enemy) => ({
+    ...enemy,
+    hp: Math.ceil(enemy.hp * 1.35),
+    moves: enemy.moves.map(([type, amount]) => [
+      type,
+      ['guard', 'shadowWard'].includes(type) ? amount : Math.ceil(amount * 1.25),
+    ]),
+  }));
+}
+
 export const MERCHANTS = {
-  1: { name: 'The Lantern Peddler', stock: [{ id: 'lunge', price: 6 }, { id: 'armor', price: 9 }, { id: 'circle', price: 13 }] },
-  2: { name: 'The Moon Market', stock: [{ id: 'renew', price: 10 }, { id: 'sharpen', price: 12 }, { id: 'crownfall', price: 16 }] },
+  3: { name: 'The Lantern Peddler', stock: [{ id: 'lunge', price: 6 }, { id: 'armor', price: 9 }, { id: 'circle', price: 13 }] },
+  7: { name: 'The Moon Market', stock: [{ id: 'renew', price: 10 }, { id: 'sharpen', price: 12 }, { id: 'crownfall', price: 16 }] },
+  11: { name: 'The Thorn Trader', stock: [{ id: 'thorns', price: 10 }, { id: 'moonmend', price: 12 }, { id: 'avalanche', price: 16 }] },
+  15: { name: 'The Starlight Cart', stock: [{ id: 'circle', price: 13 }, { id: 'sanctuary', price: 16 }, { id: 'crownfall', price: 16 }] },
+  18: { name: 'The Last Lantern', stock: [{ id: 'renew', price: 10 }, { id: 'avalanche', price: 16 }, { id: 'sanctuary', price: 16 }] },
 };
 
 export function getEncounter(state) {
@@ -322,7 +411,8 @@ function shuffle(state, values) {
 }
 
 function drawHand(state, player) {
-  while (player.hand.length < HAND_SIZE) {
+  const handSize = HAND_SIZE + player.perks.filter((perk) => perk === 'keen').length;
+  while (player.hand.length < handSize) {
     if (player.drawPile.length === 0) {
       if (player.discardPile.length === 0) break;
       player.drawPile = shuffle(state, player.discardPile);
@@ -339,8 +429,8 @@ function setIntent(state, enemy, enemyIndex) {
   }
   const moves = getEncounter(state).enemies[enemyIndex].moves;
   const [type, amount] = moves[(state.round - 1) % moves.length];
-  enemy.intent = { type, amount: state.players.length === 1 && type !== 'guard' ? Math.ceil(amount * 0.7) : amount };
-  if (type === 'attack' || type === 'frailAttack') {
+  enemy.intent = { type, amount: state.players.length === 1 && !['guard', 'shadowWard'].includes(type) ? Math.ceil(amount * 0.7) : amount };
+  if (type === 'attack' || type === 'frailAttack' || type === 'crownCurse') {
     const preferred = (state.round - 1 + enemyIndex) % state.players.length;
     enemy.intent.target = state.players[preferred].hp > 0 ? preferred : 1 - preferred;
   }
@@ -358,8 +448,8 @@ function beginRound(state) {
   state.lastTarget = null;
   state.bondTriggered = false;
   for (const player of state.players) {
-    player.block = 0;
-    player.energy = player.hp > 0 ? TURN_ENERGY : 0;
+    player.block = player.hp > 0 ? 2 * player.perks.filter((perk) => perk === 'shell').length : 0;
+    player.energy = player.hp > 0 ? TURN_ENERGY + (state.round === 1 ? player.perks.filter((perk) => perk === 'spirit').length : 0) : 0;
     if (player.hp > 0) drawHand(state, player);
   }
   startTurn(state, state.players.findIndex((player) => player.hp > 0));
@@ -375,6 +465,7 @@ function beginEncounter(state) {
   state.enemies = encounter.enemies.map((enemy) => ({
     id: enemy.animal,
     name: enemy.name,
+    boss: enemy.boss ?? false,
     animal: enemy.animal,
     hp: state.players.length === 1 ? Math.ceil(enemy.hp * 0.7) : enemy.hp,
     maxHp: state.players.length === 1 ? Math.ceil(enemy.hp * 0.7) : enemy.hp,
@@ -457,14 +548,17 @@ function heal(target, amount) {
 }
 
 function finishEncounter(state) {
-  if (state.encounter === ENCOUNTERS.length - 1) {
+  for (const player of state.players) {
+    heal(player, 3 * player.perks.filter((perk) => perk === 'renewal').length);
+  }
+  if (state.encounter === TRAIL.length - 1) {
     state.phase = 'victory';
     log(state, 'The pack has broken the Hollow Crown.');
     return;
   }
   state.phase = 'reward';
-  const available = ENCOUNTERS.slice(0, state.encounter + 1).flatMap((encounter) =>
-    encounter.enemies.flatMap((enemy) => CARD_UNLOCKS[enemy.animal]));
+  const available = TRAIL.slice(0, state.encounter + 1).flatMap((routes, level) =>
+    routes.find(({ id }) => id === state.path[level]).enemies.flatMap((enemy) => CARD_UNLOCKS[enemy.animal] ?? []));
   state.rewardOptions = state.players.map(() => {
     const pool = [...new Set([...available, ...BASE_CARDS, 'spark', 'ward', 'thorns', 'moonmend', 'avalanche', 'sanctuary'])];
     return [0, 2, 3].map((cost) => shuffle(state, pool.filter((id) => CARDS[id].cost === cost))[0]);
@@ -561,15 +655,26 @@ function finishTurn(state, playerIndex) {
     if (type === 'guard') {
       const gained = gainBlock(enemy, amount);
       log(state, `${enemy.name} raises ${gained} Block.`);
+    } else if (type === 'shadowWard') {
+      const gained = gainBlock(enemy, amount);
+      heal(enemy, 8);
+      log(state, `${enemy.name} uses Shadow Ward, gaining ${gained} Block and healing 8 HP.`);
+    } else if (type === 'eclipse') {
+      state.players.forEach((teammate) => {
+        enemyAttack(state, enemy, teammate, amount);
+        if (teammate.hp > 0) teammate.vulnerable += 1;
+      });
+      log(state, `${enemy.name} casts Eclipse, making surviving familiars Vulnerable.`);
     } else if (type === 'teamAttack') {
       state.players.forEach((teammate) => enemyAttack(state, enemy, teammate, amount));
     } else {
       const victim = state.players[target]?.hp > 0 ? target : state.players.findIndex((unit) => unit.hp > 0);
       const defender = state.players[victim];
       enemyAttack(state, enemy, defender, amount);
-      if (type === 'frailAttack' && defender.hp > 0) {
+      if ((type === 'frailAttack' || type === 'crownCurse') && defender.hp > 0) {
         defender.frail += 1;
-        log(state, `${critterName(defender)} becomes Frail.`);
+        if (type === 'crownCurse') defender.vulnerable += 1;
+        log(state, `${critterName(defender)} becomes Frail${type === 'crownCurse' ? ' and Vulnerable' : ''}.`);
       }
     }
 
@@ -598,10 +703,11 @@ function draftCard(state, { player: playerIndex, cardId, perkId = 'fang' }) {
   heal(player, 7);
   if (perkId === 'fang') {
     player.attackBonus += 1;
-  } else {
+  } else if (perkId === 'bark') {
     player.maxHp += 4;
     heal(player, 4);
   }
+  if (perkId === 'renewal') heal(player, 3);
   log(state, `${critterName(player)} learns ${CARDS[cardId].name} and reaches level ${player.level}.`);
 
   if (state.rewardPicks.every(Boolean)) {

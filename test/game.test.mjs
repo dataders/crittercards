@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { applyAction, createRun } from '../game.mjs';
@@ -10,7 +11,8 @@ function replay({ critters, seed, decks }, actions) {
       state = applyAction(state, action);
       return state;
     } catch (error) {
-      throw new Error(`Seed ${seed}, action ${index + 1}: ${JSON.stringify(action)}`, { cause: error });
+      const level = state.encounter + 1;
+      throw new Error(`Seed ${seed}, level ${level}, action ${index + 1}: ${JSON.stringify(action)}`, { cause: error });
     }
   });
 }
@@ -30,42 +32,44 @@ test('solo defeat stops the enemy turn after the last familiar falls', () => {
   assert.deepEqual(combat, before);
 });
 
-test('a seeded solo replay clears all three encounters with the same state at each step', () => {
-  const setup = {
-    critters: ['fox'],
-    seed: 40,
-    decks: [['lunge', 'lunge', 'jab', 'jab', 'flurry']],
-  };
-  const route = (routeId) => ({ type: 'route', player: 0, routeId });
-  const play = (cardIndex, target) => ({ type: 'play', player: 0, cardIndex, target });
-  const draft = (cardId) => ({ type: 'draft', player: 0, cardId, perkId: 'fang' });
-  const endTurn = { type: 'endTurn', player: 0 };
-  const actions = [
-    // Toll Gate: Briar Lunge, Ghostfire, then Wild Flurry.
-    route('steady'), play(0, 1), play(0, 0), endTurn, play(1, 0),
-    draft('avalanche'),
-    route('merchant'), { type: 'buy', player: 0, cardId: 'lunge' }, { type: 'leaveShop', player: 0 },
-    // Thorn Ring: Stonefall and Quick Jab, followed by Ghostfire and Briar Lunge.
-    route('steady'), play(3, 1), play(0, 0), endTurn, play(0, 0), play(1, 0),
-    draft('spark'),
-    // Hollow Crown: Stonefall and Quick Jab, then Ember Spark, Ghostfire and Wild Flurry.
-    route('steady'), play(3, 1), play(2, 0), endTurn, play(2, 0), play(1, 0), play(0, 0),
-  ];
-
+test('a seeded solo replay clears 20 levels and defeats the Ash Regent', () => {
+  const fixture = new URL('./fixtures/solo-campaign.json', import.meta.url);
+  const { setup, actions } = JSON.parse(readFileSync(fixture, 'utf8'));
   const timeline = replay(setup, actions);
-  assert.deepEqual(replay(setup, actions), timeline);
+  for (const [index, state] of replay(setup, actions).entries()) {
+    assert.deepEqual(state, timeline[index], `Seed ${setup.seed} diverged at action ${index + 1}`);
+  }
+
   const rewards = timeline.filter(({ phase }) => phase === 'reward');
-  assert.deepEqual(rewards.map(({ encounter, gold }) => ({ encounter, gold })), [
-    { encounter: 0, gold: 16 },
-    { encounter: 1, gold: 26 },
-  ]);
+  assert.deepEqual(rewards.map(({ encounter }) => encounter), Array.from({ length: 19 }, (_, index) => index));
+
+  const purchase = timeline[actions.findIndex(({ type }) => type === 'buy')];
+  assert.equal(purchase?.encounter, 3);
+  assert.deepEqual(purchase.soldCards, ['lunge']);
+
+  const bossOpening = timeline.find(({ encounter, phase }) => encounter === 19 && phase === 'combat');
+  const boss = bossOpening?.enemies.find((enemy) => enemy.boss);
+  assert.equal(boss?.name, 'The Ash Regent');
+  assert.ok(boss.hp > 0);
+  assert.equal(boss.intent.type, 'eclipse');
+
+  const bossTurns = timeline.filter(({ encounter }, index) => encounter === 19 && actions[index].type === 'endTurn');
+  assert.deepEqual(bossTurns.map(({ round }) => round), [2, 3, 4]);
+  const [afterEclipse, afterWard, afterCurse] = bossTurns;
+  assert.equal(afterEclipse.players[0].vulnerable, 1);
+  const beforeWard = timeline[timeline.indexOf(afterWard) - 1];
+  const wardedBoss = afterWard.enemies.find((enemy) => enemy.boss);
+  assert.equal(wardedBoss.block, 16);
+  assert.equal(wardedBoss.hp, beforeWard.enemies.find((enemy) => enemy.boss).hp + 8);
+  assert.equal(afterCurse.players[0].frail, 1);
+  assert.equal(afterCurse.players[0].vulnerable, 1);
 
   const final = timeline.at(-1);
   assert.equal(final.phase, 'victory');
-  assert.deepEqual(final.path, ['steady', 'steady', 'steady']);
-  assert.deepEqual(final.visitedShops, [1]);
-  assert.equal(final.gold, 42);
-  assert.equal(final.players[0].hp, 37);
-  assert.equal(final.players[0].level, 3);
-  assert.deepEqual(final.players[0].deck.slice(-3), ['avalanche', 'lunge', 'spark']);
+  assert.equal(final.encounter, 19);
+  assert.equal(final.path.length, 20);
+  assert.equal(final.path.at(-1), 'perilous');
+  assert.equal(final.players[0].level, 20);
+  assert.ok(final.players[0].hp > 0);
+  assert.equal(final.enemies.find((enemy) => enemy.boss)?.hp, 0);
 });

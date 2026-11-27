@@ -426,6 +426,9 @@ dialog ol { display: grid; gap: .65rem; margin: 0 0 .5rem; padding-left: 1.35rem
 .route-option > span:not(.route-tag) { font-size: .9rem; }
 .route-tag { color: var(--lime); font: 700 .87rem/1.15 var(--label); letter-spacing: .045em; text-transform: uppercase; }
 .route-perilous .route-tag { color: var(--coral); }
+.route-perilous { border-color: #a3634f; }
+.route-danger { color: #ffc2a8; font-weight: 700; }
+.route-stats { color: var(--muted); }
 .route-merchant .route-tag, .shop-price { color: var(--gold); }
 button.route-option:hover:not(:disabled) { border-color: var(--lime); background: var(--panel-hover); }
 .route-option.is-future { color: var(--muted); }

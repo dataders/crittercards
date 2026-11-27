@@ -64,14 +64,14 @@ function unlockRecruits(state) {
   if (!state) return;
   const recorded = readStorage(localStorage, progressKey, { runs: {}, wins: 0, clears: 0, encounter: 0 });
   const runKey = `${ui.room?.code ?? 'local'}:${state.runId}`;
-  const beats = state.phase === 'victory' ? ENCOUNTERS.length :
+  const beats = state.phase === 'victory' ? TRAIL.length :
     state.encounter + Number(state.phase === 'reward');
   const previous = recorded.runs[runKey] ?? 0;
   if (beats <= previous) return;
   recorded.runs[runKey] = beats;
   recorded.wins += beats - previous;
-  recorded.clears += Number(beats === ENCOUNTERS.length);
-  recorded.encounter = Math.max(recorded.encounter, beats);
+  recorded.clears += Number(beats === TRAIL.length);
+  recorded.encounter = Math.max(recorded.encounter, beats === TRAIL.length ? 3 : Math.min(beats, 2));
   for (const [id, { kind, count }] of Object.entries(CRITTER_UNLOCKS)) {
     if (recorded[kind] >= count && !collection.has(id)) {
       collection.add(id);
@@ -85,7 +85,8 @@ function unlockRecruits(state) {
 function unlockCards(state) {
   if (!state) return;
   // Earlier encounters count as wins even if an online tab skipped their snapshots.
-  const defeated = ENCOUNTERS.slice(0, state.encounter).flatMap((entry) => entry.enemies.map(({ animal }) => animal));
+  const defeated = TRAIL.slice(0, state.encounter).flatMap((routes, level) =>
+    routes.find(({ id }) => id === state.path[level]).enemies.map(({ animal }) => animal));
   defeated.push(...state.enemies.filter((enemy) => enemy.hp === 0).map(({ animal }) => animal));
   for (const id of defeated.flatMap((animal) => CARD_UNLOCKS[animal] ?? [])) {
     if (knownCards.has(id)) continue;
@@ -243,6 +244,9 @@ function allyCard(player, seat, state) {
 function intentLabel(intent, enemy) {
   if (!intent) return '';
   if (intent.type === 'guard') return `Gains ${Math.max(0, intent.amount - (enemy.frail ? FRAIL_BLOCK_LOSS : 0))} Block`;
+  if (intent.type === 'shadowWard') return `Shadow Ward · gains ${Math.max(0, intent.amount - (enemy.frail ? FRAIL_BLOCK_LOSS : 0))} Block and heals 8`;
+  if (intent.type === 'eclipse') return `Eclipse · hits all for ${intent.amount} and applies Vulnerable`;
+  if (intent.type === 'crownCurse') return `Crown Curse · hits P${intent.target + 1} for ${intent.amount}, applies Frail and Vulnerable`;
   if (intent.type === 'teamAttack') return `Hits both for ${intent.amount}`;
   return `Hits P${intent.target + 1} for ${intent.amount}${intent.type === 'frailAttack' ? ' and applies Frail' : ''}`;
 }
@@ -253,7 +257,7 @@ function enemyCard(enemy, index, state) {
   return `<button class="unit-card ${selected ? 'is-target selected-target' : ''} ${enemy.hp <= 0 ? 'is-defeated' : ''}" type="button" data-do="target" data-index="${index}" aria-pressed="${selected}" ${enemy.hp <= 0 ? 'disabled' : ''}>
     ${art(enemy.animal, 'unit-art')}
     <span class="unit-info">
-      <span class="combat-label">${bondTarget ? 'Bond Strike ready' : enemy.marked ? 'Marked' : 'Rival creature'}</span>
+      <span class="combat-label">${bondTarget ? 'Bond Strike ready' : enemy.marked ? 'Marked' : enemy.boss ? 'Final boss' : 'Rival creature'}</span>
       <strong class="unit-name">${escape(enemy.name)}</strong>
       ${health(enemy)}
       ${effects(enemy)}
@@ -264,7 +268,7 @@ function enemyCard(enemy, index, state) {
 
 function progress(state) {
   return `<ol class="progress-track" aria-label="Trail progress">${TRAIL.map((routes, index) =>
-    `<li class="${index < state.encounter || state.phase === 'victory' ? 'is-complete' : index === state.encounter ? 'is-current' : ''}" ${index === state.encounter ? 'aria-current="step"' : ''}>${escape(routes.find(({ id }) => id === state.path[index])?.name ?? `Level ${index + 1}`)}</li>`).join('')}</ol>`;
+    `<li class="${index < state.encounter || state.phase === 'victory' ? 'is-complete' : index === state.encounter ? 'is-current' : ''}" ${index === state.encounter ? 'aria-current="step"' : ''}>${index === 19 ? 'Boss' : index + 1}</li>`).join('')}</ol>`;
 }
 
 function purse(state) {
@@ -275,24 +279,30 @@ function trailMap(state) {
   const canLead = !ui.pending && (!ui.room || ui.room.seat === 0);
   return `<section class="battle-head"><div><p class="eyebrow">The Hollow Trail</p><h1>Choose your route</h1></div>${purse(state)}</section>
     ${ui.room?.seat === 1 ? '<p class="muted trail-wait">Player 1 chooses the next stop.</p>' : ''}
+    <p class="map-intro">Follow the paths through the woods. Choose a fight at each level and visit merchants along the way.</p>
     <ol class="trail-ladder" aria-label="Trail map">${TRAIL.map((routes, level) => {
       const current = state.encounter === level;
       const picked = state.path[level];
       const merchant = MERCHANTS[level];
       const visited = state.visitedShops.includes(level);
       return `<li class="trail-rung ${current ? 'is-current' : ''}" ${current ? 'aria-current="step"' : ''}>
-        <h2>Level ${level + 1}</h2>
+        <h2><span>${level === TRAIL.length - 1 ? '♛' : '✦'}</span> ${level === TRAIL.length - 1 ? 'Level 20 · Final boss' : `Level ${level + 1}`}</h2>
         <div class="route-options">
           ${routes.map((route) => {
-            const details = `<span class="route-tag">${route.difficulty} · ${route.goldPerEnemy} gold per rival</span>
-              <strong>${escape(route.name)}</strong><span>${escape(route.subtitle)}</span>`;
-            return current ? `<button type="button" class="route-option route-${route.id}" data-do="route" data-id="${route.id}" ${canLead ? '' : 'disabled'}>${details}</button>` :
-              `<div class="route-option ${picked === route.id ? 'is-cleared' : 'is-future'}">${details}${picked === route.id ? '<span class="route-tag">Cleared</span>' : ''}</div>`;
+            const totalGold = route.goldPerEnemy * route.enemies.length;
+            const health = route.enemies.map((enemy) => `${enemy.name} ${state.players.length === 1 ? Math.ceil(enemy.hp * 0.7) : enemy.hp} HP`).join(' · ');
+            const details = `<span class="route-tag">${escape(route.difficulty)} · ${totalGold} gold total</span>
+              <strong>${escape(route.name)}</strong><span>${escape(route.subtitle)}</span>
+              <span class="route-stats">${escape(health)}</span>
+              ${route.goldPerEnemy > 8 ? '<span class="route-danger">Stronger attacks · triple gold</span>' : ''}`;
+            const routeClass = route.goldPerEnemy > 8 ? 'route-hard' : 'route-standard';
+            return current ? `<button type="button" class="route-option ${routeClass}" data-do="route" data-id="${route.id}" ${canLead ? '' : 'disabled'}>${details}</button>` :
+              `<div class="route-option ${routeClass} ${picked === route.id ? 'is-cleared' : 'is-future'}">${details}${picked === route.id ? '<span class="route-tag">Cleared</span>' : ''}</div>`;
           }).join('')}
-          ${merchant && !visited ? current ? `<button type="button" class="route-option route-merchant" data-do="route" data-id="merchant" ${canLead ? '' : 'disabled'}>
-            <span class="route-tag">Merchant · optional stop</span><strong>${escape(merchant.name)}</strong><span>Spend gold on cards, then pick a fight on this level.</span>
-          </button>` : `<div class="route-option is-future"><span class="route-tag">Merchant</span><strong>${escape(merchant.name)}</strong></div>` : ''}
         </div>
+        ${merchant ? `<div class="merchant-detour">${current && !visited ? `<button type="button" class="route-option route-merchant" data-do="route" data-id="merchant" ${canLead ? '' : 'disabled'}>
+            <span class="route-tag">Merchant · optional stop</span><strong>${escape(merchant.name)}</strong><span>Spend gold on cards, then pick a fight on this level.</span>
+          </button>` : `<div class="route-option route-merchant ${visited ? 'is-cleared' : 'is-future'}"><span class="route-tag">Merchant${visited ? ' · visited' : ' · optional stop'}</span><strong>${escape(merchant.name)}</strong><span>Returns to the same level.</span></div>`}</div>` : ''}
       </li>`;
     }).join('')}</ol>`;
 }
