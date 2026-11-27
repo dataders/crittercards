@@ -80,3 +80,17 @@ test('companion support helps its owner in solo and the other player in co-op', 
   assert.equal(team.players[0].block, 0);
   assert.equal(team.players[1].block, 2);
 });
+
+test('an animal can use its own free move once per round in solo only', () => {
+  const route = { type: 'route', player: 0, routeId: 'steady' };
+  const move = { type: 'companionStrike', player: 0, target: 0 };
+  const solo = applyAction(createRun(['fox'], 40), route);
+  const cast = applyAction(solo, move);
+  assert.equal(cast.players[0].energy, solo.players[0].energy);
+  assert.ok(cast.enemies[0].hp < solo.enemies[0].hp);
+  assert.throws(() => applyAction(cast, move), /cannot strike/);
+  const next = applyAction(cast, { type: 'endTurn', player: 0 });
+  assert.doesNotThrow(() => applyAction(next, move));
+  const pair = applyAction(createRun(['fox', 'hare'], 40), route);
+  assert.throws(() => applyAction(pair, move), /cannot strike/);
+});

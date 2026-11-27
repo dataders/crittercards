@@ -1127,3 +1127,13 @@ body:not([data-battle-area])::before {
   .title-screen img.hero-art { object-position: 66% top; mask-image: linear-gradient(0deg, transparent, #000 70%); }
   .title-screen .hero-copy { padding: 1.2rem; }
 }
+
+.solo-goals {
+  padding: .65rem .85rem;
+  border: 1px solid var(--line);
+  border-radius: .55rem;
+  background: var(--forest-deep);
+}
+.title-screen + .solo-goals { margin-top: .75rem; }
+.solo-goals summary { color: var(--lime); cursor: pointer; }
+.solo-goals ul { display: grid; gap: .4rem; margin: .6rem 0 0; padding-left: 1.15rem; }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import test from 'node:test';
 
-import { dealStartingDeck } from '../game.mjs';
+import { startingLibraryFor } from '../game.mjs';
 import { createGameServer } from '../server.mjs';
 import { findPublicMatch, recoverRoom, resumeRoom } from '../transport.mjs';
 
@@ -204,7 +204,7 @@ test('public teammates can pick and confirm their own decks on the same revision
   ]);
   const hostDeck = host.dealtDeck;
   const guestDeck = guest.dealtDeck;
-  await assert.rejects(host.act({ type: 'deck', cards: dealStartingDeck(73) }), { status: 400 });
+  await assert.rejects(host.act({ type: 'deck', cards: startingLibraryFor('hare') }), { status: 400 });
   await Promise.all([
     host.act({ type: 'deck' }),
     guest.act({ type: 'deck' }),
@@ -212,5 +212,5 @@ test('public teammates can pick and confirm their own decks on the same revision
   const ready = await resumeRoom(host.code, host.token);
   assert.deepEqual(ready.ready, [true, true]);
   const started = await ready.act({ type: 'start' });
-  assert.deepEqual(started.state.players.map(({ deck }) => deck.slice(0, 15)), [hostDeck, guestDeck]);
+  assert.deepEqual(started.state.players.map(({ deck }) => deck.slice(0, 13)), [hostDeck, guestDeck]);
 });

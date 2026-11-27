@@ -1,4 +1,4 @@
-import { ACTS, CARDS, CRITTERS, COMPANION_ABILITIES, FLOODGATE_RECOIL_PERCENT, FRAIL_BLOCK_LOSS, HARD_PERKS, LEVELS_PER_ACT, TRAIL, TYPES, briarHealer, canAffordCard, getCardDescription, getCompanionDescription, getEncounter, matchup, trailPosition } from './game.mjs';
+import { ACTS, CARDS, CRITTERS, COMPANION_ABILITIES, FLOODGATE_RECOIL_PERCENT, FRAIL_BLOCK_LOSS, HARD_PERKS, LEVELS_PER_ACT, TRAIL, TYPES, briarHealer, canAffordCard, freeMoveAnimal, getCardDescription, getCompanionDescription, getEncounter, matchup, trailPosition } from './game.mjs';
 
 export const playerName = (seat) => `Player ${seat + 1}`;
 export const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -152,10 +152,11 @@ export function combat(state, { room, pending, newCards }) {
   const entry = getEncounter(state);
   const other = state.players[1 - seat];
   const name = CRITTERS[player.critterId].name;
-  const companionReady = player.companionId && !player.companionUsed;
-  const companion = COMPANION_ABILITIES[player.companionId];
+  const moveAnimal = freeMoveAnimal(state, player);
+  const freeMoveReady = moveAnimal && !player.companionUsed;
+  const freeMove = COMPANION_ABILITIES[moveAnimal];
   const playableCards = player.hand.filter((id) => canAffordCard(CARDS[id], player.energy));
-  const canAim = companionReady || playableCards.some((id) => CARDS[id].target === 'enemy');
+  const canAim = freeMoveReady || playableCards.some((id) => CARDS[id].target === 'enemy');
   const canTap = playableCards.some((id) => CARDS[id].target !== 'enemy');
   const turnTitle = room ? canAct ? `Your turn as ${name}` : `Waiting for ${name}` : `${name}’s turn`;
   const next = seat === 0 && other?.hp > 0 ? `${CRITTERS[other.critterId].name} goes next.` : 'The rivals act next.';
@@ -166,7 +167,11 @@ export function combat(state, { room, pending, newCards }) {
         <div class="combat-info-panel">
           ${progress(state)}${purse(state)}
           <h2>Your team</h2><div class="combat-row">${state.players.map((unit, index) => allyCard(unit, index, state)).join('')}</div>
-          ${state.players.filter((unit) => unit.companionId).map((unit) => `<div class="companion-battle">${art(unit.companionId, 'companion-art')}<span><strong>${escape(CRITTERS[unit.companionId].name)} · ${escape(COMPANION_ABILITIES[unit.companionId].name)}</strong><br>${escape(TYPES[CRITTERS[unit.companionId].type].name)} type · ${escape(getCompanionDescription(unit.companionId, unit.attackBonus + unit.strength))}</span></div>`).join('')}
+          ${state.players.map((unit) => {
+            const animal = freeMoveAnimal(state, unit);
+            if (!animal) return '';
+            return `<div class="companion-battle">${art(animal, 'companion-art')}<span><strong>${escape(CRITTERS[animal].name)} · ${escape(COMPANION_ABILITIES[animal].name)}</strong><br>${escape(TYPES[CRITTERS[animal].type].name)} type · ${escape(getCompanionDescription(animal, unit.attackBonus + unit.strength))}</span></div>`;
+          }).join('')}
           ${other?.hp > 0 && other.hand.length ? `<p class="secondary-hand"><strong>${escape(CRITTERS[other.critterId].name)}’s hand</strong> · ${other.hand.map((id) => escape(CARDS[id].name)).join(', ')}</p>` : ''}
           <div class="battle-log"><h2>Battle log</h2><ol>${state.log.slice(0, 4).map((row) => `<li>${escape(row)}</li>`).join('')}</ol></div>
         </div>
@@ -200,7 +205,7 @@ export function combat(state, { room, pending, newCards }) {
           ${combatPile('discard', 'Discard', player.discardPile.length, seat)}
         </div>
         <div class="turn-actions combat-actions">
-          ${companion ? button(`${escape(companion.name)} · ${player.companionUsed ? 'Used' : 'Free companion move'}`, 'companion-strike', { disabled: !enabled || !companionReady, data: `data-seat="${seat}" data-aim="${escape(companion.name)}" aria-pressed="false" aria-describedby="attack-instructions"` }) : ''}
+          ${freeMove ? button(`${escape(freeMove.name)} · ${player.companionUsed ? 'Used' : player.companionId ? 'Free companion move' : 'Free solo move'}`, 'companion-strike', { disabled: !enabled || !freeMoveReady, data: `data-seat="${seat}" data-aim="${escape(freeMove.name)}" aria-pressed="false" aria-describedby="attack-instructions"` }) : ''}
           <span class="hand-counts">${escape(TYPES[CRITTERS[player.critterId].type].name)} type</span>
         </div>
         <div class="turn-actions combat-deck-actions">${state.players.map((member, index) => button(`View ${escape(CRITTERS[member.critterId].name)}’s deck (${member.deck.length})`, 'view-battle-deck', { data: `data-seat="${index}" data-id="deck" aria-haspopup="dialog"` })).join('')}

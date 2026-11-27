@@ -23,7 +23,9 @@ Each cousin chooses a recruited woodland animal as a companion. Its special abil
 
 Ember the fox and Pip the hare are available from the start, too. Recruit Bramble the badger and Latch the raccoon at your first win. The collection shows requirements for all 30 species, and your browser remembers your recruits across runs. Each animal has a signature card, a role, and its own starting health. Level-up perks include attack damage, health, starting Block, extra cards, starting energy, and healing.
 
-Each new run deals 15 random cards from your unlocked library, with at least seven costing 1 energy. The starting deal is locked and includes up to two copies per card. Signature moves stay out of the random deal. Each character adds their own signature separately, usually two copies, or one Secret Star for Tito. Each character draws five cards per round, with extra draws from Keen Senses. Start with twenty library cards and unlock nine more by defeating individual rival creatures. Unlocks stay in the browser even if the run ends in defeat. Drafted cards go into your current deck. An energy card joins the draft options after every fourth level.
+Everyone starts with 15 cards. Twelve are shared, including Claw Strike, Hold Fast, and Stand Together. Three slots are specific to the character, including two copies of most signatures or one Secret Star and two specialty cards for Tito. Each character draws five cards per round, with extra draws from Keen Senses. The library has twenty unlocked cards and nine earned from rival encounters. An energy card joins the draft options after every fourth level.
+
+Solo trail goals track your personal best, the Act I boss, three trial wins in a single run, and a full clear. Progress stays in your browser. A solo animal can aim its own special move once per round for free. After a solo run, **Run again with this team** returns you to setup with the familiar and companion preselected. The next run uses a fresh seed.
 
 Rallying Howl adds Strength, which boosts every attack for the rest of the fight. Expose applies Vulnerable, which makes the next hit deal 50% more damage. Brittle Hex applies Frail, which reduces the target’s next Block gain by 3. Ironhide and Cindermaw can apply Frail to your familiars.
 
@@ -60,3 +62,7 @@ See the [Crittercards roadmap](ROADMAP.md) for workstream ownership, milestones,
 ## Artwork
 
 The trail banner and the 34 portraits are bundled in [assets/](assets/). They were made with built-in ImageGen and exported as WebP. The banner brief called for a moon gate, an ember fox, and a moon hare in a dark spruce forest. The portrait brief used four-by-two contact sheets of identifiable species with gouache texture, woodcut lines, and subtle ember, moonlight, or shadow effects.
+
+### Card combination check
+
+Run `node scripts/check-card-combos.mjs` to exercise ordered card pairs and chains of two energy cards followed by an attack. The check uses neutral targets, armor, low health, and finishing blows. It highlights bonus damage, net energy, and energy gain without exhausting a card so strong interactions can be reviewed in actual runs.

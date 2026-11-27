@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyAction, CARDS, createRun, dealStartingDeck } from '../game.mjs';
-import { ENERGY_CARDS } from '../data.mjs';
+import { applyAction, CARDS, createRun } from '../game.mjs';
+import { BASE_CARDS, ENERGY_CARDS } from '../data.mjs';
 
 const act = (state, action) => applyAction(state, { player: 0, ...action });
 const play = (state, target) => act(state, { type: 'play', cardIndex: 0, target });
@@ -67,12 +67,10 @@ test('banked energy arrives exactly on the intended turn in solo and co-op', () 
   assert.equal(end(end(solo)).players[0].energy, 3);
 });
 
-test('all nine cards can be randomly dealt and offered in a post-fight draft', () => {
+test('all nine energy cards are in the library and can be offered in a post-fight draft', () => {
   assert.equal(ENERGY_CARDS.length, 9);
-  const dealt = new Set();
   const drafted = new Set();
   for (let seed = 1; seed <= 150; seed += 1) {
-    dealStartingDeck(seed).forEach((id) => dealt.add(id));
     const run = createRun(['fox'], seed);
     Object.assign(run, { encounter: 3, path: ['steady', 'steady', 'steady'] });
     const fight = act(run, { type: 'route', routeId: 'steady' });
@@ -85,5 +83,5 @@ test('all nine cards can be randomly dealt and offered in a post-fight draft', (
     assert.equal(upgraded.players[0].deck.at(-1), cardId);
     drafted.add(cardId);
   }
-  assert.ok(ENERGY_CARDS.every((id) => dealt.has(id) && drafted.has(id) && CARDS[id + '+']));
+  assert.ok(ENERGY_CARDS.every((id) => BASE_CARDS.includes(id) && drafted.has(id) && CARDS[id + '+']));
 });

@@ -3,7 +3,7 @@ import {
   COMPANION_ABILITIES, LEVEL_PERKS, HARD_PERKS, hardPerkOptions, trailPosition,
   FLOODGATE_RECOIL_PERCENT, TRAIL, MERCHANTS, CAMPS, getEncounter,
   rivalHealth, briarHealer, BASE_CARDS, BASIC_CARDS, ENERGY_CARDS, STARTER_DECK, STARTING_DECK_SIZE, MIN_STARTING_ONE_COST, MAX_STARTING_COPIES,
-  MIN_RUN_DECK_SIZE, CARD_UNLOCKS, MARK_DAMAGE, describeCard, deckLibrary,
+  MIN_RUN_DECK_SIZE, CARD_UNLOCKS, MARK_DAMAGE, describeCard, deckLibrary, startingLibraryFor,
 } from './data.mjs';
 
 export {
@@ -12,7 +12,7 @@ export {
   HARD_PERKS, hardPerkOptions, ENCOUNTERS, LEVELS_PER_ACT, ACTS,
   trailPosition, FLOODGATE_RECOIL_PERCENT, TRAIL, MERCHANTS, CAMPS,
   getEncounter, rivalHealth, briarHealer, BASE_CARDS, STARTER_DECK, STARTING_DECK_SIZE, MIN_STARTING_ONE_COST,
-  MAX_STARTING_COPIES, MIN_RUN_DECK_SIZE, CARD_UNLOCKS,
+  MAX_STARTING_COPIES, MIN_RUN_DECK_SIZE, CARD_UNLOCKS, startingLibraryFor,
 } from './data.mjs';
 
 const BOND_DAMAGE = 4;
@@ -86,20 +86,6 @@ function shuffle(state, values) {
     [shuffled[index], shuffled[swap]] = [shuffled[swap], shuffled[index]];
   }
   return shuffled;
-}
-
-export function dealStartingDeck(seed = Date.now(), unlocked = BASE_CARDS) {
-  const pool = [...new Set([...BASE_CARDS, ...unlocked])].filter((id) => deckLibrary.has(id));
-  const copies = pool.flatMap((id) => Array(MAX_STARTING_COPIES).fill(id));
-  const rng = { seed: seed >>> 0 };
-  const oneCost = shuffle(rng, copies.filter((id) => CARDS[id].cost === 1));
-  const deck = oneCost.splice(0, MIN_STARTING_ONE_COST);
-  const remaining = shuffle(rng, [...oneCost, ...copies.filter((id) => CARDS[id].cost !== 1)]);
-  deck.push(...remaining.splice(0, STARTING_DECK_SIZE - deck.length));
-  if (!deck.some((id) => CARDS[id].damage)) {
-    deck[deck.length - 1] = remaining.find((id) => CARDS[id].damage);
-  }
-  return shuffle(rng, deck);
 }
 
 function drawHand(state, player) {
@@ -217,14 +203,19 @@ export function createRun(critterIds, seed = Date.now(), startingDecks, companio
       [...critterIds].some((id) => typeof id !== 'string' || !Object.hasOwn(CRITTERS, id))) {
     throw new Error('Choose a critter for each player.');
   }
-  if (startingDecks === undefined) startingDecks = critterIds.map((_, seat) => dealStartingDeck(seed + seat));
+  if (startingDecks === undefined) startingDecks = critterIds.map(startingLibraryFor);
   if (companions === undefined) companions = critterIds.map(() => null);
   if (!Array.isArray(startingDecks) || startingDecks.length !== critterIds.length) throw new Error('Build a deck for each player.');
   if (!Array.isArray(companions) || companions.length !== critterIds.length || [...companions].some((id, index) =>
     id !== null && (!Object.hasOwn(COUSINS, critterIds[index]) || !Object.hasOwn(CRITTERS, id) || !CRITTERS[id].animal))) {
     throw new Error('Choose an animal companion for a cousin.');
   }
-  for (const cards of startingDecks) validateStartingDeck(cards, { allowLegacy: true });
+  startingDecks.forEach((cards, seat) => {
+    const starter = startingLibraryFor(critterIds[seat]);
+    const matchesStarter = Array.isArray(cards) && cards.length === starter.length &&
+      starter.every((id, index) => cards[index] === id);
+    if (!matchesStarter) validateStartingDeck(cards, { allowLegacy: true });
+  });
   const players = critterIds.map((critterId, id) => {
     const critter = CRITTERS[critterId];
     return {
@@ -648,6 +639,10 @@ function buyCard(state, { player, cardId }) {
   log(state, `${critterName(buyer)} buys ${CARDS[cardId].name} for ${item.price} gold.`);
 }
 
+export function freeMoveAnimal(state, player) {
+  return player.companionId ?? (state.players.length === 1 && CRITTERS[player.critterId].animal ? player.critterId : null);
+}
+
 export function applyAction(state, action) {
   if (!action || !Number.isInteger(action.player) || !state.players[action.player]) throw new Error('Choose a valid player.');
   if (action.type === 'camp') {
@@ -682,12 +677,14 @@ export function applyAction(state, action) {
   if (action.type === 'play') playCard(next, action);
   else if (action.type === 'companionStrike') {
     const player = next.players[action.player];
-    if (!player.companionId || player.companionUsed) throw new Error('Your companion cannot strike again this turn.');
+    const animal = freeMoveAnimal(next, player);
+    if (!animal || player.companionUsed) throw new Error('This free move cannot strike again this turn.');
     if (!Number.isInteger(action.target) || !next.enemies[action.target] || next.enemies[action.target].hp <= 0) throw new Error('Choose a living rival.');
     player.companionUsed = true;
-    const ability = COMPANION_ABILITIES[player.companionId];
-    log(next, `${CRITTERS[player.companionId].name} uses ${ability.name} alongside ${critterName(player)}.`);
-    resolveCardEffect(next, player, ability, action.target, player.companionId);
+    const ability = COMPANION_ABILITIES[animal];
+    const alongside = player.companionId ? ` alongside ${critterName(player)}` : '';
+    log(next, `${CRITTERS[animal].name} uses ${ability.name}${alongside}.`);
+    resolveCardEffect(next, player, ability, action.target, animal);
     finishAttackAction(next, action);
   } else finishTurn(next, action.player);
   return next;

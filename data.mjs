@@ -674,3 +674,27 @@ export const CARD_UNLOCKS = {
 const signatureCards = new Set(Object.values(CRITTERS).map(({ signature }) => signature));
 export const deckLibrary = new Set([...BASE_CARDS, ...Object.values(CARD_UNLOCKS).flat()]
   .filter((id) => !signatureCards.has(id)));
+
+export const SHARED_STARTING_CARDS = [
+  'strike', 'strike', 'guard', 'guard', 'cover', 'cover',
+  'jab', 'brace', 'lunge', 'mark', 'howl', 'expose',
+];
+
+const characterCards = {
+  fox: ['briarChannel'],
+  hudson: ['rootwell'],
+  quinn: ['lastEmber'],
+  alba: ['moonwoodCache'],
+  tita: ['fireflySpark', 'briarChannel'],
+};
+
+const roleCard = {
+  Striker: 'lanternStrike', Skirmisher: 'flurry', Guardian: 'barricade', Seer: 'moonwoodCache',
+  Thief: 'lanternStrike', Conduit: 'twinLanterns', Vanguard: 'rootwell', Hunter: 'lunge',
+  Scout: 'fireflySpark', Supplier: 'twinLanterns', Medic: 'lastEmber', Warden: 'starwell',
+};
+
+export function startingLibraryFor(critterId) {
+  const critter = CRITTERS[critterId];
+  return [...SHARED_STARTING_CARDS, ...(characterCards[critterId] ?? [roleCard[critter.role]])];
+}

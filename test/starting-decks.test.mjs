@@ -1,46 +1,31 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {
-  applyAction, CARDS, CRITTERS, createRun, dealStartingDeck, MIN_STARTING_ONE_COST,
-  STARTER_DECK, STARTING_DECK_SIZE, validateStartingDeck,
-} from '../game.mjs';
+import { CARDS, CRITTERS, applyAction, createRun, STARTER_DECK, startingLibraryFor, validateStartingDeck } from '../game.mjs';
+import { deckLibrary, SHARED_STARTING_CARDS } from '../data.mjs';
 
-test('random deals are reproducible, vary, and keep seven one-cost cards and all signatures out', () => {
-  const variants = new Set();
-  const signatures = Object.values(CRITTERS).map(({ signature }) => signature);
-  for (let seed = 1; seed <= 1000; seed += 1) {
-    const deck = dealStartingDeck(seed, signatures);
-    assert.deepEqual(deck, dealStartingDeck(seed));
-    validateStartingDeck(deck);
-    assert.equal(deck.length, STARTING_DECK_SIZE);
-    assert.ok(deck.filter((id) => CARDS[id].cost === 1).length >= MIN_STARTING_ONE_COST);
-    assert.ok(deck.every((id) => !signatures.includes(id)));
-    variants.add([...deck].sort().join(','));
+test('every character starts with twelve shared basics and three specialty slots', () => {
+  const signatures = new Set(Object.values(CRITTERS).map(({ signature }) => signature));
+  for (const [id, critter] of Object.entries(CRITTERS)) {
+    const library = startingLibraryFor(id);
+    assert.deepEqual(library.slice(0, 12), SHARED_STARTING_CARDS);
+    assert.ok(library.every((card) => deckLibrary.has(card) && !signatures.has(card)));
+    assert.ok(library.filter((card) => CARDS[card].cost === 1).length >= 7);
+    const expected = [...library, ...Array(critter.signatureCopies ?? 2).fill(critter.signature)];
+    assert.equal(expected.length, 15, id);
+    assert.deepEqual(createRun([id], 40).players[0].deck, expected, id);
+    assert.deepEqual(createRun([id], 71, [library]).players[0].deck, expected, id);
   }
-  assert.ok(variants.size > 100);
+  assert.deepEqual(createRun(['tita'], 40).players[0].deck.slice(12), ['fireflySpark', 'briarChannel', 'secretStar']);
 });
 
-test('solo and co-op runs add their own signatures, and older replay decks remain valid', () => {
-  for (const id of Object.keys(CRITTERS)) {
-    const [player] = createRun([id], 40).players;
-    validateStartingDeck(player.deck.slice(0, STARTING_DECK_SIZE));
-    assert.deepEqual(player.deck.slice(STARTING_DECK_SIZE),
-      Array(CRITTERS[id].signatureCopies ?? 2).fill(CRITTERS[id].signature));
-  }
+test('co-op still draws five cards each and previously recorded starts remain usable', () => {
   const run = createRun(['tita', 'fox'], 40);
   const opening = applyAction(run, { type: 'route', player: 0, routeId: 'steady' });
-  assert.deepEqual(run.players.map(({deck}) => deck.length), [16, 17]);
-  assert.deepEqual(opening.players.map(({hand}) => hand.length), [5, 5]);
+  assert.deepEqual(run.players.map(({ deck }) => deck.length), [15, 15]);
+  assert.deepEqual(opening.players.map(({ hand }) => hand.length), [5, 5]);
   assert.deepEqual(createRun(['fox'], 40, [STARTER_DECK]).players[0].deck.slice(0, 5), STARTER_DECK);
-  assert.throws(() => validateStartingDeck(STARTER_DECK), /15 cards/);
-});
-
-test('starting deck validation rejects signatures or fewer than seven one-cost cards', () => {
-  const deck = [
-    'strike', 'strike', 'guard', 'guard', 'cover', 'cover', 'howl',
-    'mark', 'mark', 'flurry', 'flurry', 'jab', 'jab', 'brace', 'lunge',
-  ];
-  validateStartingDeck(deck);
-  assert.throws(() => validateStartingDeck(['secretStar', ...deck.slice(1)]), /deck library/);
-  assert.throws(() => validateStartingDeck(['barricade', ...deck.slice(1)]), /at least 7/);
+  const previousRandom = ['strike','guard','cover','howl','expose','lanternStrike','lastEmber','lunge','mark','flurry','jab','brace','starwell','rootwell','fireflySpark'];
+  validateStartingDeck(previousRandom);
+  const resumed = createRun(['fox'], 40, [previousRandom]);
+  assert.deepEqual(resumed.players[0].deck.slice(0, 15), previousRandom);
 });

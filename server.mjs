@@ -5,9 +5,8 @@ import { resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { deckLibrary } from './data.mjs';
 
-import { applyAction, createRun, COUSINS, CRITTERS, dealStartingDeck } from './game.mjs';
+import { applyAction, createRun, COUSINS, CRITTERS, startingLibraryFor } from './game.mjs';
 
 const roomLifetime = 6 * 60 * 60 * 1000;
 const publicWaitLifetime = 45 * 1000;
@@ -20,7 +19,7 @@ const hourSoundtrackDownload = `/downloads/${hourSoundtrackFile}`;
 const enchantedWoodsAlbum = '/assets/crittercards-enchanted-woods-album.zip';
 const staticFiles = new Set([
   '/index.html', '/soundtrack.html', '/styles.css', '/app.mjs', '/game.mjs', '/transport.mjs',
-  '/audio.mjs', '/combat-input.mjs', '/data.mjs', '/storage.mjs', '/view-state.mjs', '/views.mjs',
+  '/audio.mjs', '/solo-progress.mjs', '/combat-input.mjs', '/data.mjs', '/storage.mjs', '/view-state.mjs', '/views.mjs',
   '/assets/crittercards-soundtrack.zip', enchantedWoodsAlbum,
 ]);
 const assetPath = /^\/assets\/(?:[\w-]+\/)*[\w.-]+\.(?:avif|gif|ico|jpe?g|mp3|png|svg|webp|woff2)$/i;
@@ -98,15 +97,10 @@ function pruneExpiredRooms(rooms, now) {
   }
 }
 
-function dealRoomDeck(unlocked) {
-  const available = Array.isArray(unlocked) ? unlocked.slice(0, deckLibrary.size) : undefined;
-  return dealStartingDeck(randomBytes(4).readUInt32LE(), available);
-}
-
 function createRoom(rooms, { critterId, publicMatch, now }) {
   const code = newRoomCode(rooms);
   const token = randomBytes(32).toString('base64url');
-  const dealt = critterId ? dealRoomDeck() : null;
+  const dealt = critterId ? startingLibraryFor(critterId) : null;
   const room = {
     code, tokens: [token, null], picks: [critterId, null], companions: [null, null],
     dealtDecks: [dealt, null],
@@ -123,7 +117,7 @@ function joinRoom(room, critterId, now) {
   const token = randomBytes(32).toString('base64url');
   room.tokens[1] = token;
   room.picks[1] = critterId;
-  room.dealtDecks[1] = critterId ? dealRoomDeck() : null;
+  room.dealtDecks[1] = critterId ? startingLibraryFor(critterId) : null;
   room.decks[1] = critterId && !COUSINS[critterId] ? room.dealtDecks[1] : null;
   room.updatedAt = now;
   room.revision += 1;
@@ -180,7 +174,7 @@ function recoverRoom(rooms, recoveryCode) {
   pruneExpiredRooms(rooms, now);
   if (rooms.has(room.code)) throw new RequestError(409, 'This room is already active.');
   if (rooms.size >= roomCapacity) throw new RequestError(503, 'All rooms are currently in use.');
-  room.dealtDecks ??= room.picks.map((pick, seat) => room.decks[seat] ?? (pick ? dealRoomDeck() : null));
+  room.dealtDecks ??= room.picks.map((pick, seat) => room.decks[seat] ?? (pick ? startingLibraryFor(pick) : null));
   room.updatedAt = now;
   rooms.set(room.code, room);
   return { ...snapshot(room, 0), token: room.tokens[0] };
@@ -215,8 +209,10 @@ function takeAction(room, seat, action) {
 
   if (action.type === 'select') {
     validateCritter(action.critterId);
+    if (room.picks[seat] !== action.critterId || !room.dealtDecks[seat]) {
+      room.dealtDecks[seat] = startingLibraryFor(action.critterId);
+    }
     room.picks[seat] = action.critterId;
-    room.dealtDecks[seat] ??= dealRoomDeck(action.unlocked);
     room.companions[seat] = null;
     room.decks[seat] = null;
     return;
@@ -234,7 +230,7 @@ function takeAction(room, seat, action) {
   if (action.type === 'deck') {
     if (!room.picks[seat]) throw new RequestError(409, 'Choose your creature first.');
     if (COUSINS[room.picks[seat]] && !room.companions[seat]) throw new RequestError(409, 'Choose an animal companion first.');
-    if (action.cards !== undefined) throw new RequestError(400, 'Starting cards are dealt randomly and cannot be changed.');
+    if (action.cards !== undefined) throw new RequestError(400, 'Starting cards are assigned by character.');
     room.decks[seat] = room.dealtDecks[seat];
     return;
   }

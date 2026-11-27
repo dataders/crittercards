@@ -1,10 +1,11 @@
 import {
-  COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, dealStartingDeck,
+  COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, startingLibraryFor,
   ENCOUNTERS, TRAIL, MERCHANTS, CAMPS, LEVEL_PERKS, HARD_PERKS, TYPES, COMPANION_ABILITIES, getCompanionDescription, createRun, applyAction, getEncounter,
   ACTS, LEVELS_PER_ACT, trailPosition, hardPerkOptions, getEnemyIntent, rivalHealth,
   getCardDescription, canRemoveRunCard, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE,
 } from './game.mjs';
 import { deckLibrary } from './data.mjs';
+import { soloGoals, soloProgressKey, updateSoloProgress } from './solo-progress.mjs';
 import { createCombatInput } from './combat-input.mjs';
 import { createAudioController } from './audio.mjs';
 import { readStorage, savedRewardChoices, savedRunStatus, saveKey, writeStorage } from './storage.mjs';
@@ -147,13 +148,11 @@ const savedCards = readStorage(localStorage, cardKey, []);
 const earnedCards = Object.values(CARD_UNLOCKS).filter((group) =>
   Array.isArray(savedCards) && group.some((id) => savedCards.includes(id))).flat();
 const knownCards = new Set([...BASE_CARDS, ...earnedCards]);
-const newStartingDeck = () => dealStartingDeck(crypto.getRandomValues(new Uint32Array(1))[0], knownCards);
 const ui = {
   mode: invite ? 'online' : 'local',
   showSetup: Boolean(invite),
   picks: [null, null],
   companions: [null, null],
-  startingDecks: [null, null],
   pickSeat: 0,
   filter: 'all',
   room: null,
@@ -175,6 +174,7 @@ let presentedBattle;
 let lastCardPlay;
 let battleCardsView;
 let runToolsMarkup;
+let soloProgress = updateSoloProgress(readStorage(localStorage, soloProgressKey, null));
 
 function unlockRecruits(state) {
   if (!state) return;
@@ -279,11 +279,11 @@ function deckBuilder(seat, critterId, room) {
   if (!critterId) return '';
   const critter = CRITTERS[critterId];
   const signature = CARDS[critter.signature];
-  const cards = room ? room.dealtDeck ?? room.deck ?? [] : ui.startingDecks[seat];
+  const cards = room ? room.dealtDeck ?? room.deck ?? [] : startingLibraryFor(critterId);
   const oneCost = cards.filter((id) => CARDS[id].cost === 1).length;
   return `<section class="deck-builder" aria-labelledby="deck-title">
     <div class="section-heading"><h2 id="deck-title">${escape(critter.name)}’s starting deck</h2><span class="muted">${knownCards.size} / ${cardLibrary.length} library cards unlocked</span></div>
-    <p class="muted">${cards.length} dealt cards · ${oneCost} cost 1 energy. Your starting cards are locked.</p>
+    <p class="muted">${cards.length + (critter.signatureCopies ?? 2)} cards including signatures · ${oneCost} library cards cost 1 energy.</p>
     <p class="deck-signature"><strong>${escape(signature.name)} × ${critter.signatureCopies ?? 2}</strong> · ${signature.cost} energy · ${escape(signature.description)}</p>
     <div class="deck-slots">${cards.map((id) => {
       const card = CARDS[id];
@@ -297,6 +297,14 @@ function deckBuilder(seat, critterId, room) {
     </details>
     ${room && !room.deck ? `<div class="turn-actions">${button('Confirm deck', 'ready', { style: 'primary', disabled: ui.pending || (Object.hasOwn(COUSINS, critterId) && !room.companions[seat]) })}</div>` : ''}
   </section>`;
+}
+
+function soloGoalsPanel() {
+  return `<details class="solo-goals" data-view-state="solo-goals">
+    <summary>Solo trail goals · Best: ${soloProgress.bestLevel}/${TRAIL.length} levels</summary>
+    <ul>${soloGoals(soloProgress).map(({ label, complete }) =>
+      `<li><strong>${complete ? 'Complete' : 'Open'}</strong> · ${escape(label)}</li>`).join('')}</ul>
+  </details>`;
 }
 
 function lobby() {
@@ -317,7 +325,7 @@ function lobby() {
       ${corrupt ? `<div class="save-panel"><p>This saved game could not be loaded.</p>${button('Clear saved game', 'clear-save')}</div>` : ''}
       ${modes}
     </div>
-  </section>`;
+  </section>${soloGoalsPanel()}`;
   const picks = room ? room.picks : ui.picks;
   const seat = room?.seat ?? ui.pickSeat;
   const companions = room?.companions ?? ui.companions;
@@ -330,6 +338,7 @@ function lobby() {
     <div class="lobby-panel setup-screen">
       <h1>${ui.mode === 'online' && !room ? 'Multiplayer' : 'Choose your character'}</h1>
       ${modes}
+      ${ui.mode === 'solo' ? soloGoalsPanel() : ''}
       ${ui.mode === 'online' && !room ? `
         <div class="form-row">
           ${button('Create room', 'create', { style: 'primary', disabled: ui.pending })}
@@ -537,7 +546,11 @@ function conclusion(state) {
     ${recruitment()}
     ${cardReveal(ui.newCards)}
     <p class="collection-status"><strong>${collectionCount()} / ${Object.keys(CRITTER_UNLOCKS).length}</strong> creatures recruited</p>
-    ${button('Back to title', 'home', { style: 'primary' })}
+    ${state.players.length === 1 ? soloGoalsPanel() : ''}
+    <div class="turn-actions">
+      ${state.players.length === 1 ? button('Run again with this team', 'solo-rematch', { style: 'primary' }) : ''}
+      ${button('Back to title', 'home', { style: state.players.length === 1 ? 'secondary' : 'primary' })}
+    </div>
   </section>`;
 }
 
@@ -717,6 +730,13 @@ function acceptState(state, previous) {
   if (state?.encounter !== previous?.encounter) ui.newCards = [];
   unlockRecruits(state);
   unlockCards(state);
+  if (state?.players.length === 1 && !ui.room) {
+    const next = updateSoloProgress(soloProgress, state);
+    if (next.bestLevel !== soloProgress.bestLevel || next.bestTrials !== soloProgress.bestTrials) {
+      soloProgress = next;
+      writeStorage(localStorage, soloProgressKey, next);
+    }
+  }
 }
 
 function attachRoom(room) {
@@ -804,12 +824,11 @@ function dispatch(action) {
   render();
 }
 
-function home(mode = 'local', showSetup = mode === 'online') {
+function home(mode = 'local', showSetup = mode === 'online', rematch) {
   const leavingRun = Boolean(ui.run || ui.room?.state);
   if (leavingRun) {
-    ui.picks = [null, null];
-    ui.startingDecks = [null, null];
-    ui.companions = [null, null];
+    ui.picks = [rematch?.critterId ?? null, null];
+    ui.companions = [rematch?.companionId ?? null, null];
     ui.pickSeat = 0;
   }
   ui.stopWatching?.();
@@ -966,6 +985,9 @@ document.addEventListener('click', async (event) => {
     render();
     return;
   }
+  if (action === 'solo-rematch' && state?.players.length === 1 && ['victory', 'defeat'].includes(state.phase)) {
+    return home('solo', true, state.players[0]);
+  }
   if (action === 'home' && state && !['victory', 'defeat'].includes(state.phase) && !confirm('Leave this run and return to the title screen?')) return;
   if (['home', 'local', 'solo', 'leave-queue'].includes(action)) {
     const mode = action === 'solo' ? 'solo' : action === 'leave-queue' ? 'online' : 'local';
@@ -990,8 +1012,7 @@ document.addEventListener('click', async (event) => {
   if (action === 'filter') ui.filter = id;
   if (action === 'create') return runRemote(async () => attachRoom(await createRoom()));
   if (action === 'pick') {
-    if (ui.room) return dispatch({ type: 'select', critterId: id, unlocked: [...knownCards] });
-    ui.startingDecks[seat] ??= newStartingDeck();
+    if (ui.room) return dispatch({ type: 'select', critterId: id });
     ui.picks[seat] = id;
     ui.companions[seat] = null;
   }
@@ -1004,7 +1025,7 @@ document.addEventListener('click', async (event) => {
     startMusic(state);
     if (ui.room) return dispatch({ type: 'start' });
     ui.savedRunOrigin = null;
-    ui.run = createRun(ui.mode === 'solo' ? ui.picks.slice(0, 1) : ui.picks, Date.now(), ui.mode === 'solo' ? ui.startingDecks.slice(0, 1) : ui.startingDecks, ui.mode === 'solo' ? ui.companions.slice(0, 1) : ui.companions);
+    ui.run = createRun(ui.mode === 'solo' ? ui.picks.slice(0, 1) : ui.picks, Date.now(), undefined, ui.mode === 'solo' ? ui.companions.slice(0, 1) : ui.companions);
     acceptState(ui.run, null);
   }
   if (action === 'route') return dispatch({ type: 'route', player: 0, routeId: id });
