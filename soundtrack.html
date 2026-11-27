@@ -21,18 +21,27 @@
     dd { margin: .45rem 0 0; }
     small { display: block; color: #c2d19a; font-weight: 500; }
     audio { width: 100%; display: block; }
+    audio[hidden] { display: none; }
+    audio[data-playlist-player] { outline: 2px solid #c2d19a; border-radius: 2rem; }
+    .soundtrack-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem; }
     .download { display: inline-block; margin-top: .55rem; padding: .35rem .65rem; border: 1px solid #849779; border-radius: .35rem; color: #f0e9ce; text-decoration: none; }
+    button.download { cursor: pointer; font: inherit; }
     .download:hover, .download:focus-visible { background: #294033; text-decoration: underline; }
-    .download-all { margin-top: 0; background: #c2d19a; border-color: #c2d19a; color: #14231c; font-weight: 700; }
-    .download-all:hover, .download-all:focus-visible { background: #d8e6af; }
+    .download-all, #play-all { margin-top: 0; }
+    #play-all { background: #c2d19a; border-color: #c2d19a; color: #14231c; font-weight: 700; }
+    #play-all:hover, #play-all:focus-visible { background: #d8e6af; }
   </style>
 </head>
 <body>
   <main>
     <a class="back" href="./">Back to Crittercards</a>
     <h1>Crittercards Soundtrack</h1>
-    <p>Press play on any track to loop it until you pause or pick another.</p>
-    <a class="download download-all" href="assets/crittercards-soundtrack.zip" download>Download all six tracks (ZIP)</a>
+    <p>Play one track on repeat, or play all six in order and start again.</p>
+    <div class="soundtrack-actions">
+      <button class="download" id="play-all" type="button">Play all</button>
+      <a class="download download-all" href="assets/crittercards-soundtrack.zip" download>Download all six tracks (ZIP)</a>
+    </div>
+    <div id="playlist-status" role="status"></div>
     <section>
       <h2>Act 1 · The Hollow Trail</h2>
       <dl>
@@ -68,9 +77,59 @@
     </section>
   </main>
   <script>
-    const players = document.querySelectorAll('audio');
+    const players = [...document.querySelectorAll('audio')];
+    const playAll = document.querySelector('#play-all');
+    const status = document.querySelector('#playlist-status');
+    const playlistPlayer = document.createElement('audio');
+    playlistPlayer.controls = true;
+    playlistPlayer.dataset.playlistPlayer = '';
+    let playlistIndex = null;
+
+    function stopPlaylist() {
+      if (playlistIndex === null) return;
+      players[playlistIndex].hidden = false;
+      playlistIndex = null;
+      playlistPlayer.pause();
+      playlistPlayer.remove();
+      playAll.textContent = 'Play all';
+      status.textContent = '';
+    }
+
+    function playTrack(index) {
+      if (playlistIndex !== null) players[playlistIndex].hidden = false;
+      playlistIndex = index;
+      const track = players[index];
+      const labelId = track.getAttribute('aria-labelledby');
+      const label = document.getElementById(labelId);
+      track.before(playlistPlayer);
+      track.hidden = true;
+      playlistPlayer.setAttribute('aria-labelledby', labelId);
+      playlistPlayer.src = track.src;
+      playAll.textContent = 'Stop playlist';
+      const title = label.lastChild.textContent.trim();
+      status.textContent = `Playlist · ${index + 1} of ${players.length} · ${title}`;
+      playlistPlayer.play().catch((error) => {
+        if (error.name === 'AbortError' || playlistIndex !== index) return;
+        stopPlaylist();
+        status.textContent = 'Playback could not start. Press Play all to try again.';
+      });
+    }
+
+    playAll.addEventListener('click', () => {
+      if (playlistIndex === null) playTrack(0);
+      else stopPlaylist();
+    });
+
+    playlistPlayer.addEventListener('play', () => {
+      for (const player of players) player.pause();
+    });
+    playlistPlayer.addEventListener('ended', () => {
+      if (playlistIndex !== null) playTrack((playlistIndex + 1) % players.length);
+    });
+
     for (const player of players) {
       player.addEventListener('play', () => {
+        stopPlaylist();
         for (const other of players) {
           if (other !== player) other.pause();
         }

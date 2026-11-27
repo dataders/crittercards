@@ -795,6 +795,7 @@ document.addEventListener('click', async (event) => {
   const seat = Number(control.dataset.seat);
   const index = Number(control.dataset.index);
   const state = ui.room ? ui.room.state : ui.run;
+  if (action === 'open-soundtrack') { soundtrack.pause(); return; }
   if (action === 'music') {
     musicEnabled = soundtrack.paused;
     writeStorage(localStorage, musicKey, musicEnabled);
