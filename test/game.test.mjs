@@ -32,6 +32,40 @@ test('solo defeat stops the enemy turn after the last familiar falls', () => {
   assert.deepEqual(combat, before);
 });
 
+test('Venom Ward protects both witches and Poison ticks before the rival acts', () => {
+  const player = 0;
+  const combat = applyAction(createRun(['hudson', 'quinn'], 1), { type: 'route', player, routeId: 'steady' });
+  const cardIndex = combat.players[player].hand.indexOf('shieldWall');
+  assert.ok(cardIndex >= 0);
+  const warded = applyAction(combat, { type: 'play', player, cardIndex, target: 0 });
+  assert.deepEqual(warded.players.map(({ block }) => block), [6, 5]);
+  assert.equal(warded.enemies[0].poison, 3);
+  const handoff = applyAction(warded, { type: 'endTurn', player });
+  assert.equal(handoff.enemies[0].hp, warded.enemies[0].hp);
+  const nextRound = applyAction(handoff, { type: 'endTurn', player: 1 });
+  assert.equal(nextRound.enemies[0].hp, warded.enemies[0].hp - 3);
+  assert.equal(nextRound.enemies[0].poison, 2);
+});
+
+test('lethal Poison bypasses Block and ends the encounter before a rival can attack', () => {
+  const combat = applyAction(createRun(['hudson'], 2), { type: 'route', player: 0, routeId: 'steady' });
+  const [rival, defeated] = combat.enemies;
+  Object.assign(rival, { hp: 3, poison: 3, block: 10, vulnerable: 1 });
+  Object.assign(defeated, { hp: 0, intent: null });
+  assert.equal(rival.intent.type, 'attack');
+
+  const reward = applyAction(combat, { type: 'endTurn', player: 0 });
+
+  assert.equal(reward.phase, 'reward');
+  assert.equal(reward.round, combat.round);
+  assert.equal(reward.players[0].hp, combat.players[0].hp);
+  assert.equal(reward.gold, combat.gold + rival.gold);
+  assert.equal(reward.enemies[0].hp, 0);
+  assert.equal(reward.enemies[0].block, 10);
+  assert.equal(reward.enemies[0].vulnerable, 1);
+  assert.equal(reward.enemies[0].intent, null);
+});
+
 test('a seeded solo replay clears 20 levels and defeats the Ash Regent', () => {
   const fixture = new URL('./fixtures/solo-campaign.json', import.meta.url);
   const { setup, actions } = JSON.parse(readFileSync(fixture, 'utf8'));

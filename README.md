@@ -10,12 +10,12 @@ Run `node server.mjs` with Node 22 or newer, then open [localhost:4173](http://l
 - **Share a screen.** Pick a character and build a deck for each player, then choose **Begin the trail**. Take turns using the same controls. One person can also play both hands.
 - **Play with a room code.** Open the game in two browser tabs or on two devices that can reach the same server. The host creates a room, the guest joins by code, and each player picks a character and confirms a deck. For devices on the same trusted network, start with `HOST=0.0.0.0 node server.mjs` and use the host machine’s LAN address on both devices.
 
-The four cousins are playable from the start.
+The four cousins are playable from the start. Hudson practices poison magic, while Quinn, Alba, and Tito practice different kinds of necromancy.
 
-- **Hudson · Tank · 48 HP.** Shield Wall protects him and his partner.
-- **Quinn · Witch · 30 HP.** Witch’s Hex makes a rival Vulnerable and Frail.
-- **Alba · Bard · 32 HP.** Cutting Chorus sings one damaging note per energy spent.
-- **Tito · Witch · 35 HP.** His Secret Star spell spends 3 energy to deal 22 base damage through Block.
+- **Hudson · Poison Witch · 45 HP.** Venom Ward shields the team and applies 3 Poison to a rival. Poison takes HP before the rival acts and then drops by 1.
+- **Quinn · Bone Witch · 34 HP.** Bone Hex conjures a skeletal ward that makes a rival Vulnerable and Frail.
+- **Alba · Spirit-Song Witch · 32 HP.** Spirit Chorus calls a spirit to strike for every energy spent. Extra spirits move to the next rival.
+- **Tito · Star-Spirit Witch · 35 HP.** His Secret Star summons a ghost that deals 22 base damage through Block for 3 energy.
 
 Ember the fox and Pip the hare are available from the start, too. Recruit Bramble the badger and Latch the raccoon at your first win. The collection shows requirements for all 30 species, and your browser remembers your recruits across runs. Each animal has a signature card, a role, and its own starting health. Level-up perks include attack damage, health, starting Block, extra cards, starting energy, and healing.
 

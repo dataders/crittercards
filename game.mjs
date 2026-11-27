@@ -1,8 +1,8 @@
 export const COUSINS = {
-  hudson: { id: 'hudson', name: 'Hudson', role: 'Tank', maxHp: 45, type: 'stone', signature: 'shieldWall' },
-  quinn: { id: 'quinn', name: 'Quinn', role: 'Witch', maxHp: 34, type: 'ember', signature: 'witchHex' },
-  alba: { id: 'alba', name: 'Alba', role: 'Bard', maxHp: 32, type: 'grove', signature: 'cuttingChorus' },
-  tita: { id: 'tita', name: 'Tito', role: 'Witch', maxHp: 35, type: 'tide', signature: 'secretStar' },
+  hudson: { id: 'hudson', name: 'Hudson', role: 'Poison Witch', maxHp: 45, type: 'stone', signature: 'shieldWall' },
+  quinn: { id: 'quinn', name: 'Quinn', role: 'Bone Witch', maxHp: 34, type: 'ember', signature: 'witchHex' },
+  alba: { id: 'alba', name: 'Alba', role: 'Spirit-Song Witch', maxHp: 32, type: 'grove', signature: 'cuttingChorus' },
+  tita: { id: 'tita', name: 'Tito', role: 'Star-Spirit Witch', maxHp: 35, type: 'tide', signature: 'secretStar' },
 };
 
 export const CRITTERS = {
@@ -18,9 +18,9 @@ export const CRITTERS = {
 };
 
 export const CARDS = {
-  shieldWall: { id: 'shieldWall', name: 'Shield Wall', cost: 1, type: 'support', target: 'none', block: 8, allyBlock: 7 },
-  witchHex: { id: 'witchHex', name: 'Witch’s Hex', cost: 1, type: 'support', target: 'enemy', vulnerable: 1, frail: 1, block: 4 },
-  cuttingChorus: { id: 'cuttingChorus', name: 'Cutting Chorus', cost: 'X', type: 'attack', target: 'enemy', damage: 5 },
+  shieldWall: { id: 'shieldWall', name: 'Venom Ward', cost: 1, type: 'support', target: 'enemy', block: 6, allyBlock: 5, poison: 3 },
+  witchHex: { id: 'witchHex', name: 'Bone Hex', cost: 1, type: 'support', target: 'enemy', vulnerable: 1, frail: 1, block: 4 },
+  cuttingChorus: { id: 'cuttingChorus', name: 'Spirit Chorus', cost: 'X', type: 'attack', target: 'enemy', damage: 5 },
   secretStar: { id: 'secretStar', name: 'Secret Star', cost: 3, type: 'attack', target: 'enemy', damage: 22, pierce: true },
   strike: { id: 'strike', name: 'Claw Strike', cost: 1, type: 'attack', target: 'enemy', damage: 6 },
   guard: { id: 'guard', name: 'Hold Fast', cost: 1, type: 'skill', target: 'none', block: 8 },
@@ -235,6 +235,7 @@ function describeCard(card, attackBonus) {
   if (card.woundedBonus) sentences.push(`Deal +${card.woundedBonus} damage to targets at half HP or below.`);
   if (card.block) sentences.push(`Gain ${card.block} Block.`);
   if (card.allyBlock) sentences.push(`Give your ally ${card.allyBlock} Block.`);
+  if (card.poison) sentences.push(`Apply ${card.poison} Poison. Before acting, the rival loses 1 HP per Poison stack, then loses 1 stack.`);
   if (card.heal) sentences.push(`Heal for ${card.heal}.`);
   if (card.allyHeal) sentences.push(`Heal your ally for ${card.allyHeal}.`);
   if (card.allyEnergy) sentences.push(`Your ally gains ${card.allyEnergy} energy next turn.`);
@@ -677,6 +678,13 @@ function playCard(state, action) {
   if (state.enemies.every((rival) => rival.hp === 0)) finishEncounter(state);
 }
 
+function defeatEnemy(state, enemy) {
+  enemy.intent = null;
+  if (enemy.poison) enemy.poison = 0;
+  state.gold += enemy.gold;
+  log(state, `${enemy.name} falls. The pack earns ${enemy.gold} gold.`);
+}
+
 function resolveCardEffect(state, player, card, target) {
   const ally = state.players[1 - player.id] ?? player;
   const enemy = state.enemies[target];
@@ -709,12 +717,9 @@ function resolveCardEffect(state, player, card, target) {
         }
       }
     }
-    if (enemy.hp === 0) {
-      enemy.intent = null;
-      state.gold += enemy.gold;
-      log(state, `${enemy.name} falls. The pack earns ${enemy.gold} gold.`);
-    }
+    if (enemy.hp === 0) defeatEnemy(state, enemy);
   }
+  if (card.poison && enemy.hp > 0) enemy.poison = (enemy.poison ?? 0) + card.poison;
   if (card.mark && enemy.hp > 0) enemy.marked = true;
   if (card.strength) player.strength += card.strength;
   if (card.vulnerable && enemy.hp > 0) enemy.vulnerable += card.vulnerable;
@@ -749,6 +754,16 @@ function finishTurn(state, playerIndex) {
 
   for (const enemy of state.enemies) {
     if (enemy.hp === 0) continue;
+    if (enemy.poison > 0) {
+      const damage = Math.min(enemy.hp, enemy.poison);
+      enemy.hp -= damage;
+      enemy.poison -= 1;
+      log(state, `${enemy.name} loses ${damage} HP to Poison.`);
+      if (enemy.hp === 0) {
+        defeatEnemy(state, enemy);
+        continue;
+      }
+    }
     enemy.block = 0;
     const { type, amount, target } = enemy.intent;
     if (type === 'guard') {
@@ -782,6 +797,10 @@ function finishTurn(state, playerIndex) {
       log(state, 'The woods claim the pack.');
       return;
     }
+  }
+  if (state.enemies.every((enemy) => enemy.hp === 0)) {
+    finishEncounter(state);
+    return;
   }
   state.round += 1;
   beginRound(state);

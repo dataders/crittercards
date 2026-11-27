@@ -262,7 +262,7 @@ function lobby() {
       <div class="hero-copy">
         <p class="eyebrow">A co-op deckbuilding roguelite</p>
         <h1>The Hollow Trail</h1>
-        <p>Four cousins enter the Hollow Trail. Play as a cousin or a woodland familiar and face the rival trainers.</p>
+        <p>Four cousin witches enter the Hollow Trail. Wield poison or necromancy, or choose a woodland familiar.</p>
       </div>
     </section>
     <div class="lobby-panel">
@@ -310,11 +310,12 @@ function health(unit) {
 }
 
 function effects(unit) {
-  if (!unit.strength && !unit.vulnerable && !unit.frail) return '';
+  if (!unit.strength && !unit.vulnerable && !unit.frail && !unit.poison) return '';
   return `<span class="unit-effects">
     ${unit.strength ? `<span class="effect-strength" title="Adds damage to every attack this fight">Strength +${unit.strength}</span>` : ''}
     ${unit.vulnerable ? `<span class="effect-vulnerable" title="Takes 50% more damage from the next hit per stack">Vulnerable ${unit.vulnerable}</span>` : ''}
     ${unit.frail ? `<span class="effect-frail" title="Gains ${FRAIL_BLOCK_LOSS} less Block the next time it gains Block per stack">Frail ${unit.frail}</span>` : ''}
+    ${unit.poison ? `<span class="effect-poison" title="Loses this much HP before acting, then Poison drops by 1">Poison ${unit.poison}</span>` : ''}
   </span>`;
 }
 
@@ -335,6 +336,7 @@ function allyCard(player, seat, state) {
 
 function intentLabel(intent, enemy, state) {
   if (!intent) return '';
+  if (enemy.poison >= enemy.hp) return 'Poison will defeat this rival before it acts';
   if (intent.type === 'guard') return `Gains ${Math.max(0, intent.amount - (enemy.frail ? FRAIL_BLOCK_LOSS : 0))} Block`;
   if (intent.type === 'shadowWard') return `Shadow Ward · gains ${Math.max(0, intent.amount - (enemy.frail ? FRAIL_BLOCK_LOSS : 0))} Block and heals 8`;
   const damage = (seat) => Math.floor(intent.amount * matchup(CRITTERS[enemy.animal].type, CRITTERS[state.players[seat].critterId].type));

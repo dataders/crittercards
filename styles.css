@@ -504,6 +504,7 @@ button.route-option:hover:not(:disabled) { border-color: var(--lime); background
 .effect-strength { background: #debc71; color: #302208; }
 .effect-vulnerable { background: #efaf9f; color: #441b16; }
 .effect-frail { background: #c9badd; color: #302040; }
+.effect-poison { background: #c5df9b; color: #263c1c; }
 .hand-counts { display: flex; flex-wrap: wrap; gap: .35rem .65rem; color: var(--muted); font-size: .82rem; }
 .selected-target { color: var(--lime); font-weight: 600; }
 .secondary-hand { margin-top: .35rem; padding-top: .65rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .84rem; }
