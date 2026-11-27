@@ -21,7 +21,7 @@ export const CARDS = {
   shieldWall: { id: 'shieldWall', name: 'Venom Ward', cost: 1, type: 'support', target: 'enemy', block: 6, allyBlock: 5, poison: 3 },
   witchHex: { id: 'witchHex', name: 'Bone Hex', cost: 1, type: 'support', target: 'enemy', vulnerable: 1, frail: 1, block: 4 },
   cuttingChorus: { id: 'cuttingChorus', name: 'Spirit Chorus', cost: 'X', type: 'attack', target: 'enemy', damage: 5 },
-  secretStar: { id: 'secretStar', name: 'Secret Star', cost: 3, type: 'attack', target: 'enemy', damage: 22, pierce: true, drawRound: 2, exhaust: true },
+  secretStar: { id: 'secretStar', name: 'Secret Star', cost: 3, type: 'attack', target: 'enemy', damage: 22, pierce: true, openingChance: 0.25, drawRound: 2, exhaust: true },
   strike: { id: 'strike', name: 'Claw Strike', cost: 1, type: 'attack', target: 'enemy', damage: 6 },
   guard: { id: 'guard', name: 'Hold Fast', cost: 1, type: 'skill', target: 'none', block: 8 },
   cover: { id: 'cover', name: 'Stand Together', cost: 1, type: 'support', target: 'none', block: 4, allyBlock: 7 },
@@ -246,7 +246,7 @@ function describeCard(card, attackBonus) {
   if (card.strength) sentences.push(`Gain ${card.strength} Strength, adding that much damage to attacks this fight.`);
   if (card.vulnerable) sentences.push('Apply Vulnerable. The next hit against this target deals 50% more damage.');
   if (card.frail) sentences.push(`Apply Frail. The target gains ${FRAIL_BLOCK_LOSS} less Block the next time it gains Block.`);
-  if (card.drawRound) sentences.push(`First drawn in round ${card.drawRound}.`);
+  if (card.openingChance) sentences.push(`${card.openingChance * 100}% chance to draw in round 1. Otherwise, draw in round ${card.drawRound}.`);
   if (card.exhaust) sentences.push('After casting, remove this card for the rest of the fight.');
   const effect = sentences.join(' ');
   if (card.cost !== 'X') return effect;
@@ -694,11 +694,15 @@ function log(state, message) {
   state.log.length = Math.min(state.log.length, 12);
 }
 
+function nextRandom(state) {
+  state.seed = (Math.imul(1664525, state.seed) + 1013904223) >>> 0;
+  return state.seed / 2 ** 32;
+}
+
 function shuffle(state, values) {
   const shuffled = [...values];
   for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    state.seed = (Math.imul(1664525, state.seed) + 1013904223) >>> 0;
-    const swap = Math.floor((state.seed / 2 ** 32) * (index + 1));
+    const swap = Math.floor(nextRandom(state) * (index + 1));
     [shuffled[index], shuffled[swap]] = [shuffled[swap], shuffled[index]];
   }
   return shuffled;
@@ -706,7 +710,11 @@ function shuffle(state, values) {
 
 function drawHand(state, player) {
   const handSize = HAND_SIZE + player.perks.filter((perk) => perk === 'keen').length;
-  const scheduled = player.drawPile.findIndex((id) => CARDS[id].drawRound === state.round);
+  const scheduled = player.drawPile.findIndex((id) => {
+    const card = CARDS[id];
+    return card.drawRound === state.round ||
+      (state.round === 1 && card.openingChance && nextRandom(state) < card.openingChance);
+  });
   if (scheduled !== -1) player.hand.push(player.drawPile.splice(scheduled, 1)[0]);
   while (player.hand.length < handSize) {
     if (player.drawPile.length === 0) {

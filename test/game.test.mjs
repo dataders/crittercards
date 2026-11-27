@@ -32,32 +32,34 @@ test('solo defeat stops the enemy turn after the last familiar falls', () => {
   assert.deepEqual(combat, before);
 });
 
-test('Tito has the lowest starting HP and draws one powerful Secret Star in round two', () => {
+test('Tito can draw one powerful Secret Star in the opening hand or on round two', () => {
   assert.ok(Object.values(CRITTERS).every(({ id, maxHp }) => id === 'tita' || maxHp > CRITTERS.tita.maxHp));
-  for (const seed of [1, 42]) {
+  for (const [seed, drawsEarly] of [[1, false], [2, true]]) {
     const run = createRun(['tita'], seed);
     assert.equal(run.players[0].hp, 24);
     assert.equal(run.players[0].deck.filter((id) => id === 'secretStar').length, 1);
     const opening = applyAction(run, { type: 'route', player: 0, routeId: 'steady' });
     assert.equal(opening.players[0].hand.length, 4);
-    assert.ok(!opening.players[0].hand.includes('secretStar'));
-    const secondRound = applyAction(opening, { type: 'endTurn', player: 0 });
-    const cardIndex = secondRound.players[0].hand.indexOf('secretStar');
+    assert.equal(opening.players[0].hand.includes('secretStar'), drawsEarly);
+    const spellRound = drawsEarly ? opening : applyAction(opening, { type: 'endTurn', player: 0 });
+    const cardIndex = spellRound.players[0].hand.indexOf('secretStar');
     assert.ok(cardIndex >= 0);
     // A guarded Tide rival lets us measure the full neutral damage.
-    Object.assign(secondRound.enemies[1], { hp: 30, maxHp: 30, block: 30 });
-    const cast = applyAction(secondRound, { type: 'play', player: 0, cardIndex, target: 1 });
+    Object.assign(spellRound.enemies[1], { hp: 30, maxHp: 30, block: 30 });
+    const cast = applyAction(spellRound, { type: 'play', player: 0, cardIndex, target: 1 });
     assert.equal(cast.enemies[1].hp, 8);
     assert.equal(cast.enemies[1].block, 30);
     assert.equal(cast.players[0].energy, 0);
     const { hand, drawPile, discardPile, deck } = cast.players[0];
     assert.ok(![...hand, ...drawPile, ...discardPile].includes('secretStar'));
     assert.ok(deck.includes('secretStar'));
+    const nextRound = applyAction(cast, { type: 'endTurn', player: 0 });
+    assert.ok(!nextRound.players[0].hand.includes('secretStar'));
   }
 });
 
 test('a saved co-op deck with two Secret Stars keeps its upgraded copy and draws through a large deck', () => {
-  const run = createRun(['hudson', 'tita'], 40);
+  const run = createRun(['hudson', 'tita'], 1);
   const tito = run.players[1];
   tito.deck.push('secretStar+', ...Array(12).fill('strike'));
   const opening = applyAction(run, { type: 'route', player: 0, routeId: 'steady' });

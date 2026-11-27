@@ -19,7 +19,7 @@ Each cousin chooses a recruited woodland animal as a companion. Select a rival a
 - **Hudson · Poison Witch · 45 HP.** Venom Ward shields the team and applies 3 Poison to a rival. Poison takes HP before the rival acts and then drops by 1.
 - **Quinn · Bone Witch · 34 HP.** Bone Hex conjures a skeletal ward that makes a rival Vulnerable and Frail.
 - **Alba · Spirit-Song Witch · 32 HP.** Spirit Chorus calls a spirit to strike for every energy spent. Extra spirits move to the next rival.
-- **Tito · Star-Spirit Witch · 24 HP.** The youngest cousin starts with the lowest health. His Secret Star summons a ghost that deals 22 base damage through Block for 3 energy. Tito draws it in round two and can cast it once per fight.
+- **Tito · Star-Spirit Witch · 24 HP.** The youngest cousin starts with the lowest health. His Secret Star summons a ghost that deals 22 base damage through Block for 3 energy. It has a 25% chance to appear in his opening hand. Otherwise, Tito draws it in round two. He can cast it once per fight.
 
 Ember the fox and Pip the hare are available from the start, too. Recruit Bramble the badger and Latch the raccoon at your first win. The collection shows requirements for all 30 species, and your browser remembers your recruits across runs. Each animal has a signature card, a role, and its own starting health. Level-up perks include attack damage, health, starting Block, extra cards, starting energy, and healing.
 
