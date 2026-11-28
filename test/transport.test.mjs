@@ -7,7 +7,7 @@ const state = {
   rewardOptions: [['mark'], ['guard']], rewardPicks: [null, null],
 };
 const pick = { cardId: 'mark', perkId: 'bark', hardPerkId: 'bondWard' };
-const incomingPick = { cardId: 'guard', perkId: 'shell', hardPerkId: 'trailWard' };
+const incomingPick = { cardId: 'guard', perkId: 'shell', hardPerkId: 'trailWard', recruitId: 'badger' };
 
 for (const [description, changed, retry] of [
   ['the other seat claims the same reward', { rewardPicks: [pick, null] }, true],

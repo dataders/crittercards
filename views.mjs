@@ -1,5 +1,5 @@
 import { ACTS, CARDS, CRITTERS, COMPANION_ABILITIES, FLOODGATE_RECOIL_PERCENT, FRAIL_BLOCK_LOSS, HARD_PERKS, LEVELS_PER_ACT, TRAIL, TYPES, briarHealer, canAffordCard, canTakeTurn, freeMoveAnimal, getCardDescription, getCompanionDescription, getEncounter, levelXp, LEVEL_UP_XP, matchup, previewRoundDamage, trailPosition } from './game.mjs';
-import { COMBAT_TERMS, POTIONS, POTION_LIMIT } from './data.mjs';
+import { COMBAT_TERMS, MUTATIONS, POTIONS, POTION_LIMIT } from './data.mjs';
 
 export const playerName = (seat) => `Player ${seat + 1}`;
 export const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -8,8 +8,8 @@ export const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (char) 
 export const button = (label, action, { style = 'secondary', disabled = false, data = '' } = {}) =>
   `<button type="button" class="button button-${style}" data-do="${action}" ${data} ${disabled ? 'disabled' : ''}>${label}</button>`;
 
-export function art(animal, className, fallback = animal) {
-  return `<span class="${className}"><img src="assets/${escape(animal)}.webp" alt="" width="384" height="512" ${className === 'critter-art' ? 'loading="lazy"' : ''}><span class="art-fallback" hidden aria-hidden="true">${escape(fallback)}</span></span>`;
+export function art(animal, className, fallback = animal, mutation) {
+  return `<span class="${className}"${mutation ? ` data-mutation="${escape(mutation)}"` : ''}><img src="assets/${escape(animal)}.webp" alt="" width="384" height="512" ${className === 'critter-art' ? 'loading="lazy"' : ''}><span class="art-fallback" hidden aria-hidden="true">${escape(fallback)}</span></span>`;
 }
 
 export function levelMeter(state, seat, { showName = false } = {}) {
@@ -43,10 +43,10 @@ function effects(unit, scope, className = '') {
   </span>`;
 }
 
-function allyCard(player, seat, state) {
+function allyCard(player, seat, state, skin) {
   const critter = CRITTERS[player.critterId];
   return `<div class="unit-card ${canTakeTurn(state, seat) ? 'is-active' : ''} ${player.hp <= 0 ? 'is-defeated' : ''}">
-    ${art(critter.id, 'unit-art', critter.name)}
+    ${art(critter.id, 'unit-art', critter.name, skin)}
     <div class="unit-info">
       <span class="combat-label">${playerName(seat)} · Lv. ${player.level} · ${escape(TYPES[critter.type].name)}</span>
       <strong class="unit-name">${escape(critter.name)}</strong>
@@ -108,10 +108,10 @@ function rivalIntent(enemy, index, state) {
   return `<button class="intent rival-intent" type="button" data-intent="${escape(intent.type)}" aria-label="${escape(enemy.name)}’s intent: ${escape(summary)}" aria-describedby="${descriptionId}"><strong>Next move</strong><span>${escape(summary)}</span></button><span id="${descriptionId}" hidden>${escape(description)}</span>`;
 }
 
-function clearingFamiliar(player, active) {
+function clearingFamiliar(player, active, skin) {
   const { id, name } = CRITTERS[player.critterId];
   return `<div class="clearing-familiar${active ? ' is-active' : ''}${player.hp ? '' : ' is-defeated'}" data-familiar-seat="${player.id}" data-critter="${escape(id)}">
-    ${art(id, 'clearing-portrait', name)}
+    ${art(id, 'clearing-portrait', name, skin)}
     <div class="clearing-nameplate"><strong class="unit-name">${escape(name)}</strong><span class="rival-vitals">${health(player)}</span></div>
   </div>`;
 }
@@ -122,11 +122,11 @@ function enemyCard(enemy, index, state, seat) {
   const bondTarget = state.players.length > 1 && state.lastTarget === index && state.lastAttacker !== seat && !state.bondTriggered;
   const defenderType = CRITTERS[enemy.animal].type;
   return `<div class="rival-entry"><button class="unit-card rival-card ${alive ? '' : 'is-defeated'}" type="button" data-do="target" data-index="${index}" data-rival-type="${escape(defenderType)}" tabindex="-1" ${alive ? '' : 'disabled'}>
-    ${art(enemy.animal, 'unit-art')}
+    ${art(enemy.animal, 'unit-art', enemy.name, enemy.mutation)}
     <span class="unit-info">
       ${alive ? '<span class="rival-aim-label" aria-hidden="true"></span>' : '<span class="target-label">Defeated</span>'}
       <strong class="unit-name">${escape(enemy.name)}</strong>
-      <span class="combat-label">${escape(TYPES[defenderType].name)}${bondTarget ? ' · Bond Strike ready' : enemy.boss ? (state.encounter === TRAIL.length - 1 ? ' · Final boss' : ' · Act boss') : ''}</span>
+      <span class="combat-label">${escape(TYPES[defenderType].name)}${enemy.mutation ? ` · <b class="rival-mutation" data-mutation="${escape(enemy.mutation)}">${escape(MUTATIONS[enemy.mutation]?.name)}</b>` : ''}${bondTarget ? ' · Bond Strike ready' : enemy.boss ? (state.encounter === TRAIL.length - 1 ? ' · Final boss' : ' · Act boss') : ''}</span>
       <span class="rival-vitals">${health(enemy)}</span>
       ${alive ? `<span class="rival-matchup" hidden></span>
         ${healer ? `<span class="type-matchup">Briar Ward from ${escape(healer.name)} · half attack damage</span>` : ''}
@@ -225,7 +225,7 @@ function combatPile(kind, label, count, seat) {
   </button>`;
 }
 
-function companionControl(player, canAct, pending, solo) {
+function companionControl(player, canAct, pending, solo, skin) {
   const animal = player.companionId;
   if (!animal) return '';
   const ability = COMPANION_ABILITIES[animal];
@@ -233,7 +233,7 @@ function companionControl(player, canAct, pending, solo) {
   return `<button type="button" class="button battle-companion" data-do="companion-strike" data-seat="${player.id}" data-companion-seat="${player.id}"
       data-aim="${escape(ability.name)}" data-move-type="${escape(CRITTERS[animal].type)}" aria-pressed="false" aria-describedby="companion-effect attack-instructions"
       ${!canAct || pending || player.companionUsed ? 'disabled' : ''}>
-    ${art(animal, 'battle-companion-art')}
+    ${art(animal, 'battle-companion-art', animal, skin)}
     <span class="battle-companion-copy"><strong>${escape(CRITTERS[animal].name)} · ${escape(ability.name)}</strong>
       <span id="companion-effect">${escape(getCompanionDescription(animal, player.attackBonus + player.strength, { compact: true, solo }))}</span>
     </span>
@@ -261,7 +261,7 @@ function roundDamage(state, seat) {
     <span id="round-damage-help" hidden>Forecast if no more moves are played this round. ${escape(breakdown)}</span>`;
 }
 
-export function combat(state, { room, pending, newCards }) {
+export function combat(state, { room, pending, newCards, skinFor = () => null }) {
   const seat = combatSeat(state, room);
   const player = state.players[seat];
   const waitingSeat = room && room.seat !== seat ? room.seat : null;
@@ -292,11 +292,11 @@ export function combat(state, { room, pending, newCards }) {
       <details class="combat-info" data-view-state="combat-info"><summary class="button button-ghost">Battle info</summary>
         <div class="combat-info-panel">
           ${progress(state)}${purse(state)}
-          <h2>Your team</h2><div class="combat-row">${state.players.map((unit, index) => allyCard(unit, index, state)).join('')}</div>
+          <h2>Your team</h2><div class="combat-row">${state.players.map((unit, index) => allyCard(unit, index, state, skinFor(unit.critterId, index))).join('')}</div>
           ${state.players.map((unit) => {
             const animal = freeMoveAnimal(state, unit);
             if (!animal) return '';
-            return `<div class="companion-battle">${art(animal, 'companion-art')}<span><strong>${escape(CRITTERS[animal].name)} · ${escape(COMPANION_ABILITIES[animal].name)}</strong><br>${escape(TYPES[CRITTERS[animal].type].name)} type · ${escape(getCompanionDescription(animal, unit.attackBonus + unit.strength, { solo: state.players.length === 1 }))}</span></div>`;
+            return `<div class="companion-battle">${art(animal, 'companion-art', animal, skinFor(animal, unit.id))}<span><strong>${escape(CRITTERS[animal].name)} · ${escape(COMPANION_ABILITIES[animal].name)}</strong><br>${escape(TYPES[CRITTERS[animal].type].name)} type · ${escape(getCompanionDescription(animal, unit.attackBonus + unit.strength, { solo: state.players.length === 1 }))}</span></div>`;
           }).join('')}
           ${other?.hp > 0 && other.hand.length ? `<p class="secondary-hand"><strong>${escape(CRITTERS[other.critterId].name)}’s hand</strong> · ${other.hand.map((id) => escape(CARDS[id].name)).join(', ')}</p>` : ''}
           <details class="combat-terms" data-view-state="combat-terms"><summary>Combat terms</summary><dl>${Object.values(COMBAT_TERMS).map(({ label, text }) =>
@@ -309,13 +309,13 @@ export function combat(state, { room, pending, newCards }) {
       <section class="battlefield" aria-label="Battlefield">
         ${cardReveal(newCards)}
         <div class="rival-heading"><h2>Rivals</h2><p id="aim-status" role="status"></p></div>
-        <section class="clearing-party" aria-label="Your party">${state.players.map((member, index) => clearingFamiliar(member, index === seat)).join('')}</section>
+        <section class="clearing-party" aria-label="Your party">${state.players.map((member, index) => clearingFamiliar(member, index === seat, skinFor(member.critterId, index))).join('')}</section>
         <div class="combat-row clearing-rivals">${state.enemies.map((enemy, index) => enemyCard(enemy, index, state, seat)).join('')}</div>
       </section>
     </div>
     <section class="hand-panel" aria-labelledby="turn-heading" tabindex="-1">
         <div class="hand-heading" data-block-drop data-hud-seat="${seat}" data-critter="${escape(player.critterId)}">
-          ${art(player.critterId, 'hud-portrait', name)}
+          ${art(player.critterId, 'hud-portrait', name, skinFor(player.critterId, seat))}
           <div class="hud-familiar"><h2 id="turn-heading">${escape(turnTitle)}</h2><span class="turn-details">${player.hp}/${player.maxHp} HP${player.block ? ` · ${player.block} Block` : ''}</span>${levelMeter(state, seat)}</div>
           <span class="turn-energy" role="group" aria-label="${player.energy} energy available${player.reserveEnergy ? `, plus ${player.reserveEnergy} next turn` : ''}">
             <span class="combat-metric-label" aria-hidden="true">Energy</span>
@@ -327,7 +327,7 @@ export function combat(state, { room, pending, newCards }) {
           </div>
           ${button('End turn', 'end', { style: 'primary', disabled: !enabled, data: `data-seat="${seat}" title="${escape(next)}"` })}
         </div>
-        ${companionControl(companionOwner, canAct, pending, state.players.length === 1)}
+        ${companionControl(companionOwner, canAct, pending, state.players.length === 1, skinFor(companionOwner.companionId, companionOwner.id))}
         <div class="hud-instructions">${roundDamage(state, waitingSeat ?? seat)}<p class="turn-instructions" id="attack-instructions">${!canAct ? waitingInstructions : [canAim && 'Choose a move, then a rival.', canTap && 'Play Block directly.'].filter(Boolean).join(' ') || 'End your turn when you’re ready.'}</p>${button('Cancel aim', 'cancel-aim', { data: 'hidden' })}</div>
         ${effects(player, 'active', 'hand-effects')}
         <div class="card-table">

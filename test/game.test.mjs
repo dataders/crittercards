@@ -445,7 +445,7 @@ test('act trials change enemy tactics and offer their featured card to both play
       const rallying = trial.enemies.findIndex(({ intent }) => intent.type === 'rally');
       trial = finishRound(trial);
       assert.equal(trial.enemies[rallying].strength, 8);
-      assert.equal(trial.enemies[rallying].intent.amount, 28);
+      assert.equal(trial.enemies[rallying].intent.amount, 29);
     }
 
     // Finish with both seats still present so each can claim their own reward.

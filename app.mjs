@@ -2,9 +2,9 @@ import {
   COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, startingLibraryFor,
   ENCOUNTERS, TRAIL, MERCHANTS, CAMPS, LEVEL_PERKS, HARD_PERKS, TYPES, COMPANION_ABILITIES, getCompanionDescription, createRun, applyAction, getEncounter,
   ACTS, LEVELS_PER_ACT, trailPosition, hardPerkOptions, getEnemyIntent, rivalHealth, previewMoveDamage,
-  getCardDescription, canRemoveRunCard, canTakeTurn, grantsLevelUp, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE,
+  getCardDescription, canRemoveRunCard, canTakeTurn, grantsLevelUp, recruitOptions, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE,
 } from './game.mjs';
-import { deckLibrary, describeCard, POTIONS, POTION_LIMIT, potionPrice, isEliteRoute, CAMP_HEAL_PERCENT, levelPerkChoices } from './data.mjs';
+import { deckLibrary, describeCard, POTIONS, POTION_LIMIT, potionPrice, isEliteRoute, CAMP_HEAL_PERCENT, levelPerkChoices, meetsRecruitmentRequirement, MUTATIONS, recruitKey, parseRecruitKey } from './data.mjs';
 import { soloGoals, soloProgressKey, updateSoloProgress } from './solo-progress.mjs';
 import { createCombatInput, createEffectHelp } from './combat-input.mjs';
 import { captureCombatActors, freshCombatEffects, playCombatEffects } from './combat-effects.mjs';
@@ -20,6 +20,9 @@ const runTools = document.querySelector('#run-tools');
 const soundtrack = document.querySelector('#soundtrack');
 const musicToggle = document.querySelector('#music-toggle');
 const rules = document.querySelector('#rules');
+const mutationIndex = document.querySelector('#mutation-index');
+const mutationIndexSummary = mutationIndex.querySelector('#mutation-index-summary');
+const mutationIndexAnimals = mutationIndex.querySelector('#mutation-index-animals');
 const shareDialog = document.querySelector('#share-dialog');
 const battleDeck = document.querySelector('#battle-deck');
 const battleDeckTitle = battleDeck.querySelector('#battle-deck-title');
@@ -43,6 +46,7 @@ const pictureZoom = tutorialPicture.querySelector('[data-picture-zoom]');
 let pictureTrigger;
 const invite = new URL(location.href).searchParams.get('room')?.toUpperCase() ?? '';
 const collectionKey = 'crittercards.collection.v1';
+const mutationCollectionKey = 'crittercards.mutations.v1';
 const progressKey = 'crittercards.progress.v1';
 const cardKey = 'crittercards.cards.v1';
 const roomKey = 'crittercards.room.v1';
@@ -52,7 +56,7 @@ const areaScenes = [
   { id: 'canopy', image: 'drowned-canopy-battle.webp', alt: 'A flooded willow woodland with lights reflected in the water', description: 'Cross the flooded willows where lanterns glow beneath the mist.' },
   { id: 'court', image: 'thorn-court-battle.webp', alt: 'A ruined forest court surrounded by blackthorn', description: 'Enter a ruined court where blackthorn curls around the stones.' },
 ];
-const starterIds = [...Object.keys(COUSINS), 'fox', 'hare'];
+const starterIds = [...Object.keys(COUSINS), ...Object.keys(CRITTER_UNLOCKS).filter((id) => CRITTER_UNLOCKS[id].kind === 'starter')];
 const { startMusic, syncSoundtrack, toggle: toggleMusic, pause: pauseMusic } = createAudioController(soundtrack, musicToggle, localStorage);
 
 function showTutorialStep(index) {
@@ -145,6 +149,31 @@ function waitingForPublicMatch(room) {
 
 const savedCollection = readStorage(localStorage, collectionKey, []);
 const collection = new Set([...starterIds, ...(Array.isArray(savedCollection) ? savedCollection : [])]);
+const mutationData = readStorage(localStorage, mutationCollectionKey, {});
+const variants = new Set(Array.isArray(mutationData.variants) ? mutationData.variants.filter((key) => parseRecruitKey(key)?.mutation) : []);
+const skinPreferences = new Map(Object.entries(mutationData.equipped ?? {}));
+
+function equippedSkin(id) {
+  const skin = skinPreferences.get(id);
+  return skin && variants.has(recruitKey(id, skin)) ? skin : null;
+}
+
+function refreshMutationCollection() {
+  const saved = readStorage(localStorage, mutationCollectionKey, {});
+  if (Array.isArray(saved.variants)) {
+    for (const key of saved.variants) {
+      if (parseRecruitKey(key)?.mutation) variants.add(key);
+    }
+  }
+  for (const [id, skin] of Object.entries(saved.equipped ?? {})) skinPreferences.set(id, skin);
+}
+
+function saveMutationCollection() {
+  writeStorage(localStorage, mutationCollectionKey, {
+    variants: [...variants], equipped: Object.fromEntries(skinPreferences),
+  });
+}
+
 const cardLibrary = [...deckLibrary];
 const savedCards = readStorage(localStorage, cardKey, []);
 const earnedCards = Object.values(CARD_UNLOCKS).filter((group) =>
@@ -164,6 +193,7 @@ const ui = {
   perks: [null, null],
   hardPerks: [null, null],
   drafts: [null, null],
+  recruitSelections: [null, null],
   recruits: [],
   newCards: [],
   pending: false,
@@ -171,33 +201,63 @@ const ui = {
   notice: '',
   joinCode: invite,
   savedRunOrigin: null,
+  savedRecruitSeat: null,
 };
 let presentedBattle;
 let lastCardPlay;
 let battleCardsView;
 let runToolsMarkup;
 let soloProgress = updateSoloProgress(readStorage(localStorage, soloProgressKey, null));
+let recruitProgress = readStorage(localStorage, progressKey, { runs: {}, wins: 0, clears: 0, encounter: 0 });
+
+function ownsRecruitsFor(seat) {
+  const owner = ui.room?.seat ?? ui.savedRecruitSeat;
+  return owner == null || owner === seat;
+}
+
+function updateRecruitProgress(state) {
+  if (!state) return;
+  const current = readStorage(localStorage, progressKey, recruitProgress);
+  const runKey = `${ui.room?.code ?? ui.savedRunOrigin ?? 'local'}:${state.runId}`;
+  const completed = state.phase === 'victory' ? TRAIL.length : state.encounter + Number(state.phase === 'reward');
+  const previous = current.runs[runKey] ?? 0;
+  if (completed > previous) {
+    current.runs[runKey] = completed;
+    current.wins += completed - previous;
+    current.clears += Math.floor(completed / LEVELS_PER_ACT) - Math.floor(previous / LEVELS_PER_ACT);
+    current.encounter = Math.max(current.encounter, completed >= LEVELS_PER_ACT ? 3 : Math.min(completed, 2));
+    writeStorage(localStorage, progressKey, current);
+  }
+  recruitProgress = current;
+}
 
 function unlockRecruits(state) {
-  if (!state) return;
-  const recorded = readStorage(localStorage, progressKey, { runs: {}, wins: 0, clears: 0, encounter: 0 });
-  const runKey = `${ui.room?.code ?? ui.savedRunOrigin ?? 'local'}:${state.runId}`;
-  const beats = state.phase === 'victory' ? TRAIL.length :
-    state.encounter + Number(state.phase === 'reward');
-  const previous = recorded.runs[runKey] ?? 0;
-  if (beats <= previous) return;
-  recorded.runs[runKey] = beats;
-  recorded.wins += beats - previous;
-  recorded.clears += Math.floor(beats / LEVELS_PER_ACT) - Math.floor(previous / LEVELS_PER_ACT);
-  recorded.encounter = Math.max(recorded.encounter, beats >= LEVELS_PER_ACT ? 3 : Math.min(beats, 2));
-  for (const [id, { kind, count }] of Object.entries(CRITTER_UNLOCKS)) {
-    if (recorded[kind] >= count && !collection.has(id)) {
-      collection.add(id);
-      ui.recruits.push(id);
+  let changed = false;
+  const newSkins = new Set();
+  const earnedSkins = state?.recruitedMutations ?? [];
+  if (earnedSkins.some((keys, seat) => ownsRecruitsFor(seat) && keys.some((key) => !variants.has(key)))) refreshMutationCollection();
+  for (const [seat, keys] of earnedSkins.entries()) {
+    if (!ownsRecruitsFor(seat)) continue;
+    for (const key of keys) {
+      const recruit = parseRecruitKey(key);
+      if (!recruit?.mutation || variants.has(key)) continue;
+      variants.add(key);
+      newSkins.add(recruit.id);
+      if (!skinPreferences.has(recruit.id)) skinPreferences.set(recruit.id, recruit.mutation);
+      ui.recruits.push(key);
     }
   }
-  writeStorage(localStorage, progressKey, recorded);
-  writeStorage(localStorage, collectionKey, [...collection]);
+  if (newSkins.size) saveMutationCollection();
+  for (const [seat, ids] of (state?.recruited ?? []).entries()) {
+    if (!ownsRecruitsFor(seat)) continue;
+    for (const id of ids) {
+      if (collection.has(id)) continue;
+      collection.add(id);
+      if (!newSkins.has(id)) ui.recruits.push(id);
+      changed = true;
+    }
+  }
+  if (changed) writeStorage(localStorage, collectionKey, [...collection]);
 }
 
 function unlockCards(state) {
@@ -216,9 +276,14 @@ function unlockCards(state) {
 
 function recruitmentHint(id) {
   const { kind, count } = CRITTER_UNLOCKS[id];
-  if (kind === 'encounter') return ['Beat the first trainer', 'Beat the second trainer', 'Clear Act 1'][count - 1];
-  if (kind === 'clears') return `Defeat ${count} act bosses`;
-  return `Win ${count} fights total`;
+  const animal = CRITTERS[id].animal;
+  if (meetsRecruitmentRequirement(id, recruitProgress)) return `Defeat a ${animal} and recruit it`;
+  if (kind === 'encounter') {
+    const milestone = ['Win your first fight', 'Win your second fight', 'Clear Act I'][count - 1];
+    return `${milestone}, then recruit a defeated ${animal}`;
+  }
+  const progress = recruitProgress[kind] ?? 0;
+  return `${progress}/${count} ${kind === 'clears' ? 'boss wins' : 'fight wins'} · Then recruit a defeated ${animal}`;
 }
 
 function collectionCount() {
@@ -231,7 +296,7 @@ function rosterCard(critter, seat, picks, enabled) {
   const subtitle = [critter.animal, critter.role, `${TYPES[critter.type].name} type`, `${critter.maxHp} HP`].filter(Boolean).join(' · ');
   const signature = CARDS[critter.signature];
   return `<button class="critter-card ${locked ? 'is-locked' : ''}" type="button" data-do="pick" data-seat="${seat}" data-id="${escape(critter.id)}" aria-pressed="${selected}" ${!enabled || locked ? 'disabled' : ''}>
-    ${art(critter.id, 'critter-art', critter.name)}
+    ${art(critter.id, 'critter-art', critter.name, equippedSkin(critter.id))}
     <span class="critter-info">
       <strong class="critter-name">${escape(critter.name)}</strong>
       <span class="critter-role">${escape(subtitle)}</span>
@@ -264,7 +329,7 @@ function roster(seat, picks, enabled, companions, setupActions, soloDeck) {
         <label class="field">Animal companion<select data-companion-seat="${seat}" ${!enabled ? 'disabled' : ''}><option value="" disabled ${companions[seat] ? '' : 'selected'}>Choose an animal</option>
           ${Object.values(CRITTERS).filter((animal) => animal.animal && (collection.has(animal.id) || companions[seat] === animal.id)).map((animal) => `<option value="${animal.id}" ${companions[seat] === animal.id ? 'selected' : ''}>${escape(animal.name)} · ${escape(TYPES[animal.type].name)} · ${escape(COMPANION_ABILITIES[animal.id].name)}</option>`).join('')}
         </select></label>
-        ${companions[seat] ? `<div class="companion-preview">${art(companions[seat], 'companion-art')}<span><strong>${escape(CRITTERS[companions[seat]].name)} · ${escape(COMPANION_ABILITIES[companions[seat]].name)}</strong><br>${escape(TYPES[CRITTERS[companions[seat]].type].name)} type · free once per round<br>${escape(getCompanionDescription(companions[seat], 0, { solo }))}</span></div>` : ''}
+        ${companions[seat] ? `<div class="companion-preview">${art(companions[seat], 'companion-art', companions[seat], equippedSkin(companions[seat]))}<span><strong>${escape(CRITTERS[companions[seat]].name)} · ${escape(COMPANION_ABILITIES[companions[seat]].name)}</strong><br>${escape(TYPES[CRITTERS[companions[seat]].type].name)} type · free once per round<br>${escape(getCompanionDescription(companions[seat], 0, { solo }))}</span></div>` : ''}
       </section>` : ''}
       <h3>Recruited familiars</h3>
       <div class="critter-grid">${creatures.filter(({ id }) => collection.has(id)).map(animalCard).join('')}</div>
@@ -393,6 +458,7 @@ function trailMap(state) {
       ${purse(state)}
     </section>
     ${progress(state)}
+    ${recruitment()}
     <section class="trail-xp" aria-label="Level progress">
       <div class="trail-xp-meters">${state.players.map((_, seat) => levelMeter(state, seat, { showName: state.players.length > 1 })).join('')}</div>
       <p>Defeat rivals in an Elite fight to earn XP.</p>
@@ -536,14 +602,92 @@ function merchantShop(state) {
     </section>`;
 }
 
+function recruitName(key) {
+  const { id, mutation } = parseRecruitKey(key) ?? {};
+  return id ? [MUTATIONS[mutation]?.name, CRITTERS[id].name].filter(Boolean).join(' ') : '';
+}
+
+function renderMutationIndex() {
+  refreshMutationCollection();
+  const animals = Object.keys(CRITTER_UNLOCKS);
+  const kinds = Object.keys(MUTATIONS);
+  mutationIndexSummary.textContent = `${variants.size} / ${animals.length * kinds.length} mutations collected. Recruit a mutated rival to unlock its skin. Gold is 1 in 30, Diamond 1 in 50, and Rainbow 1 in 100 per rival.`;
+  mutationIndexAnimals.innerHTML = animals.map((id) => {
+    const { name, animal } = CRITTERS[id];
+    const owned = kinds.filter((kind) => variants.has(recruitKey(id, kind)));
+    const skin = equippedSkin(id);
+    return `<article class="mutation-entry">
+      ${art(id, 'mutation-portrait', name, skin)}
+      <div><h3>${escape(name)} <small>${escape(animal)}</small></h3>
+        <div class="mutation-chips">${kinds.map((kind) => {
+          const unlocked = owned.includes(kind);
+          const { name: label, odds } = MUTATIONS[kind];
+          return `<span class="mutation-chip" data-mutation="${kind}" data-collected="${unlocked}" title="1 in ${odds} per rival" aria-label="${label}, ${unlocked ? 'collected' : 'missing'}, 1 in ${odds} per rival">${label}${unlocked ? ' ✓' : ''}</span>`;
+        }).join('')}</div>
+        ${owned.length ? `<label class="mutation-skin-label">Skin <select data-skin-animal="${id}" aria-label="Skin for ${escape(name)}">
+          <option value="standard">Standard</option>${owned.map((kind) => `<option value="${kind}" ${skin === kind ? 'selected' : ''}>${MUTATIONS[kind].name}</option>`).join('')}
+        </select></label>` : ''}
+      </div>
+    </article>`;
+  }).join('');
+}
+
+mutationIndex.addEventListener('change', (event) => {
+  const { skinAnimal: id } = event.target.dataset;
+  const skin = event.target.value;
+  refreshMutationCollection();
+  if (!Object.hasOwn(CRITTER_UNLOCKS, id) || (skin !== 'standard' && !variants.has(recruitKey(id, skin)))) return;
+  skinPreferences.set(id, skin);
+  saveMutationCollection();
+  const portrait = event.target.closest('.mutation-entry').querySelector('.mutation-portrait');
+  if (skin === 'standard') delete portrait.dataset.mutation;
+  else portrait.dataset.mutation = skin;
+  render();
+});
+
 function recruitment() {
   if (!ui.recruits.length) return '';
-  return `<div class="recruit-banner" role="status"><strong>New recruits</strong><span>${ui.recruits.map((id) => `${escape(CRITTERS[id].name)} the ${escape(CRITTERS[id].animal)}`).join(' · ')}. Play them on your next trail.</span></div>`;
+  return `<div class="recruit-banner" role="status"><strong>New recruits</strong><span>${ui.recruits.map((key) => escape(recruitName(key))).join(' · ')}. Play them on your next trail.${ui.recruits.some((key) => parseRecruitKey(key)?.mutation) ? ' New skin available in the Mutation index.' : ''}</span></div>`;
 }
 
 function rewardPerkChoices(perks, action, seat, selected, enabled) {
   return perks.map((perk) =>
     `<button type="button" class="level-choice" data-do="${action}" data-seat="${seat}" data-id="${escape(perk.id)}" aria-pressed="${selected === perk.id}" ${enabled && !perk.maxed ? '' : 'disabled'}><strong>${escape(perk.name)}${perk.maxed ? ' · Maxed' : ''}</strong><span>${escape(action === 'perk' ? perk.description.replace(/ for the rest of this run.$/, '.') : perk.description)}${perk.limit ? ` Limit ${perk.limit} per run.` : ''}</span></button>`).join('');
+}
+
+function availableRecruits(state, seat) {
+  if (!ownsRecruitsFor(seat)) return [];
+  return recruitOptions(state, seat).filter((key) => {
+    const { id, mutation } = parseRecruitKey(key);
+    return meetsRecruitmentRequirement(id, recruitProgress) && (mutation ? !variants.has(key) : !collection.has(id));
+  });
+}
+
+function recruitReward(state, seat, options, enabled) {
+  if (!options.length) return '';
+  return `<div class="recruit-reward">
+    <h3 class="reward-label">Recruit an animal <small>(optional)</small></h3>
+    <p>Choose one for future runs. Play as the animal or bring it as a cousin’s companion.</p>
+    <div class="recruit-options">
+      ${options.map((key) => {
+        const { id, mutation } = parseRecruitKey(key);
+        const animal = CRITTERS[id];
+        const signature = CARDS[animal.signature];
+        const selected = ui.recruitSelections[seat] === key;
+        return `<button type="button" class="recruit-option" data-do="recruit-pick" data-seat="${seat}" data-id="${escape(key)}"
+            aria-pressed="${selected}" ${enabled ? '' : 'disabled'}>
+          ${art(id, 'recruit-portrait', animal.name, mutation)}
+          <span class="recruit-details">
+            <strong>${selected ? '✓ ' : ''}${escape(recruitName(key))} · ${escape(animal.role)}</strong>
+            ${mutation ? `<span class="mutation-chip" data-mutation="${mutation}" data-collected="true">Unlocks ${MUTATIONS[mutation].name} skin</span>` : ''}
+            <span>${escape(animal.animal)} · ${escape(TYPES[animal.type].name)} · ${animal.maxHp} HP</span>
+            <span><b>Signature</b> ${escape(signature.name)} · ${escape(describeCard(signature, 0, { compact: true, solo: state.players.length === 1 }))}</span>
+            <span><b>Companion</b> ${escape(COMPANION_ABILITIES[id].name)} · ${escape(getCompanionDescription(id, 0, { compact: true, solo: state.players.length === 1 }))}</span>
+          </span>
+        </button>`;
+      }).join('')}
+    </div>
+  </div>`;
 }
 
 function rewards(state) {
@@ -571,15 +715,18 @@ function rewards(state) {
         const perks = levelUp ? levelPerkChoices(player) : [];
         const perk = perks.find(({ id, maxed }) => id === ui.perks[seat] && !maxed);
         const card = ui.drafts[seat];
+        const recruits = availableRecruits(state, seat);
+        const recruit = recruits.includes(ui.recruitSelections[seat]) ? recruitName(ui.recruitSelections[seat]) : null;
         const ready = (!levelUp || perk) && card && (!state.hardReward || ui.hardPerks[seat]);
         const selection = card === 'skip' ? 'No new card' : CARDS[card]?.name;
         const guidance = !enabled ? 'Waiting for this player to choose.' : levelUp && !perk ? 'Choose a perk to level up.' :
           !card ? 'Choose a card or select Skip card.' : !ready ? 'Choose a Hard route perk.' :
-          solo ? [perk?.name, selection].filter(Boolean).join(' · ') : 'Ready to confirm.';
+          solo ? [perk?.name, selection, recruit && `Recruit ${recruit}`].filter(Boolean).join(' · ') : recruit ? `Ready to recruit ${recruit}.` : 'Ready to confirm.';
         return `<section>
           <div class="section-heading"><h2>${escape(critter.name)}${solo ? '' : ` · ${playerName(seat)}`}</h2><span class="muted">${saved ? 'Ready' : levelUp ? `Level ${player.level} → ${player.level + 1}` : ''}</span></div>
           ${levelMeter(state, seat)}
-          ${saved ? `<p>${savedCard ? `Learned ${escape(CARDS[savedCard].name)}` : 'Skipped the card'}${savedPerk ? ` and chose ${escape(LEVEL_PERKS[savedPerk]?.name)}` : ''}${savedHardPerk ? ` and ${escape(HARD_PERKS[savedHardPerk].name)}` : ''}.</p>` : `
+          ${saved ? `<p>${savedCard ? `Learned ${escape(CARDS[savedCard].name)}` : 'Skipped the card'}${savedPerk ? ` and chose ${escape(LEVEL_PERKS[savedPerk]?.name)}` : ''}${savedHardPerk ? ` and ${escape(HARD_PERKS[savedHardPerk].name)}` : ''}.${saved.recruitId ? ` Recruited ${escape(recruitName(recruitKey(saved.recruitId, saved.recruitMutation)))}.` : ''}</p>` : `
+            ${recruitReward(state, seat, recruits, enabled)}
             ${levelUp ? `<h3 class="reward-label">1. Choose a perk for this run</h3>
             <div class="level-options" aria-label="Level-up perk">${rewardPerkChoices(perks, 'perk', seat, ui.perks[seat], enabled)}</div>` : ''}
             <div class="reward-card-heading"><h3 class="reward-label">${levelUp ? '2. ' : ''}Take a card <small>(optional)</small></h3>
@@ -739,7 +886,7 @@ function render() {
   else delete document.body.dataset.battleArea;
   syncSoundtrack(state);
   const messages = `<div class="feedback" aria-live="polite">${ui.error ? `<p class="error-line" role="alert">${escape(ui.error)}</p>` : ''}${ui.notice ? `<p class="status-line">${escape(ui.notice)}</p>` : ''}</div>`;
-  const runScenes = { route: trailMap, camp: campScreen, shop: merchantShop, combat: (state) => combat(state, ui), reward: rewards, victory: conclusion, defeat: conclusion };
+  const runScenes = { route: trailMap, camp: campScreen, shop: merchantShop, combat: (state) => combat(state, { ...ui, skinFor: (id, seat) => !ui.room || ui.room.seat === seat ? equippedSkin(id) : null }), reward: rewards, victory: conclusion, defeat: conclusion };
   const scene = state ? runScenes[state.phase](state) : ui.reconnect
     ? `<section class="lobby-panel"><h1>Reconnect to room ${escape(ui.reconnect.code)}</h1><p>The room is not available yet. If the server restarted, Player 1 can restore it with their recovery code. Your seat is saved in this tab.</p><div class="turn-actions">${button('Retry connection', 'retry-room', { style: 'primary', disabled: ui.pending })}${button('Return to setup', 'forget-room', { disabled: ui.pending })}</div>${roomRecoveryForm()}</section>`
     : lobby();
@@ -802,10 +949,12 @@ function acceptState(state, previous) {
     ui.perks = [null, null];
     ui.hardPerks = [null, null];
     ui.drafts = [null, null];
+    ui.recruitSelections = [null, null];
     ui.recruits = [];
     ui.scrollToTop = true;
   }
   if (state?.encounter !== previous?.encounter) ui.newCards = [];
+  updateRecruitProgress(state);
   unlockRecruits(state);
   unlockCards(state);
   if (state?.players.length === 1 && !ui.room) {
@@ -823,6 +972,7 @@ function attachRoom(room) {
   ui.reconnect = null;
   ui.mode = 'online';
   ui.savedRunOrigin = null;
+  ui.savedRecruitSeat = null;
   let latestState = room.state;
   let deferredRender;
   writeStorage(sessionStorage, roomKey, { code: room.code, token: room.token });
@@ -927,7 +1077,7 @@ function home(mode = 'local', showSetup = mode === 'online', rematch) {
   }
   ui.stopWatching?.();
   writeStorage(sessionStorage, roomKey, null);
-  Object.assign(ui, { room: null, reconnect: null, run: null, mode, showSetup, recruits: [], newCards: [], notice: '', error: '', savedRunOrigin: null });
+  Object.assign(ui, { room: null, reconnect: null, run: null, mode, showSetup, recruits: [], newCards: [], notice: '', error: '', savedRunOrigin: null, savedRecruitSeat: null });
   const url = new URL(location.href);
   url.searchParams.delete('room');
   history.replaceState(null, '', url);
@@ -1031,6 +1181,7 @@ document.addEventListener('click', async (event) => {
   if (action === 'share-game') { openShare(); return; }
   if (action === 'invite' && ui.room) { openShare(ui.room.code); return; }
   if (action === 'rules') { openTutorial(); return; }
+  if (action === 'mutation-index') { renderMutationIndex(); mutationIndex.showModal(); return; }
   if (action === 'tutorial-close') { rules.close(); return; }
   if (action === 'tutorial-back') { showTutorialStep(tutorialStep - 1); tutorialNext.focus({ preventScroll: true }); return; }
   if (action === 'tutorial-next') {
@@ -1059,7 +1210,7 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'save') {
     try {
-      localStorage.setItem(saveKey, JSON.stringify({ version: 1, state, origin: ui.room?.code ?? ui.savedRunOrigin ?? 'local', perks: ui.perks, hardPerks: ui.hardPerks, drafts: ui.drafts }));
+      localStorage.setItem(saveKey, JSON.stringify({ version: 1, state, origin: ui.room?.code ?? ui.savedRunOrigin ?? 'local', perks: ui.perks, hardPerks: ui.hardPerks, drafts: ui.drafts, recruitSelections: ui.recruitSelections, recruitSeat: ui.room?.seat ?? ui.savedRecruitSeat }));
       ui.notice = 'Game saved. Open it with Continue saved game.';
       const menu = control.closest('.game-menu');
       if (menu) {
@@ -1092,6 +1243,8 @@ document.addEventListener('click', async (event) => {
     ui.run = saved.state;
     ui.mode = saved.state.players.length === 1 ? 'solo' : 'local';
     ui.savedRunOrigin = typeof saved.origin === 'string' ? saved.origin : 'local';
+    ui.savedRecruitSeat = saved.recruitSeat ?? null;
+    acceptState(ui.run, null);
     Object.assign(ui, savedRewardChoices(saved));
     ui.scrollToTop = true;
     ui.notice = 'Saved game loaded.';
@@ -1139,6 +1292,7 @@ document.addEventListener('click', async (event) => {
     startMusic(state);
     if (ui.room) return dispatch({ type: 'start' });
     ui.savedRunOrigin = null;
+    ui.savedRecruitSeat = null;
     ui.run = createRun(ui.mode === 'solo' ? ui.picks.slice(0, 1) : ui.picks, Date.now(), undefined, ui.mode === 'solo' ? ui.companions.slice(0, 1) : ui.companions);
     acceptState(ui.run, null);
   }
@@ -1160,10 +1314,18 @@ document.addEventListener('click', async (event) => {
   if (action === 'perk') ui.perks[seat] = id;
   if (action === 'hard-perk') ui.hardPerks[seat] = id;
   if (action === 'draft-pick') ui.drafts[seat] = id;
-  if (action === 'draft') return dispatch({
-    type: 'draft', player: seat, cardId: ui.drafts[seat] === 'skip' ? null : ui.drafts[seat],
-    perkId: ui.perks[seat], hardPerkId: ui.hardPerks[seat],
-  });
+  if (action === 'recruit-pick' && availableRecruits(state, seat).includes(id)) {
+    ui.recruitSelections[seat] = ui.recruitSelections[seat] === id ? null : id;
+  }
+  if (action === 'draft') {
+    const selected = ui.recruitSelections[seat];
+    const recruit = availableRecruits(state, seat).includes(selected) ? parseRecruitKey(selected) : null;
+    return dispatch({
+      type: 'draft', player: seat, cardId: ui.drafts[seat] === 'skip' ? null : ui.drafts[seat],
+      perkId: ui.perks[seat], hardPerkId: ui.hardPerks[seat],
+      recruitId: recruit?.id ?? null, recruitMutation: recruit?.mutation ?? null,
+    });
+  }
   render();
 });
 

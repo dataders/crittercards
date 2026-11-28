@@ -222,6 +222,8 @@ function animateActor(actor, target, pose, color, delay, companion) {
   let node = actor.image.parentElement;
   if (detached || companion) {
     const shell = overlay('combat-move-actor', actor, color);
+    const mutation = actor.image.parentElement?.dataset.mutation;
+    if (mutation) shell.dataset.mutation = mutation;
     const img = document.createElement('img');
     img.src = companion ? 'assets/' + companion + '.webp' : actor.image.currentSrc || actor.image.src;
     img.alt = '';

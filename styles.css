@@ -1650,3 +1650,98 @@ body:not([data-battle-area])::before {
 @media (max-width: 38rem) {
   .hand-panel:not(:has(.combat-hand .play-card:nth-of-type(3))) .hand-pagination { display: none; }
 }
+
+.recruit-reward {
+  display: grid;
+  gap: .38rem;
+  padding: .72rem;
+  border: 1px solid #8ca670;
+  border-radius: .65rem;
+  background: #1d3428;
+}
+.recruit-reward > p { margin: 0; color: #d9e5d3; font-size: .84rem; }
+.recruit-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: .45rem; }
+.recruit-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: .53rem;
+  min-height: 2.75rem;
+  padding: .55rem;
+  border: 1px solid #76968a;
+  border-radius: .45rem;
+  background: #16292b;
+  color: #f2f4e3;
+  text-align: start;
+}
+.recruit-option:hover:not(:disabled), .recruit-option[aria-pressed='true'] { border-color: #d6eb9d; background: #304c36; }
+.recruit-option[aria-pressed='true'] { box-shadow: inset 0 0 0 1px #d6eb9d; }
+.recruit-details { display: grid; align-content: start; gap: .22rem; font-size: .83rem; line-height: 1.22; }
+.recruit-details > strong { color: #e3efc5; font-size: .94rem; }
+.recruit-details > span:nth-child(2) { color: #bccfc9; font-size: .75rem; }
+.recruit-portrait { display: block; width: 2.65rem; height: 2.65rem; overflow: hidden; border-radius: .35rem; }
+.recruit-portrait img { width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
+
+[data-mutation='gold'] { --mutation-ink: #ffe09a; }
+[data-mutation='diamond'] { --mutation-ink: #bbf2ff; }
+[data-mutation='rainbow'] { --mutation-ink: #f2c9fc; }
+
+[data-mutation] > img { outline: 2px solid var(--mutation-ink); outline-offset: -2px; }
+[data-mutation='gold'] > img { filter: sepia(.78) saturate(1.7) brightness(1.12); }
+[data-mutation='diamond'] > img { filter: grayscale(.62) sepia(.32) hue-rotate(139deg) saturate(1.45) brightness(1.17); }
+[data-mutation='rainbow']:has(> img) { position: relative; }
+[data-mutation='rainbow']:has(> img)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(140deg, #ff4e64d4, #ffdb4dc7 25%, #71ffd0d9 49%, #5eafffd9 72%, #de86ffd4);
+  mix-blend-mode: screen;
+  opacity: .56;
+  pointer-events: none;
+}
+.combat-move-actor[data-mutation='rainbow']:has(> img) { position: fixed; }
+.rival-mutation { color: var(--mutation-ink); }
+
+#mutation-index { width: min(59rem, calc(100vw - 1rem)); }
+.mutation-index-content { display: grid; gap: .75rem; padding: clamp(.7rem, 3vw, 1.4rem); }
+.mutation-index-content > .section-heading, .mutation-index-content > p { margin: 0; }
+.mutation-index-animals { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: .45rem; }
+.mutation-entry {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: .45rem;
+  padding: .42rem;
+  border: 1px solid #527063;
+  border-radius: .4rem;
+  background: #172c24;
+}
+.mutation-entry h3 { margin: 0 0 .2rem; font-size: .98rem; }
+.mutation-entry h3 small { color: #c0d2c0; font-family: var(--label); }
+.mutation-portrait { width: 2.35rem; height: 2.35rem; display: block; overflow: hidden; border-radius: .28rem; }
+.mutation-portrait img { width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
+.mutation-chips { display: flex; align-items: center; flex-wrap: wrap; gap: .26rem; }
+.mutation-chip {
+  display: inline-flex;
+  width: fit-content;
+  padding: .11rem .28rem;
+  border: 1px solid #678177;
+  border-radius: .3rem;
+  color: #b4c1b7;
+  font: 700 .74rem/1.2 var(--label);
+}
+.mutation-chip[data-collected='true'] { border-color: var(--mutation-ink); color: var(--mutation-ink); background: #15211e; }
+.mutation-skin-label { display: flex; align-items: center; gap: .38rem; margin-top: .28rem; font-size: .8rem; }
+.mutation-skin-label select { min-height: 2.75rem; max-width: 100%; padding: .18rem .35rem; }
+
+[data-mutation='diamond']:has(> img) { position: relative; }
+[data-mutation='diamond']:has(> img)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(125deg, transparent 27%, #d4f8ff6b 29%, #d4f8ff2b 46%, transparent 48%),
+    linear-gradient(60deg, #87b3ff70 17%, transparent 19% 76%, #6fdef376 78%);
+  pointer-events: none;
+}
+.combat-move-actor[data-mutation='diamond']:has(> img) { position: fixed; }

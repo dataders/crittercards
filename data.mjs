@@ -258,6 +258,40 @@ for (const { id, name, role, maxHp, description, card, wins, clears } of WOODLAN
   CRITTER_UNLOCKS[id] = clears ? { kind: 'clears', count: clears } : { kind: 'wins', count: wins };
 }
 
+export const MUTATIONS = {
+  gold: { name: 'Gold', odds: 30 },
+  diamond: { name: 'Diamond', odds: 50 },
+  rainbow: { name: 'Rainbow', odds: 100 },
+};
+export const MUTATION_SLOTS = 300;
+
+export function mutationForSlot(slot) {
+  for (const [id, { odds }] of Object.entries(MUTATIONS)) {
+    const slots = MUTATION_SLOTS / odds;
+    if (slot < slots) return id;
+    slot -= slots;
+  }
+  return null;
+}
+
+export function recruitKey(id, mutation) {
+  return mutation ? id + ':' + mutation : id;
+}
+
+export function parseRecruitKey(value) {
+  if (typeof value !== 'string') return null;
+  const [id, mutation = null, extra] = value.split(':');
+  if (extra !== undefined || !Object.hasOwn(CRITTER_UNLOCKS, id)) return null;
+  if (mutation !== null && !Object.hasOwn(MUTATIONS, mutation)) return null;
+  if (!mutation && CRITTER_UNLOCKS[id].kind === 'starter') return null;
+  return { id, mutation };
+}
+
+export function meetsRecruitmentRequirement(id, progress) {
+  const gate = CRITTER_UNLOCKS[id];
+  return gate?.kind === 'starter' || Boolean(gate && (progress[gate.kind] ?? 0) >= gate.count);
+}
+
 export const TYPES = {
   ember: { name: 'Ember', strongAgainst: 'grove' },
   grove: { name: 'Grove', strongAgainst: 'tide' },
@@ -927,7 +961,8 @@ export function getEncounter(state) {
 }
 
 export function rivalHealth(enemy, encounter, playerCount) {
-  return Math.ceil(enemy.hp * (playerCount === 1 ? 0.7 : encounter.coOpHealth ?? 1));
+  const health = Math.ceil(enemy.hp * (playerCount === 1 ? 0.7 : encounter.coOpHealth ?? 1));
+  return health + Math.ceil(health / 20);
 }
 
 export function briarHealer(state, rival) {

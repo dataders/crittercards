@@ -1,10 +1,12 @@
-import { CAMPS, CARDS, COUSINS, CRITTERS, HARD_PERKS, LEVEL_PERKS, MERCHANTS, TRAIL, POTIONS, POTION_LIMIT } from './data.mjs';
+import { CAMPS, CARDS, COUSINS, CRITTERS, CRITTER_UNLOCKS, HARD_PERKS, LEVEL_PERKS, MERCHANTS, TRAIL, MUTATIONS, parseRecruitKey, POTIONS, POTION_LIMIT } from './data.mjs';
 
 const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isCount = (value) => Number.isSafeInteger(value) && value >= 0;
 const isList = (value, isItem) => Array.isArray(value) && value.every(isItem);
 const isCard = (id) => typeof id === 'string' && Object.hasOwn(CARDS, id);
 const isCritter = (id) => typeof id === 'string' && Object.hasOwn(CRITTERS, id);
+const isMutation = (id) => typeof id === 'string' && Object.hasOwn(MUTATIONS, id);
+const isRecruit = (id) => typeof id === 'string' && Object.hasOwn(CRITTER_UNLOCKS, id) && CRITTER_UNLOCKS[id].kind !== 'starter';
 const isHardPerk = (id) => typeof id === 'string' && Object.hasOwn(HARD_PERKS, id);
 const isLevelPerk = (id) => typeof id === 'string' && Object.hasOwn(LEVEL_PERKS, id);
 const isPotion = (id) => typeof id === 'string' && Object.hasOwn(POTIONS, id);
@@ -72,12 +74,13 @@ function validIntent(intent, seats) {
 function validEnemy(enemy, seats) {
   return validVitals(enemy) && typeof enemy.name === 'string' &&
     isCritter(enemy.animal) && Boolean(CRITTERS[enemy.animal].animal) &&
-    isCount(enemy.gold) && validIntent(enemy.intent, seats);
+    isCount(enemy.gold) && (enemy.mutation === undefined || isMutation(enemy.mutation)) && validIntent(enemy.intent, seats);
 }
 
 function validRewardPick(pick) {
   return pick === null || isCard(pick) || (isRecord(pick) && (pick.cardId === null || isCard(pick.cardId)) &&
-    (pick.perkId === null || isLevelPerk(pick.perkId)) && (pick.hardPerkId == null || isHardPerk(pick.hardPerkId)));
+    (pick.perkId === null || isLevelPerk(pick.perkId)) && (pick.hardPerkId == null || isHardPerk(pick.hardPerkId)) && (pick.recruitMutation === undefined ? pick.recruitId === undefined || isRecruit(pick.recruitId) :
+      isMutation(pick.recruitMutation) && typeof pick.recruitId === 'string' && Boolean(CRITTERS[pick.recruitId]?.animal)));
 }
 
 export function validateSavedRun(saved) {
@@ -87,6 +90,13 @@ export function validateSavedRun(saved) {
   if (!savePhases.has(phase) || !isCount(encounter) || encounter >= TRAIL.length ||
       !Array.isArray(players) || ![1, 2].includes(players.length) || !players.every(validPlayer) ||
       !players.some(({ hp }) => hp > 0) ||
+      (saved.recruitSeat != null && (!isCount(saved.recruitSeat) || saved.recruitSeat >= players.length)) ||
+      (state.recruited !== undefined && (!isList(state.recruited, (ids) =>
+        isList(ids, isRecruit) && ids.length === new Set(ids).size) || state.recruited.length !== players.length)) ||
+      (state.recruitedMutations !== undefined && (!isList(state.recruitedMutations, (keys) =>
+        isList(keys, (key) => Boolean(parseRecruitKey(key)?.mutation)) && keys.length === new Set(keys).size) ||
+        state.recruitedMutations.length !== players.length)) ||
+      (state.mutationSeed !== undefined && (!isCount(state.mutationSeed) || state.mutationSeed > 0xffffffff)) ||
       !isCount(state.gold) || !isCount(state.seed) || (state.runId !== undefined && typeof state.runId !== 'string') ||
       !isList(state.log, (line) => typeof line === 'string') ||
       !isList(state.visitedShops, (level) => isCount(level) && Object.hasOwn(MERCHANTS, level)) ||
@@ -126,6 +136,7 @@ export function savedRewardChoices(saved) {
     perks: forSeats(saved.perks, isLevelPerk),
     hardPerks: forSeats(saved.hardPerks, isHardPerk),
     drafts: forSeats(saved.drafts, (card) => card === 'skip' || isCard(card)),
+    recruitSelections: forSeats(saved.recruitSelections, (key) => Boolean(parseRecruitKey(key))),
   };
 }
 
@@ -138,5 +149,6 @@ export function advanceSoloRewardSave(storage, previous, next, origin) {
   if (next.phase === 'victory') return writeStorage(storage, saveKey, null);
   return writeStorage(storage, saveKey, {
     ...saved, state: next, perks: [null, null], hardPerks: [null, null], drafts: [null, null],
+    ...(saved.recruitSelections ? { recruitSelections: [null, null] } : {}),
   });
 }

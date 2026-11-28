@@ -92,12 +92,12 @@ test('claiming the level 2 reward leads to the tuned Shadow Grove encounter', ()
 
   const standard = route(next);
   assert.deepEqual(standard.enemies.map(({ hp, intent }) => [hp, intent.type]), [
-    [21, 'attack'], [17, 'attack'],
+    [23, 'attack'], [18, 'attack'],
   ]);
   const hard = route(next, 'perilous');
   assert.deepEqual(hard.enemies.map(({ name, hp, intent }) => [name, hp, intent.type, intent.amount]), [
-    ['Echo of the Wilds', 28, 'frailAttack', 11],
-    ['Cairn of the Wilds', 23, 'attack', 8],
+    ['Echo of the Wilds', 30, 'frailAttack', 12],
+    ['Cairn of the Wilds', 25, 'attack', 9],
   ]);
 });
 

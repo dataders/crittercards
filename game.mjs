@@ -1,5 +1,6 @@
 import {
-  COUSINS, CRITTERS, CARDS, matchup, FRAIL_BLOCK_LOSS, POTIONS, POTION_LIMIT, potionPrice, BUILD_PATHS, isEliteRoute, CAMP_HEAL_PERCENT,
+  COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, matchup, FRAIL_BLOCK_LOSS, POTIONS, POTION_LIMIT, potionPrice, BUILD_PATHS, isEliteRoute, CAMP_HEAL_PERCENT,
+  MUTATIONS, MUTATION_SLOTS, mutationForSlot, recruitKey,
   COMPANION_ABILITIES, LEVEL_PERKS, levelPerkChoices, HARD_PERKS, hardPerkOptions, trailPosition,
   FLOODGATE_RECOIL_PERCENT, TRAIL, MERCHANTS, CAMPS, getEncounter,
   rivalHealth, briarHealer, BASE_CARDS, BASIC_CARDS, ENERGY_CARDS, STARTER_DECK, STARTING_DECK_SIZE, MIN_STARTING_ONE_COST, MAX_STARTING_COPIES,
@@ -20,7 +21,7 @@ const potionIds = Object.keys(POTIONS);
 const HAND_SIZE = 5;
 const TURN_ENERGY = 3;
 const OPENING_SURGE_ATTACKS = 2;
-const ENEMY_DAMAGE_BONUS = 1;
+const ENEMY_DAMAGE_BONUS = 2;
 
 function typedDamage(amount, attackerType, defenderType) {
   return Math.floor(amount * matchup(attackerType, defenderType));
@@ -172,6 +173,49 @@ function beginRound(state) {
   });
 }
 
+function initialMutationSeed(state) {
+  const runSeed = Number(state.runId);
+  let seed = (Number.isFinite(runSeed) ? runSeed : state.seed) ^ 0x91e10da5;
+  // Mix nearby run seeds so that runs started close together get different openings.
+  seed = Math.imul(seed ^ (seed >>> 16), 0x7feb352d);
+  seed = Math.imul(seed ^ (seed >>> 15), 0x846ca68b);
+  return (seed ^ (seed >>> 16)) >>> 0;
+}
+
+function rollMutation(state) {
+  const random = { seed: state.mutationSeed ?? initialMutationSeed(state) };
+  // Give every slot the same number of 32-bit values while keeping this stream separate from combat.
+  const valuesPerSlot = Math.floor(2 ** 32 / MUTATION_SLOTS);
+  let slot;
+  do {
+    nextRandom(random);
+    slot = Math.floor(random.seed / valuesPerSlot);
+  } while (slot >= MUTATION_SLOTS);
+  state.mutationSeed = random.seed;
+  return mutationForSlot(slot);
+}
+
+function spawnRival(state, encounter, enemy) {
+  const mutation = rollMutation(state);
+  const hp = rivalHealth(enemy, encounter, state.players.length);
+  return {
+    id: enemy.animal,
+    name: enemy.name,
+    boss: enemy.boss ?? false,
+    animal: enemy.animal,
+    hp,
+    maxHp: hp,
+    gold: encounter.goldPerEnemy,
+    block: enemy.openingBlock ?? 0,
+    ...(enemy.briarHealer === undefined ? {} : { briarHealer: enemy.briarHealer }),
+    ...(mutation ? { mutation } : {}),
+    marked: false,
+    vulnerable: 0,
+    frail: 0,
+    intent: null,
+  };
+}
+
 function beginEncounter(state) {
   const encounter = getEncounter(state);
   state.phase = 'combat';
@@ -182,21 +226,7 @@ function beginEncounter(state) {
   state.potionFinds = [];
   state.bondWardUsed = false;
   state.combatEffects = [];
-  state.enemies = encounter.enemies.map((enemy) => ({
-    id: enemy.animal,
-    name: enemy.name,
-    boss: enemy.boss ?? false,
-    animal: enemy.animal,
-    hp: rivalHealth(enemy, encounter, state.players.length),
-    maxHp: rivalHealth(enemy, encounter, state.players.length),
-    gold: encounter.goldPerEnemy,
-    block: enemy.openingBlock ?? 0,
-    ...(enemy.briarHealer === undefined ? {} : { briarHealer: enemy.briarHealer }),
-    marked: false,
-    vulnerable: 0,
-    frail: 0,
-    intent: null,
-  }));
+  state.enemies = encounter.enemies.map((enemy) => spawnRival(state, encounter, enemy));
   for (const player of state.players) {
     player.strength = 0;
     player.vulnerable = 0;
@@ -701,9 +731,29 @@ export function levelXp(state, seat) {
   return Math.floor(LEVEL_UP_XP * defeated / state.enemies.length);
 }
 
-function draftCard(state, { player: playerIndex, cardId = null, perkId = 'fang', hardPerkId = null }) {
+export function recruitOptions(state, seat) {
+  if (state.phase !== 'reward' || !state.players[seat] || state.rewardPicks[seat]) return [];
+  const previous = new Set([...(state.recruited?.[seat] ?? []), ...(state.recruitedMutations?.[seat] ?? [])]);
+  const offers = new Set();
+  for (const enemy of state.enemies) {
+    if (enemy.hp > 0 || !Object.hasOwn(CRITTER_UNLOCKS, enemy.animal)) continue;
+    if (!enemy.mutation && CRITTER_UNLOCKS[enemy.animal].kind === 'starter') continue;
+    const key = recruitKey(enemy.animal, enemy.mutation);
+    if (!previous.has(key)) offers.add(key);
+  }
+  return [...offers];
+}
+
+function draftCard(state, { player: playerIndex, cardId = null, perkId = 'fang', hardPerkId = null, recruitId = null, recruitMutation = null }) {
   const levelUp = grantsLevelUp(state);
   if (state.rewardPicks[playerIndex]) throw new Error('You have already claimed your reward.');
+  if (recruitMutation !== null && (recruitId === null || typeof recruitMutation !== 'string' || !Object.hasOwn(MUTATIONS, recruitMutation))) {
+    throw new Error('Choose a defeated animal offered for recruitment.');
+  }
+  if (recruitId !== null && (typeof recruitId !== 'string' || !Object.hasOwn(CRITTER_UNLOCKS, recruitId) ||
+      !recruitOptions(state, playerIndex).includes(recruitKey(recruitId, recruitMutation)))) {
+    throw new Error('Choose a defeated animal offered for recruitment.');
+  }
   if (cardId !== null && !state.rewardOptions[playerIndex].includes(cardId)) throw new Error('Choose a card offered to you.');
   if (levelUp && (typeof perkId !== 'string' || !Object.hasOwn(LEVEL_PERKS, perkId))) throw new Error('Choose a level perk.');
   if (state.hardReward) {
@@ -713,6 +763,19 @@ function draftCard(state, { player: playerIndex, cardId = null, perkId = 'fang',
   const player = state.players[playerIndex];
   if (levelUp && levelPerkChoices(player).find((perk) => perk.id === perkId).maxed) throw new Error('This perk is maxed out for this run.');
   state.rewardPicks[playerIndex] = { cardId, perkId: levelUp ? perkId : null, hardPerkId };
+  if (recruitId !== null) {
+    state.rewardPicks[playerIndex].recruitId = recruitId;
+    if (CRITTER_UNLOCKS[recruitId].kind !== 'starter') {
+      const recruits = (state.recruited ??= state.players.map(() => []))[playerIndex];
+      if (!recruits.includes(recruitId)) recruits.push(recruitId);
+    }
+    if (recruitMutation !== null) {
+      state.rewardPicks[playerIndex].recruitMutation = recruitMutation;
+      (state.recruitedMutations ??= state.players.map(() => []))[playerIndex].push(recruitKey(recruitId, recruitMutation));
+    }
+    const recruitName = recruitMutation ? MUTATIONS[recruitMutation].name + ' ' + CRITTERS[recruitId].name : CRITTERS[recruitId].name;
+    log(state, `${recruitName} joins ${critterName(player)}’s recruits for future trails.`);
+  }
   if (cardId !== null) player.deck.push(cardId);
   if (hardPerkId !== null) player.hardPerk = hardPerkId;
   if (levelUp) {

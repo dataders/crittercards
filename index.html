@@ -34,6 +34,7 @@
         <button class="button button-ghost" id="music-toggle" type="button" data-do="music" aria-pressed="false">Music <span aria-hidden="true">· <span data-music-state>Off</span></span></button>
         <a class="button button-ghost" href="soundtrack.html" target="_blank" rel="noopener" data-do="open-soundtrack" aria-label="Soundtrack (opens in a new tab)">Soundtrack</a>
         <button class="button button-secondary" type="button" data-do="share-game">Share game</button>
+        <button class="button button-ghost" type="button" data-do="mutation-index" aria-haspopup="dialog">Mutation index</button>
         <button class="button button-ghost" type="button" data-do="rules">How to play</button>
         </div>
       </details>
@@ -47,6 +48,13 @@
       <div class="section-heading"><h2 id="battle-deck-title">Your deck</h2><form method="dialog"><button class="button button-ghost" autofocus>Close</button></form></div>
       <p id="battle-deck-summary" class="muted"></p>
       <div id="battle-deck-cards" class="battle-deck-cards"></div>
+    </div>
+  </dialog>
+  <dialog id="mutation-index" aria-labelledby="mutation-index-title">
+    <div class="mutation-index-content">
+      <div class="section-heading"><h2 id="mutation-index-title">Mutation index</h2><form method="dialog"><button class="button button-ghost" autofocus>Close</button></form></div>
+      <p id="mutation-index-summary" class="muted" aria-live="polite"></p>
+      <div id="mutation-index-animals" class="mutation-index-animals"></div>
     </div>
   </dialog>
   <dialog id="rules" aria-labelledby="rules-title" aria-describedby="tutorial-progress">
@@ -148,7 +156,7 @@
               <figcaption>After an Elite fight, choose a perk even if you skip the card.</figcaption>
             </figure>
             <div class="tutorial-copy">
-              <p>After any fight, take a card or select <strong>Skip card</strong>. Trials offer a featured card. Each rival defeated in an Elite fight fills part of your XP bar. Win the fight and claim your reward to level up, gain max HP, and choose a perk. Defeating rivals also unlocks cards and creatures for future runs.</p>
+              <p>After any fight, take a card or select <strong>Skip card</strong>. Trials offer a featured card. Each rival defeated in an Elite fight fills part of your XP bar. Win the fight and claim your reward to level up, gain max HP, and choose a perk. You can also recruit one defeated animal for future runs. Its signature card and companion ability help you decide.</p>
               <p>Choose <strong>Save game</strong> during a run, then <strong>Continue saved game</strong> on the opening screen. Saves stay in this browser. If you save during a solo reward, claiming it updates that save. A saved room game resumes on one shared screen.</p>
               <p>Clear three acts of 20 levels each. Defeat each act's boss to continue. A full run is designed for 90–120 minutes, and you can save your progress along the way.</p>
             </div>
