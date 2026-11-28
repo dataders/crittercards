@@ -564,13 +564,15 @@ function woodlandEnemy(animal, level, slot, perilous, tactics) {
   const scale = 1 + Math.floor(level / 4) * 0.12;
   const damage = Math.ceil((slot ? 7 : 9) * scale);
   const defense = Math.ceil((slot ? 6 : 8) * scale);
+  const late = level >= 13;
+  const moveScale = late ? (perilous ? 0.8 : 0.7) : 1;
   const opening = perilous ? ['frailAttack', damage + 2] : ['attack', damage];
   return {
     animal,
     name: `${critter.name} of the Wilds`,
-    hp: Math.ceil((slot ? 24 : 30) * scale) + (perilous ? 4 : 0) + (tactics?.hpAdjustment?.[slot] ?? 0),
-    ...(tactics?.openingBlock?.[slot] ? { openingBlock: tactics.openingBlock[slot] } : {}),
-    moves: tactics?.moves[slot] ?? [opening, slot ? ['teamAttack', Math.ceil(damage * 0.7)] : ['guard', defense], ['attack', damage + 2]],
+    hp: Math.ceil((slot ? 24 : 30) * scale) + (perilous ? 4 : 0) + Math.floor((tactics?.hpAdjustment?.[slot] ?? 0) / 2),
+    ...(tactics?.openingBlock?.[slot] ? { openingBlock: late ? Math.ceil(tactics.openingBlock[slot] * 0.7) : tactics.openingBlock[slot] } : {}),
+    moves: tactics?.moves[slot].map(([type, amount]) => [type, Math.ceil(amount * moveScale)]) ?? [opening, slot ? ['teamAttack', Math.ceil(damage * 0.7)] : ['guard', defense], ['attack', damage + 2]],
   };
 }
 
@@ -614,25 +616,26 @@ const openingTrail = Array.from({ length: LEVELS_PER_ACT }, (_, index) => {
   const scale = 1 + Math.floor(index / 4) * 0.12;
   const baseEnemies = encounter.enemies.map((enemy) => ({
     ...enemy,
-    hp: Math.ceil(enemy.hp * scale * (index === 19 ? 1.3 : 1)),
+    hp: Math.ceil(enemy.hp * scale),
     moves: enemy.moves.map(([type, amount]) => [type, Math.ceil(amount * scale * (index === 19 ? 1.15 : 1))]),
   }));
   if (index === 19) {
     baseEnemies[0] = {
       ...baseEnemies[0], name: 'The Ash Regent', boss: true,
-      moves: [['eclipse', 12], ['shadowWard', 16], ['crownCurse', 16]],
+      moves: [['eclipse', 9], ['shadowWard', 12], ['crownCurse', 11]],
     };
+    baseEnemies[1] = { ...baseEnemies[1], moves: [['attack', 10], ['frailAttack', 11], ['guard', 10]] };
   }
   const label = index === 19 ? 'Final boss' : `Level ${index + 1}`;
   return [
-    { ...encounter, name: `${label} · ${encounter.name}`, enemies: index === 19 ? [{ ...baseEnemies[0], openingBlock: 20 }, { ...baseEnemies[1], openingBlock: 12 }] : baseEnemies, id: 'steady', difficulty: index === 19 ? 'Boss' : 'Standard', goldPerEnemy: 8 },
+    { ...encounter, name: `${label} · ${encounter.name}`, enemies: index === 19 ? [{ ...baseEnemies[0], openingBlock: 12 }, { ...baseEnemies[1], openingBlock: 8, moves: [baseEnemies[1].moves[2], ...baseEnemies[1].moves.slice(0, 2)] }] : baseEnemies, id: 'steady', difficulty: index === 19 ? 'Boss' : 'Standard', goldPerEnemy: 8 },
     {
       ...encounter, id: 'perilous', difficulty: index === 19 ? 'Hard boss' : 'Standard', goldPerEnemy: index === 19 ? 24 : 8,
       name: `${label} · ${alternate.name}`, subtitle: index === 19 ? 'The Ash Regent begins with a devastating Eclipse.' : alternate.subtitle,
       enemies: baseEnemies.map((enemy, slot) => ({
-        ...enemy, hp: enemy.hp + 4 + Math.floor(index / 4), moves: index === 19 && slot === 0
-          ? [['eclipse', 16], ...enemy.moves.slice(1)]
-          : [[alternate.moves[slot][0], Math.ceil(alternate.moves[slot][1] * scale * (index === 19 ? 1.15 : 1))], ...enemy.moves.slice(1)],
+        ...enemy, hp: enemy.hp + (index === 19 ? 5 : 4 + Math.floor(index / 4)), moves: index === 19
+          ? enemy.moves.map(([type, amount]) => [type, amount + (slot === 0 ? 3 : 2)])
+          : [[alternate.moves[slot][0], Math.ceil(alternate.moves[slot][1] * scale)], ...enemy.moves.slice(1)],
       })),
     },
   ];
@@ -723,19 +726,26 @@ function laterTrail(config, actIndex) {
     const tactics = actIndex === 2 ? thornCourtApproach[index + 1] : undefined;
     return config.routes.map((name, option) => {
       const hard = option === 1 && HARD_LEVELS.has(index);
+      const standardCourt = actIndex === 2 && !hard;
+      const healthScale = hard ? 1.25 : standardCourt ? 0.75 : 0.9;
+      const moveScale = hard ? 0.8 : standardCourt && tactics ? 0.5 : healthScale * 0.8;
       const trainer = boss ? ACTS[actIndex].boss : config.trainers[index % config.trainers.length];
       const enemies = [0, 1].map((slot) => {
         const rosterIndex = (index * 2 + option * 3 + slot * 5) % config.animals.length;
         const animal = boss ? config.boss[slot].animal : config.animals[rosterIndex];
-        const baseHp = 82 + (actIndex - 1) * 72 + index * 3 + (slot === 0 ? 14 : 0);
+        const baseHp = 46 + (actIndex - 1) * 15 + Math.floor(index * 1.5) + (slot === 0 ? 9 : 0);
         const moves = boss ? config.boss[slot].moves : (tactics?.moves[slot] ?? config.turns[(index + slot + option) % config.turns.length]);
         return {
           animal,
           name: boss && slot === 0 ? trainer : CRITTERS[animal].name,
           boss: boss && slot === 0,
-          hp: Math.ceil(baseHp * (boss ? (slot === 0 ? 2.1 : 1.25) : 1) * (hard ? 1.25 : 1)),
-          ...(tactics ? { openingBlock: tactics.openingBlock[slot] } : {}),
-          moves: moves.map(([type, amount]) => [type, amount + Math.floor(index / 5) + (hard ? 4 : 0)]),
+          hp: Math.ceil(baseHp * (boss ? (slot === 0 ? 1.55 : 1.15) : 1) * healthScale),
+          ...(tactics ? { openingBlock: Math.ceil(tactics.openingBlock[slot] * (hard ? 0.5 : 0.28)) } : {}),
+          moves: moves.map(([type, amount]) => {
+            const openingCurse = standardCourt && index === 17 && (type === 'crownCurse' || type === 'rally');
+            const scale = openingCurse ? 0.3 : moveScale;
+            return [type, Math.ceil(amount * scale) + Math.floor(index / 8) + (hard ? 3 : 0)];
+          }),
         };
       });
       return {
@@ -745,7 +755,7 @@ function laterTrail(config, actIndex) {
         subtitle: boss ? `Face ${trainer} and their champion.` : (tactics?.clue ?? `Face ${enemies.map((enemy) => enemy.name).join(' and ')}.`),
         difficulty: boss ? (hard ? 'Hard boss' : 'Boss') : (hard ? 'Hard' : 'Standard'),
         goldPerEnemy: hard ? 24 : 8,
-        coOpHealth: boss ? 1.45 : 1.30,
+        coOpHealth: boss ? 1.25 : 1.20,
         enemies,
       };
     });
@@ -756,12 +766,13 @@ for (const [level, routes] of openingTrail.entries()) {
   if (!HARD_LEVELS.has(level)) continue;
   const hard = routes.find((route) => route.id === 'perilous');
   const firstHardFight = level === 2;
+  const bossFight = level === LEVELS_PER_ACT - 1;
   hard.enemies = hard.enemies.map((enemy, slot) => ({
     ...enemy,
-    hp: Math.ceil(enemy.hp * 1.35) - (firstHardFight ? 6 : 0),
+    hp: Math.ceil(enemy.hp * (bossFight ? 1.16 : 1.35)) - (firstHardFight ? 6 : 0),
     moves: enemy.moves.map(([type, amount], moveIndex) => {
       if (firstHardFight && slot === 1 && moveIndex === 0) return ['attack', 9];
-      return [type, ['guard', 'shadowWard'].includes(type) ? amount : Math.ceil(amount * 1.25)];
+      return [type, ['guard', 'shadowWard'].includes(type) ? amount : Math.ceil(amount * (bossFight ? 1.05 : 1.25))];
     }),
   }));
 }
@@ -874,7 +885,13 @@ export const MERCHANTS = Object.fromEntries(ACTS.flatMap((_, actIndex) =>
   ]),
 ));
 
+export const CAMP_HEAL_PERCENT = 40;
+
 export const CAMPS = ACTS.flatMap((_, index) => [2, 6, 10, 14, 18].map((level) => index * LEVELS_PER_ACT + level));
+
+export function isEliteRoute(route) {
+  return ['Hard', 'Boss', 'Hard boss'].includes(route.difficulty);
+}
 
 export function getEncounter(state) {
   return TRAIL[state.encounter].find((route) => route.id === state.path[state.encounter]);

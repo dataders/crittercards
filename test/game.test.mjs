@@ -4,6 +4,12 @@ import test from 'node:test';
 
 import { ACTS, CAMPS, CARDS, CRITTERS, LEVELS_PER_ACT, MERCHANTS, TRAIL, applyAction, createRun, getEncounter, matchup, trailPosition } from '../game.mjs';
 
+import { isEliteRoute } from '../data.mjs';
+
+function eliteCount(path) {
+  return path.filter((id, index) => isEliteRoute(TRAIL[index].find((route) => route.id === id))).length;
+}
+
 function replay({ critters, seed, decks, companions }, actions) {
   let state = createRun(critters, seed, decks, companions);
   return actions.map((action, index) => {
@@ -187,9 +193,9 @@ test('a seeded solo replay clears 20 levels and defeats the Ash Regent', () => {
   const rewards = timeline.filter(({ phase }) => phase === 'reward');
   assert.deepEqual(rewards.map(({ encounter }) => encounter), Array.from({ length: LEVELS_PER_ACT }, (_, index) => index));
 
-  const purchase = timeline[actions.findIndex(({ type }) => type === 'buy')];
+  const purchase = timeline[actions.findIndex(({ type }) => type === 'buyPotion')];
   assert.equal(purchase?.encounter, 3);
-  assert.deepEqual(purchase.soldCards, ['lunge']);
+  assert.deepEqual(purchase.soldPotions, ['vigor']);
 
   const bossOpening = timeline.find(({ encounter, phase }) => encounter === 19 && phase === 'combat');
   const boss = bossOpening?.enemies.find((enemy) => enemy.boss);
@@ -197,25 +203,39 @@ test('a seeded solo replay clears 20 levels and defeats the Ash Regent', () => {
   assert.ok(boss.hp > 0);
   assert.equal(boss.intent.type, 'eclipse');
 
-  const bossTurns = timeline.filter(({ encounter }, index) => encounter === 19 && actions[index].type === 'endTurn');
-  assert.deepEqual(bossTurns.map(({ round }) => round), [2, 3, 4]);
-  const [afterEclipse, afterWard, afterCurse] = bossTurns;
-  assert.equal(afterEclipse.players[0].vulnerable, 1);
-  const beforeWard = timeline[timeline.indexOf(afterWard) - 1];
-  const wardedBoss = afterWard.enemies.find((enemy) => enemy.boss);
-  assert.equal(wardedBoss.block, 16);
-  assert.equal(wardedBoss.hp, beforeWard.enemies.find((enemy) => enemy.boss).hp + 8);
-  assert.equal(afterCurse.players[0].frail, 1);
-  assert.equal(afterCurse.players[0].vulnerable, 1);
-
   const final = timeline.at(-1);
   assert.equal(final.phase, 'reward');
   assert.equal(final.encounter, 19);
   assert.equal(final.path.length, 20);
   assert.equal(final.path.at(-1), 'perilous');
-  assert.equal(final.players[0].level, 20);
+  assert.equal(final.players[0].level, 1 + eliteCount(final.path.slice(0, -1)));
+  assert.equal(final.eliteReward, true);
   assert.ok(final.players[0].hp > 0);
   assert.equal(final.enemies.find((enemy) => enemy.boss)?.hp, 0);
+});
+
+test('the Ash Regent cycles through Eclipse, Shadow Ward, and Crown Curse', () => {
+  const route = createRun(['hudson'], 40);
+  route.encounter = 19;
+  route.path = Array(19).fill('steady');
+  let battle = applyAction(route, { type: 'route', player: 0, routeId: 'perilous' });
+  battle.players[0].hp = 100;
+  battle.enemies[0].hp -= 12;
+  Object.assign(battle.enemies[1], { hp: 0, intent: null });
+  const end = (state) => applyAction(state, { type: 'endTurn', player: 0 });
+  assert.equal(battle.enemies[0].intent.type, 'eclipse');
+  battle = end(battle);
+  assert.equal(battle.players[0].vulnerable, 1);
+  const ward = battle.enemies[0].intent;
+  assert.equal(ward.type, 'shadowWard');
+  const before = battle.enemies[0].hp;
+  battle = end(battle);
+  assert.equal(battle.enemies[0].block, ward.amount);
+  assert.equal(battle.enemies[0].hp, before + 8);
+  assert.equal(battle.enemies[0].intent.type, 'crownCurse');
+  battle = end(battle);
+  assert.equal(battle.players[0].frail, 1);
+  assert.equal(battle.players[0].vulnerable, 1);
 });
 
 test('a seeded co-op replay clears all three trial types and defeats the Thorn Sovereign', () => {
@@ -266,27 +286,27 @@ test('a seeded co-op replay clears all three trial types and defeats the Thorn S
   for (const [index, act] of ACTS.entries()) {
     const encounter = (index + 1) * LEVELS_PER_ACT - 1;
     const victory = timeline.find((state) => state.encounter === encounter && ['reward', 'victory'].includes(state.phase));
-    assert.equal(victory?.phase, index === ACTS.length - 1 ? 'victory' : 'reward', act.boss);
+    assert.equal(victory?.phase, 'reward', act.boss);
     const defeatedBoss = victory.enemies.find(({ boss }) => boss);
     assert.equal(defeatedBoss?.name, act.boss);
     assert.equal(defeatedBoss.hp, 0);
     assert.equal(victory.path[encounter], 'perilous');
 
-    if (victory.phase === 'reward') {
+    if (index < ACTS.length - 1) {
       const nextAct = timeline.find((state) => state.encounter === encounter + 1 && state.phase === 'route');
       assert.ok(nextAct, `Expected to advance after defeating ${act.boss}`);
       assert.deepEqual(nextAct.players.map(({ hp }) => hp), nextAct.players.map(({ maxHp }) => maxHp));
-      assert.deepEqual(nextAct.players.map(({ level }) => level), [encounter + 2, encounter + 2]);
+      assert.deepEqual(nextAct.players.map(({ level }) => level), nextAct.players.map(() => 1 + eliteCount(nextAct.path)));
     }
   }
 
   const final = timeline.at(-1);
   assert.equal(final.phase, 'victory');
   assert.deepEqual(final.visitedCamps, CAMPS);
-  assert.deepEqual(final.visitedShops, [3, 23, 43]);
+  assert.ok([3, 23, 43].every((level) => final.visitedShops.includes(level)));
   assert.ok(final.players.every((player) => player.deck.some((id) => id.endsWith('+'))));
   assert.deepEqual(final.players.map(({ hardPerk, level }) => [hardPerk, level]), [
-    ['bondWard', TRAIL.length], ['bondWard', TRAIL.length],
+    ['bondWard', 1 + eliteCount(final.path)], ['bondWard', 1 + eliteCount(final.path)],
   ]);
 });
 
@@ -310,14 +330,16 @@ test('all three acts have 20 levels and only the last boss ends the campaign', (
     for (const enemy of run.enemies) { enemy.hp = 1; enemy.block = 0; }
     run = applyAction(run, { type: 'play', player: 0, cardIndex: 0, target: 0 });
     run = applyAction(run, { type: 'play', player: 0, cardIndex: 0, target: 1 });
-    if (actIndex === ACTS.length - 1) {
-      assert.equal(run.phase, 'victory');
-      continue;
-    }
     assert.equal(run.phase, 'reward');
     run = applyAction(run, { type: 'draft', player: 0, cardId: null, perkId: 'fang' });
     assert.equal(run.phase, 'reward');
     run = applyAction(JSON.parse(JSON.stringify(run)), { type: 'draft', player: 1, cardId: null, perkId: 'fang' });
+    assert.deepEqual(run.players.map(({ level }) => level), [2, 2]);
+    if (actIndex === ACTS.length - 1) {
+      assert.equal(run.phase, 'victory');
+      assert.equal(run.encounter, encounter);
+      continue;
+    }
     assert.equal(run.phase, 'route');
     assert.equal(run.encounter, encounter + 1);
     assert.equal(trailPosition(run.encounter).level, 1);

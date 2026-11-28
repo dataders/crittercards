@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { POTION_LIMIT, POTIONS, potionPrice } from '../data.mjs';
+import { MERCHANTS, POTION_LIMIT, POTIONS, potionPrice } from '../data.mjs';
 import { applyAction, createRun } from '../game.mjs';
 import { validateSavedRun } from '../storage.mjs';
 
@@ -21,6 +21,18 @@ test('merchants sell three distinct potions and honor the pouch limit and buyer'
   assert.throws(() => play({ ...shop, gold: 0 }, { type: 'buyPotion', potionId: 'guardBrew' }), /more gold/);
   const other = play(shop, { type: 'buyPotion', potionId: 'vigor', player: 1 });
   assert.deepEqual(other.players.map(({ potions }) => potions), [[], ['vigor']]);
+});
+
+test('every merchant starts with one of each potion available', () => {
+  assert.deepEqual(Object.keys(POTIONS), ['remedy', 'guardBrew', 'vigor']);
+  for (const encounter of Object.keys(MERCHANTS).map(Number)) {
+    const run = { ...createRun(['fox'], 40), encounter, path: Array(encounter).fill('steady'), gold: 200,
+      soldPotions: ['remedy', 'guardBrew', 'vigor'] };
+    const shop = route(run, 'merchant');
+    assert.deepEqual(shop.soldPotions, []);
+    const bought = Object.keys(POTIONS).reduce((state, potionId) => play(state, { type: 'buyPotion', potionId }), shop);
+    assert.deepEqual(bought.players[0].potions, Object.keys(POTIONS));
+  }
 });
 
 test('saved potions are single-use and use ordinary heal, Frail, and Strength rules', () => {

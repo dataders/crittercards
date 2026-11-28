@@ -86,3 +86,29 @@ test('claiming either solo reward advances its matching save and clears pending 
     });
   }
 });
+
+test('previously earned legacy rewards and the final Elite reward can be resumed', () => {
+  for (const encounter of [0, 59]) {
+    const run = createRun(['fox'], 19);
+    run.encounter = encounter;
+    run.path = Array(encounter).fill('steady');
+    const battle = apply(run, { type: 'route', routeId: 'steady' });
+    battle.players[0].hand = ['jab', 'jab'];
+    for (const enemy of battle.enemies) { enemy.hp = 1; enemy.block = 0; }
+    const first = apply(battle, { type: 'play', cardIndex: 0, target: 0 });
+    const reward = apply(first, { type: 'play', cardIndex: 0, target: 1 });
+    if (encounter === 0) delete reward.eliteReward;
+    const checkpoint = saved(reward);
+    assert.ok(validateSavedRun(checkpoint));
+    const next = apply(checkpoint.state, { type: 'draft', perkId: 'shell' });
+    assert.equal(next.players[0].level, 2);
+
+    if (encounter === 59) {
+      assert.equal(next.phase, 'victory');
+      const items = new Map([[saveKey, JSON.stringify(checkpoint)]]);
+      const storage = { getItem: (key) => items.get(key) ?? null, removeItem: (key) => items.delete(key) };
+      assert.ok(advanceSoloRewardSave(storage, reward, next, 'local'));
+      assert.deepEqual(savedRunStatus(storage), {});
+    }
+  }
+});

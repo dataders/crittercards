@@ -1,5 +1,5 @@
 import {
-  COUSINS, CRITTERS, CARDS, matchup, FRAIL_BLOCK_LOSS, POTIONS, POTION_LIMIT, potionPrice, BUILD_PATHS,
+  COUSINS, CRITTERS, CARDS, matchup, FRAIL_BLOCK_LOSS, POTIONS, POTION_LIMIT, potionPrice, BUILD_PATHS, isEliteRoute, CAMP_HEAL_PERCENT,
   COMPANION_ABILITIES, LEVEL_PERKS, HARD_PERKS, hardPerkOptions, trailPosition,
   FLOODGATE_RECOIL_PERCENT, TRAIL, MERCHANTS, CAMPS, getEncounter,
   rivalHealth, briarHealer, BASE_CARDS, BASIC_CARDS, ENERGY_CARDS, STARTER_DECK, STARTING_DECK_SIZE, MIN_STARTING_ONE_COST, MAX_STARTING_COPIES,
@@ -276,13 +276,9 @@ function finishEncounter(state) {
   for (const player of state.players) {
     heal(player, 3 * player.perks.filter((perk) => perk === 'renewal').length);
   }
-  if (state.encounter === TRAIL.length - 1) {
-    state.phase = 'victory';
-    log(state, 'The pack has broken the Hollow Crown.');
-    return;
-  }
   state.phase = 'reward';
   const encounter = getEncounter(state);
+  state.eliteReward = isEliteRoute(encounter);
   state.hardReward = encounter.hardReward === true;
   const available = TRAIL.slice(0, state.encounter + 1).flatMap((routes, level) =>
     routes.find(({ id }) => id === state.path[level]).enemies.flatMap((enemy) => CARD_UNLOCKS[enemy.animal] ?? []));
@@ -330,7 +326,7 @@ function finishEncounter(state) {
       offers.push(trialReward);
     }
   }
-  log(state, 'The pack prevails. Choose a level perk and take or skip a card for each critter.');
+  log(state, state.eliteReward ? 'Elite defeated. Choose a level perk and take or skip a card.' : 'The pack prevails. Take or skip a card.');
 }
 
 function playCard(state, action) {
@@ -600,34 +596,48 @@ function finishTurn(state, playerIndex) {
   beginRound(state);
 }
 
+// Reward screens saved before Elite progression keep their already-earned level-up.
+export function grantsLevelUp(state) {
+  return state.eliteReward !== false;
+}
+
 function draftCard(state, { player: playerIndex, cardId = null, perkId = 'fang', hardPerkId = null }) {
+  const levelUp = grantsLevelUp(state);
   if (state.rewardPicks[playerIndex]) throw new Error('You have already claimed your reward.');
   if (cardId !== null && !state.rewardOptions[playerIndex].includes(cardId)) throw new Error('Choose a card offered to you.');
-  if (typeof perkId !== 'string' || !Object.hasOwn(LEVEL_PERKS, perkId)) throw new Error('Choose a level perk.');
+  if (levelUp && (typeof perkId !== 'string' || !Object.hasOwn(LEVEL_PERKS, perkId))) throw new Error('Choose a level perk.');
   if (state.hardReward) {
     if (!hardPerkOptions(state.players.length).some((perk) => perk.id === hardPerkId)) throw new Error('Choose a Hard route perk.');
   } else if (hardPerkId !== null) throw new Error('No Hard route perk is available.');
 
   const player = state.players[playerIndex];
-  state.rewardPicks[playerIndex] = { cardId, perkId, hardPerkId };
+  state.rewardPicks[playerIndex] = { cardId, perkId: levelUp ? perkId : null, hardPerkId };
   if (cardId !== null) player.deck.push(cardId);
   if (hardPerkId !== null) player.hardPerk = hardPerkId;
-  player.perks.push(perkId);
-  player.level += 1;
-  player.maxHp += 3;
-  if (player.hp === 0) player.hp = Math.ceil(player.maxHp / 2);
-  if (perkId === 'fang') {
-    player.attackBonus += 1;
-  } else if (perkId === 'bark') {
-    player.maxHp += 4;
-    heal(player, 4);
+  if (levelUp) {
+    player.perks.push(perkId);
+    player.level += 1;
+    player.maxHp += 3;
   }
-  if (perkId === 'renewal') heal(player, 3);
+  if (player.hp === 0) player.hp = Math.ceil(player.maxHp / 2);
+  if (levelUp) {
+    if (perkId === 'fang') player.attackBonus += 1;
+    if (perkId === 'bark') {
+      player.maxHp += 4;
+      heal(player, 4);
+    }
+    if (perkId === 'renewal') heal(player, 3);
+  }
   const draftResult = cardId === null ? 'skips the card' : `learns ${CARDS[cardId].name}`;
-  log(state, `${critterName(player)} ${draftResult} and reaches level ${player.level}.`);
+  log(state, `${critterName(player)} ${draftResult}${levelUp ? ` and reaches level ${player.level}` : ''}.`);
   if (hardPerkId !== null) log(state, `${critterName(player)} gains ${HARD_PERKS[hardPerkId].name} for the rest of the run.`);
 
   if (state.rewardPicks.every(Boolean)) {
+    if (state.encounter === TRAIL.length - 1) {
+      state.phase = 'victory';
+      log(state, 'The pack has broken the Hollow Crown.');
+      return;
+    }
     if (trailPosition(state.encounter).bossLevel) {
       for (const member of state.players) member.hp = member.maxHp;
       log(state, 'The pack recovers to full health before entering the next act.');
@@ -669,7 +679,7 @@ function useCamp(state, action) {
   if (state.campChoices[action.player]) throw new Error('You already rested at this camp.');
   const player = state.players[action.player];
   if (action.choice === 'heal') {
-    const amount = Math.ceil(player.maxHp * 0.3);
+    const amount = Math.ceil(player.maxHp * CAMP_HEAL_PERCENT / 100);
     const previous = player.hp;
     player.hp = Math.min(player.maxHp, player.hp + amount);
     log(state, `${critterName(player)} rests and restores ${player.hp - previous} HP.`);

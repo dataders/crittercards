@@ -77,7 +77,7 @@ function validEnemy(enemy, seats) {
 
 function validRewardPick(pick) {
   return pick === null || isCard(pick) || (isRecord(pick) && (pick.cardId === null || isCard(pick.cardId)) &&
-    isLevelPerk(pick.perkId) && (pick.hardPerkId == null || isHardPerk(pick.hardPerkId)));
+    (pick.perkId === null || isLevelPerk(pick.perkId)) && (pick.hardPerkId == null || isHardPerk(pick.hardPerkId)));
 }
 
 export function validateSavedRun(saved) {
@@ -90,7 +90,7 @@ export function validateSavedRun(saved) {
       !isCount(state.gold) || !isCount(state.seed) || (state.runId !== undefined && typeof state.runId !== 'string') ||
       !isList(state.log, (line) => typeof line === 'string') ||
       !isList(state.visitedShops, (level) => isCount(level) && Object.hasOwn(MERCHANTS, level)) ||
-      !isList(state.soldCards, isCard) ||
+      !isList(state.soldCards, isCard) || (state.eliteReward !== undefined && typeof state.eliteReward !== 'boolean') ||
       (state.soldPotions !== undefined && !isList(state.soldPotions, isPotion)) ||
       (state.potionSeed !== undefined && (!isCount(state.potionSeed) || state.potionSeed > 0xffffffff)) ||
       (state.potionFinds !== undefined && !isList(state.potionFinds, (find) => isRecord(find) &&
@@ -109,7 +109,7 @@ export function validateSavedRun(saved) {
   if (inEncounter && (!isCount(state.activePlayer) || state.activePlayer >= players.length ||
       !isCount(state.round) || state.round === 0)) return false;
   if (phase === 'combat' && (!enemies.some(({ hp }) => hp > 0) || players[state.activePlayer].hp === 0)) return false;
-  if (phase === 'reward' && (encounter === TRAIL.length - 1 || enemies.some(({ hp }) => hp > 0) ||
+  if (phase === 'reward' && ((encounter === TRAIL.length - 1 && state.eliteReward !== true) || enemies.some(({ hp }) => hp > 0) ||
       !isList(state.rewardOptions, (offers) => isList(offers, isCard) && offers.length > 0) ||
       !isList(state.rewardPicks, validRewardPick) ||
       state.rewardOptions.length !== players.length || state.rewardPicks.length !== players.length)) return false;
@@ -126,11 +126,12 @@ export function savedRewardChoices(saved) {
 }
 
 export function advanceSoloRewardSave(storage, previous, next, origin) {
-  if (previous.phase !== 'reward' || next.phase !== 'route') return true;
+  if (previous.phase !== 'reward' || !['route', 'victory'].includes(next.phase)) return true;
   const { saved } = savedRunStatus(storage);
   if (saved?.state.phase !== 'reward' || saved.state.runId !== previous.runId || saved.state.seed !== previous.seed ||
       saved.state.encounter !== previous.encounter || saved.state.players.length !== 1 ||
       (saved.origin ?? 'local') !== origin) return true;
+  if (next.phase === 'victory') return writeStorage(storage, saveKey, null);
   return writeStorage(storage, saveKey, {
     ...saved, state: next, perks: [null, null], hardPerks: [null, null], drafts: [null, null],
   });
