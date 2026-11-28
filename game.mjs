@@ -128,11 +128,19 @@ export function getEnemyIntent(state, encounter, enemyIndex, round) {
   return intent;
 }
 
-function startTurn(state, index) {
-  state.activePlayer = index;
-  const player = state.players[index];
+export function canTakeTurn(state, seat) {
+  return state?.phase === 'combat' && state.players[seat]?.hp > 0 &&
+    (state.simultaneous ? !state.endedTurns[seat] : state.activePlayer === seat);
+}
+
+function applyReservedEnergy(player) {
   player.energy += player.reserveEnergy;
   player.reserveEnergy = 0;
+}
+
+function startTurn(state, index) {
+  state.activePlayer = index;
+  applyReservedEnergy(state.players[index]);
 }
 
 function beginRound(state) {
@@ -148,7 +156,16 @@ function beginRound(state) {
     player.energy = player.hp > 0 ? TURN_ENERGY + (state.round === 1 ? player.perks.filter((perk) => perk === 'spirit').length : 0) : 0;
     if (player.hp > 0) drawHand(state, player);
   }
-  startTurn(state, state.players.findIndex((player) => player.hp > 0));
+  const first = state.players.findIndex(({ hp }) => hp > 0);
+  if (state.simultaneous) {
+    state.activePlayer = first;
+    state.endedTurns = state.players.map(({ hp }) => hp <= 0);
+    for (const player of state.players) {
+      if (player.hp > 0) applyReservedEnergy(player);
+    }
+  } else {
+    startTurn(state, first);
+  }
   const encounter = getEncounter(state);
   state.enemies.forEach((enemy, index) => {
     enemy.intent = enemy.hp > 0 ? getEnemyIntent(state, encounter, index, state.round) : null;
@@ -202,7 +219,7 @@ function beginEncounter(state) {
   beginRound(state);
 }
 
-export function createRun(critterIds, seed = Date.now(), startingDecks, companions) {
+export function createRun(critterIds, seed = Date.now(), startingDecks, companions, { simultaneous = false } = {}) {
   if (!Array.isArray(critterIds) || ![1, 2].includes(critterIds.length) ||
       [...critterIds].some((id) => typeof id !== 'string' || !Object.hasOwn(CRITTERS, id))) {
     throw new Error('Choose a critter for each player.');
@@ -243,6 +260,7 @@ export function createRun(critterIds, seed = Date.now(), startingDecks, companio
   });
   return {
     runId: String(seed), seed: seed >>> 0, phase: 'route', encounter: 0, players,
+    ...(simultaneous && players.length === 2 ? { simultaneous: true } : {}),
     enemies: [], path: [], gold: 0, visitedShops: [], visitedCamps: [], campChoices: [], soldCards: [], log: [],
   };
 }
@@ -389,21 +407,21 @@ function playCard(state, action) {
   if (lastHitTarget !== undefined) finishAttackAction(state, { player: action.player, target: lastHitTarget });
 }
 
-function defeatEnemy(state, enemy) {
+function defeatEnemy(state, enemy, seat = state.activePlayer) {
   enemy.intent = null;
   if (enemy.poison) enemy.poison = 0;
   state.gold += enemy.gold;
   log(state, `${enemy.name} falls. The pack earns ${enemy.gold} gold.`);
-  dropPotion(state, enemy);
+  dropPotion(state, enemy, seat);
 }
 
-function dropPotion(state, enemy) {
+function dropPotion(state, enemy, seat) {
   // Use a separate seeded stream so drops never change draws or reward rolls.
   const random = { seed: state.potionSeed ?? ((state.seed ^ 0x9e3779b9) >>> 0) };
   const roll = nextRandom(random);
   state.potionSeed = random.seed;
   if (roll >= 0.1) return;
-  const player = state.players[state.activePlayer];
+  const player = state.players[seat];
   const potions = player.potions ??= [];
   const id = potionIds[Math.floor(roll * 10 * potionIds.length)];
   const item = POTIONS[id];
@@ -460,7 +478,7 @@ function resolveCardEffect(state, player, card, target, attackerId = player.crit
     }
     if (enemy.hp === 0) {
       energy += card.energyOnDefeat ?? 0;
-      defeatEnemy(state, enemy);
+      defeatEnemy(state, enemy, player.id);
     }
   }
   if (card.poison && enemy.hp > 0) enemy.poison = (enemy.poison ?? 0) + card.poison;
@@ -476,7 +494,10 @@ function resolveCardEffect(state, player, card, target, attackerId = player.crit
     log(state, `${critterName(player)} gains ${energy} energy.`);
   }
   if (card.nextEnergy) player.reserveEnergy += card.nextEnergy;
-  if (card.allyEnergy && ally.hp > 0) ally.reserveEnergy += card.allyEnergy;
+  if (card.allyEnergy && ally.hp > 0) {
+    if (state.simultaneous && canTakeTurn(state, ally.id)) ally.energy += card.allyEnergy;
+    else ally.reserveEnergy += card.allyEnergy;
+  }
   if (card.selfFrail) player.frail = (player.frail ?? 0) + card.selfFrail;
   if (card.heal) heal(player, card.heal);
   if (card.allyHeal) heal(ally, card.allyHeal);
@@ -521,13 +542,13 @@ function checkPackDefeat(state) {
   return true;
 }
 
-function resolveSurgeRecoil(state) {
+function resolveSurgeRecoil(state, seat) {
   for (const rival of state.enemies) {
     if (rival.hp === 0) continue;
     const damage = Math.min(rival.hp, Math.ceil(rival.maxHp * FLOODGATE_RECOIL_PERCENT / 100));
     rival.hp -= damage;
     log(state, `Surge recoil costs ${rival.name} ${damage} HP.`);
-    if (rival.hp === 0) defeatEnemy(state, rival);
+    if (rival.hp === 0) defeatEnemy(state, rival, seat);
   }
 }
 
@@ -546,9 +567,10 @@ function finishAttackAction(state, { player: playerIndex, target }) {
   const pressedSurger = surger.intent.focusedAttacks === OPENING_SURGE_ATTACKS;
   const blocked = openingSurge(state, surger);
   if (checkPackDefeat(state)) return;
-  if (!blocked && pressedSurger) resolveSurgeRecoil(state);
+  if (!blocked && pressedSurger) resolveSurgeRecoil(state, playerIndex);
   if (state.enemies.every(({ hp }) => hp === 0)) finishEncounter(state);
   else if (state.players[playerIndex].hp === 0) finishTurn(state, playerIndex);
+  else if (state.simultaneous && !canTakeTurn(state, state.activePlayer)) state.activePlayer = playerIndex;
 }
 
 function finishTurn(state, playerIndex) {
@@ -557,7 +579,14 @@ function finishTurn(state, playerIndex) {
   player.hand = [];
   player.energy = 0;
 
-  if (playerIndex === 0 && state.players[1]?.hp > 0) {
+  if (state.simultaneous) {
+    state.endedTurns[playerIndex] = true;
+    const remaining = state.players.findIndex(({ id }) => canTakeTurn(state, id));
+    if (remaining !== -1) {
+      state.activePlayer = remaining;
+      return;
+    }
+  } else if (playerIndex === 0 && state.players[1]?.hp > 0) {
     startTurn(state, 1);
     return;
   }
@@ -810,7 +839,9 @@ export function applyAction(state, action) {
   }
   if (action.type !== 'play' && action.type !== 'endTurn' && action.type !== 'companionStrike' && action.type !== 'usePotion') throw new Error('Unknown game action.');
   if (state.phase !== 'combat') throw new Error('This action requires an active battle.');
-  if (action.player !== state.activePlayer) throw new Error('Wait for your critter’s turn.');
+  if (!canTakeTurn(state, action.player)) {
+    throw new Error(state.simultaneous ? 'Your turn is over for this round.' : 'Wait for your critter’s turn.');
+  }
   const next = structuredClone(state);
   if (action.type === 'play') playCard(next, action);
   else if (action.type === 'usePotion') usePotion(next, action);

@@ -102,6 +102,45 @@ test('Venom Ward protects both witches and Poison ticks before the rival acts', 
   assert.equal(nextRound.enemies[0].poison, 2);
 });
 
+test('online partners can attack in either order and end their turns independently', () => {
+  const run = createRun(['fox', 'hare'], 1, undefined, undefined, { simultaneous: true });
+  const combat = applyAction(run, { type: 'route', player: 0, routeId: 'steady' });
+  combat.players[0].hand = ['jab', 'guard'];
+  combat.players[1].hand = ['jab'];
+  const play = (state, player, target) => applyAction(state, { type: 'play', player, cardIndex: 0, target });
+  const end = (state, player) => applyAction(state, { type: 'endTurn', player });
+
+  const guestAttack = play(combat, 1, 0);
+  const hostAttack = play(guestAttack, 0, 0);
+  assert.equal(hostAttack.bondTriggered, true);
+  assert.equal(hostAttack.round, 1);
+
+  const guestDone = end(hostAttack, 1);
+  assert.deepEqual(guestDone.endedTurns, [false, true]);
+  assert.deepEqual(guestDone.players.map(({ hp }) => hp), combat.players.map(({ hp }) => hp));
+  assert.throws(() => end(guestDone, 1), /turn is over/);
+  const protectedHost = play(guestDone, 0);
+  assert.equal(protectedHost.players[0].block, 8);
+  const nextRound = end(protectedHost, 0);
+  assert.equal(nextRound.round, 2);
+  assert.deepEqual(nextRound.endedTurns, [false, false]);
+  assert.ok(nextRound.players.every(({ hand }) => hand.length > 0));
+});
+
+test('online support gives energy immediately or saves it for a partner who ended', () => {
+  const run = createRun(['fox', 'magpie'], 1, undefined, undefined, { simultaneous: true });
+  const combat = applyAction(run, { type: 'route', player: 0, routeId: 'steady' });
+  combat.players[1].hand = ['hoard'];
+  const support = { type: 'play', player: 1, cardIndex: 0, target: 0 };
+  const endHost = { type: 'endTurn', player: 0 };
+  const endGuest = { type: 'endTurn', player: 1 };
+  const boosted = applyAction(combat, support);
+  assert.equal(boosted.players[0].energy, 4);
+  const waiting = applyAction(applyAction(combat, endHost), support);
+  assert.equal(waiting.players[0].energy, 0);
+  assert.equal(applyAction(waiting, endGuest).players[0].energy, 4);
+});
+
 test('lethal Poison bypasses Block and ends the encounter before a rival can attack', () => {
   const combat = applyAction(createRun(['hudson'], 2), { type: 'route', player: 0, routeId: 'steady' });
   const [rival, defeated] = combat.enemies;

@@ -12,6 +12,8 @@ Run `node server.mjs` with Node 22 or newer, then open [localhost:4173](http://l
 - **Share a screen.** Pick a character and build a deck for each player, then choose **Begin the trail**. Take turns using the same controls. One person can also play both hands.
 - **Play with a room code.** Open the game in two browser tabs or on two devices that can reach the same server. The host creates a room, the guest joins by code, and each player picks a character and confirms a deck. For devices on the same trusted network, start with `HOST=0.0.0.0 node server.mjs` and use the host machine’s LAN address on both devices.
 
+In online rooms, both players can play cards and use companion moves during the same round. Choose **End turn** when you’re done. The rivals act when all surviving players have ended their turns.
+
 The four cousins are playable from the start. Hudson practices poison magic, while Quinn, Alba, and Tito practice different kinds of necromancy.
 
 Each cousin chooses a recruited woodland animal as a companion. Its special ability is free once per turn. Drag targeted cards and companion moves onto the rival you want to hit. Tap untargeted moves to play them. With a keyboard, press Enter on a targeted move, then use Tab and Enter to choose a rival. Each animal’s attacks use its own type and benefit from the cousin’s attack bonuses. In solo play, effects that help an ally help your own character. The companion has no separate health bar. Animal characters remain available on their own.

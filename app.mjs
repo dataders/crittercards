@@ -2,7 +2,7 @@ import {
   COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, startingLibraryFor,
   ENCOUNTERS, TRAIL, MERCHANTS, CAMPS, LEVEL_PERKS, HARD_PERKS, TYPES, COMPANION_ABILITIES, getCompanionDescription, createRun, applyAction, getEncounter,
   ACTS, LEVELS_PER_ACT, trailPosition, hardPerkOptions, getEnemyIntent, rivalHealth,
-  getCardDescription, canRemoveRunCard, grantsLevelUp, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE,
+  getCardDescription, canRemoveRunCard, canTakeTurn, grantsLevelUp, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE,
 } from './game.mjs';
 import { deckLibrary, describeCard, POTIONS, POTION_LIMIT, potionPrice, isEliteRoute, CAMP_HEAL_PERCENT } from './data.mjs';
 import { soloGoals, soloProgressKey, updateSoloProgress } from './solo-progress.mjs';
@@ -10,7 +10,7 @@ import { createCombatInput, createEffectHelp } from './combat-input.mjs';
 import { captureCombatActors, freshCombatEffects, playCombatEffects } from './combat-effects.mjs';
 import { createAudioController } from './audio.mjs';
 import { advanceSoloRewardSave, readStorage, savedRewardChoices, savedRunStatus, saveKey, writeStorage } from './storage.mjs';
-import { actionCard, art, battleCardViews, button, cardReveal, combat, escape, intentLabel, playerName, progress, purse, trailLocation } from './views.mjs';
+import { actionCard, art, battleCardViews, button, cardReveal, combat, combatSeat, combatTurn, escape, intentLabel, playerName, progress, purse, trailLocation } from './views.mjs';
 import { captureViewState, restoreViewState, setupSelect } from './view-state.mjs';
 import { createRoom, findPublicMatch, isTerminalRoomError, joinRoom, resumeRoom, recoverRoom } from './transport.mjs';
 
@@ -611,10 +611,12 @@ function pileRect(kind) {
 function combatMotion(before, after) {
   if (after?.phase !== 'combat' || before === after || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const sameFight = before?.phase === 'combat' && before.runId === after.runId && before.encounter === after.encounter;
-  const sameTurn = sameFight && before.round === after.round && before.activePlayer === after.activePlayer;
+  const nextSeat = combatSeat(after, ui.room);
+  const previousSeat = sameFight ? combatSeat(before, ui.room) : null;
+  const sameTurn = sameFight && before.round === after.round && previousSeat === nextSeat;
   const outgoing = [];
   if (sameFight) {
-    const seat = before.activePlayer;
+    const seat = previousSeat;
     const oldPlayer = before.players[seat];
     const newPlayer = after.players[seat];
     if (sameTurn && oldPlayer.hand.length === newPlayer.hand.length) return;
@@ -643,11 +645,11 @@ function combatMotion(before, after) {
   }
   const arriving = !sameTurn;
   if (!arriving && !outgoing.length) return;
-  const prior = sameFight ? before.players[after.activePlayer] : null;
-  const next = after.players[after.activePlayer];
+  const prior = sameFight ? before.players[nextSeat] : null;
+  const next = after.players[nextSeat];
   const recycle = prior && after.round > before.round && !next.discardPile.length &&
     prior.drawPile.length < next.hand.length &&
-    (prior.discardPile.length || (before.activePlayer === after.activePlayer && prior.hand.length));
+    (prior.discardPile.length || (previousSeat === nextSeat && prior.hand.length));
   return { outgoing, arriving, recycle };
 }
 
@@ -689,6 +691,7 @@ function animateCombatMotion(motion) {
 function render() {
   closeEffectHelp();
   clearAttackDrag();
+  const previousAim = aimedControl()?.dataset;
   setAimedMove();
   const previousStage = game.querySelector('.game-stage');
   const stageTop = previousStage?.scrollTop ?? 0;
@@ -732,7 +735,14 @@ function render() {
     game.querySelector('.game-stage').scrollTop = stageTop;
     if (state?.phase === 'combat') {
       game.querySelector('.arena-scroll').scrollTop = arenaTop;
-      if (game.querySelector('.combat-screen').dataset.turn === previousTurn) game.querySelector('.combat-hand').scrollLeft = handLeft;
+      if (game.querySelector('.combat-screen').dataset.turn === previousTurn) {
+        game.querySelector('.combat-hand').scrollLeft = handLeft;
+        if (previousAim) {
+          const control = [...game.querySelectorAll('[data-aim]:not(:disabled)')].find(({ dataset }) =>
+            ['do', 'seat', 'id', 'index'].every((key) => dataset[key] === previousAim[key]));
+          if (control) setAimedMove(control);
+        }
+      }
     }
   }
   ui.scrollToTop = false;
@@ -800,8 +810,12 @@ function attachRoom(room) {
     clearTimeout(deferredRender);
     if (ui.room !== room) return;
     const field = document.activeElement;
-    if (!room.state && game.contains(field) && field.matches(setupSelect)) {
-      // Keep the element mounted while the native picker has focus.
+    const fight = room.state;
+    const editingSetup = !fight && game.contains(field) && field.matches(setupSelect);
+    const draggingInSameTurn = fight?.simultaneous && isDragging() && canTakeTurn(fight, room.seat) &&
+      game.querySelector('.combat-screen')?.dataset.turn === combatTurn(fight, room.seat);
+    if (editingSetup || draggingInSameTurn) {
+      // Keep the control mounted during a native selection or a captured drag.
       deferredRender = setTimeout(renderRoomUpdate, 250);
       return;
     }
@@ -902,20 +916,22 @@ function home(mode = 'local', showSetup = mode === 'online', rematch) {
 function playCombatMove(control, target) {
   const state = ui.room ? ui.room.state : ui.run;
   const player = Number(control.dataset.seat);
-  if (ui.pending || state?.phase !== 'combat' || player !== state.activePlayer ||
-      (ui.room && ui.room.seat !== player)) return;
+  const cardIndex = Number(control.dataset.index);
+  const isCard = control.dataset.do === 'play';
+  if (ui.pending || !state || !canTakeTurn(state, player) ||
+      control.closest('.combat-screen')?.dataset.turn !== combatTurn(state, player) ||
+      (ui.room && ui.room.seat !== player) ||
+      (isCard && state.players[player].hand[cardIndex] !== control.dataset.id)) return;
   if (control.hasAttribute('data-aim') && !(state.enemies[target]?.hp > 0)) return;
   ui.error = '';
   ui.notice = '';
   startMusic(state);
-  const action = control.dataset.do === 'play'
-    ? { type: 'play', player, cardIndex: Number(control.dataset.index) }
-    : { type: 'companionStrike', player };
+  const action = isCard ? { type: 'play', player, cardIndex } : { type: 'companionStrike', player };
   if (target !== undefined) action.target = target;
   return dispatch(action);
 }
 
-const { clearAttackDrag, setAimedMove, selectTarget } = createCombatInput(game, playCombatMove);
+const { clearAttackDrag, setAimedMove, selectTarget, isDragging, aimedControl } = createCombatInput(game, playCombatMove);
 
 function renderBattleCards(state) {
   const { seat, kind } = battleCardsView;

@@ -79,3 +79,15 @@ test('about one in ten defeated animals drop a potion without overflowing the po
   }
   assert.ok(dropped >= 80 && dropped <= 120, `Expected around 100 drops, saw ${dropped}`);
 });
+
+test('a potion dropped during simultaneous play goes to the attacking partner', () => {
+  const run = createRun(['fox', 'hare'], 1, undefined, undefined, { simultaneous: true });
+  const fight = route(run, 'steady');
+  fight.players[1].hand = ['strike'];
+  Object.assign(fight.enemies[0], { hp: 1, block: 0 });
+  fight.potionSeed = 1972;
+  const next = applyAction(fight, { type: 'play', player: 1, cardIndex: 0, target: 0 });
+  assert.deepEqual(next.players[0].potions, []);
+  assert.equal(next.players[1].potions.length, 1);
+  assert.equal(next.potionFinds[0].seat, 1);
+});

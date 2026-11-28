@@ -146,7 +146,13 @@ export function createCombatInput(game, playCombatMove) {
     }
   }
 
-  return { clearAttackDrag, setAimedMove, selectTarget };
+  return {
+    clearAttackDrag,
+    setAimedMove,
+    selectTarget,
+    isDragging: () => Boolean(attackDrag),
+    aimedControl: () => aimedMove,
+  };
 }
 
 export function createEffectHelp(game, tooltip) {

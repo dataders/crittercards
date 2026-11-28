@@ -112,3 +112,14 @@ test('previously earned legacy rewards and the final Elite reward can be resumed
     }
   }
 });
+
+test('a simultaneous room save retains which player ended their turn', () => {
+  const run = createRun(['fox', 'hare'], 19, undefined, undefined, { simultaneous: true });
+  const battle = apply(run, { type: 'route', routeId: 'steady' });
+  const guestDone = apply(battle, { type: 'endTurn', player: 1 });
+  const checkpoint = saved(guestDone);
+  assert.ok(validateSavedRun(checkpoint));
+  assert.equal(apply(checkpoint.state, { type: 'endTurn' }).round, 2);
+  checkpoint.state.endedTurns = [true, true];
+  assert.equal(validateSavedRun(checkpoint), false);
+});

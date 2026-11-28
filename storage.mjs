@@ -108,7 +108,11 @@ export function validateSavedRun(saved) {
         state.campChoices.length !== players.length))) return false;
   if (inEncounter && (!isCount(state.activePlayer) || state.activePlayer >= players.length ||
       !isCount(state.round) || state.round === 0)) return false;
+  if (state.simultaneous !== undefined && (state.simultaneous !== true || players.length !== 2)) return false;
   if (phase === 'combat' && (!enemies.some(({ hp }) => hp > 0) || players[state.activePlayer].hp === 0)) return false;
+  if (phase === 'combat' && state.simultaneous &&
+      (!Array.isArray(state.endedTurns) || state.endedTurns.length !== players.length ||
+        !state.endedTurns.every((ended) => typeof ended === 'boolean') || state.endedTurns[state.activePlayer])) return false;
   if (phase === 'reward' && ((encounter === TRAIL.length - 1 && state.eliteReward !== true) || enemies.some(({ hp }) => hp > 0) ||
       !isList(state.rewardOptions, (offers) => isList(offers, isCard) && offers.length > 0) ||
       !isList(state.rewardPicks, validRewardPick) ||

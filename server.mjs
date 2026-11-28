@@ -14,6 +14,7 @@ const roomCapacity = 300;
 const jsonLimit = 65536;
 const cachedRecoveryCodes = new WeakMap();
 const codeAlphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+const concurrentCombatActions = new Set(['play', 'companionStrike', 'usePotion', 'endTurn']);
 const hourSoundtrackFile = 'crittercards-faster-soundtrack-one-hour.mp3';
 const hourSoundtrackDownload = `/downloads/${hourSoundtrackFile}`;
 const enchantedWoodsAlbum = '/assets/crittercards-enchanted-woods-album.zip';
@@ -242,7 +243,24 @@ function takeAction(room, seat, action) {
   }
   if (!room.decks.every(Boolean)) throw new RequestError(409, 'Both players need to confirm their decks.');
   if (room.picks.some((pick, index) => COUSINS[pick] && !room.companions[index])) throw new RequestError(409, 'Each cousin needs an animal companion.');
-  room.state = createRun([...room.picks], randomBytes(4).readUInt32LE(), room.decks, room.companions);
+  room.state = createRun([...room.picks], randomBytes(4).readUInt32LE(), room.decks, room.companions, { simultaneous: true });
+}
+
+function canApplyConcurrentCombatAction(room, seat, { action, revision }) {
+  return room.state?.simultaneous === true && room.state.phase === 'combat' &&
+    concurrentCombatActions.has(action?.type) && Number.isSafeInteger(revision) &&
+    revision < room.revision && revision >= (room.combatRevisions?.[seat] ?? room.revision);
+}
+
+function recordCombatRevision(room, seat, previous) {
+  if (!room.state?.simultaneous || room.state.phase !== 'combat') return;
+  if (!room.combatRevisions || previous?.phase !== 'combat' || previous.round !== room.state.round) {
+    // A new hand invalidates requests based on any earlier round for either seat.
+    room.combatRevisions = room.tokens.map(() => room.revision);
+  } else {
+    // A partner's move can leave the actor's hand valid at an older revision.
+    room.combatRevisions[seat] = room.revision;
+  }
 }
 
 async function serveStatic(request, response, pathname) {
@@ -367,7 +385,7 @@ export function createGameServer() {
 
       const seat = authenticate(room, request);
       if (operation === 'actions') {
-        if (body.revision !== room.revision) {
+        if (body.revision !== room.revision && !canApplyConcurrentCombatAction(room, seat, body)) {
           sendJson(response, 409, { message: 'The room changed. Review the update and try again.', snapshot: snapshot(room, seat) });
           return;
         }
@@ -379,9 +397,11 @@ export function createGameServer() {
           sendJson(response, 200, snapshot(room, seat));
           return;
         }
+        const previous = room.state;
         takeAction(room, seat, body.action);
         room.updatedAt = now;
         room.revision += 1;
+        recordCombatRevision(room, seat, previous);
       } else if (seat === 0 && isWaitingForPublicMatch(room)) {
         room.updatedAt = now;
       }

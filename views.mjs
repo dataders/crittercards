@@ -1,4 +1,4 @@
-import { ACTS, CARDS, CRITTERS, COMPANION_ABILITIES, FLOODGATE_RECOIL_PERCENT, FRAIL_BLOCK_LOSS, HARD_PERKS, LEVELS_PER_ACT, TRAIL, TYPES, briarHealer, canAffordCard, freeMoveAnimal, getCardDescription, getCompanionDescription, getEncounter, matchup, trailPosition } from './game.mjs';
+import { ACTS, CARDS, CRITTERS, COMPANION_ABILITIES, FLOODGATE_RECOIL_PERCENT, FRAIL_BLOCK_LOSS, HARD_PERKS, LEVELS_PER_ACT, TRAIL, TYPES, briarHealer, canAffordCard, canTakeTurn, freeMoveAnimal, getCardDescription, getCompanionDescription, getEncounter, matchup, trailPosition } from './game.mjs';
 import { COMBAT_TERMS, POTIONS, POTION_LIMIT } from './data.mjs';
 
 export const playerName = (seat) => `Player ${seat + 1}`;
@@ -35,7 +35,7 @@ function effects(unit, scope, className = '') {
 
 function allyCard(player, seat, state) {
   const critter = CRITTERS[player.critterId];
-  return `<div class="unit-card ${state.activePlayer === seat ? 'is-active' : ''} ${player.hp <= 0 ? 'is-defeated' : ''}">
+  return `<div class="unit-card ${canTakeTurn(state, seat) ? 'is-active' : ''} ${player.hp <= 0 ? 'is-defeated' : ''}">
     ${art(critter.id, 'unit-art', critter.name)}
     <div class="unit-info">
       <span class="combat-label">${playerName(seat)} · Lv. ${player.level} · ${escape(TYPES[critter.type].name)}</span>
@@ -111,11 +111,11 @@ function attackEffectiveness(attacker, defender) {
   return multiplier > 1 ? 'Super effective · ×1.5' : multiplier < 1 ? 'Resisted · ×0.75' : '';
 }
 
-function enemyCard(enemy, index, state) {
+function enemyCard(enemy, index, state, seat) {
   const alive = enemy.hp > 0;
   const healer = briarHealer(state, enemy);
-  const bondTarget = state.players.length > 1 && state.lastTarget === index && state.lastAttacker !== state.activePlayer && !state.bondTriggered;
-  const { critterId, companionId } = state.players[state.activePlayer];
+  const bondTarget = state.players.length > 1 && state.lastTarget === index && state.lastAttacker !== seat && !state.bondTriggered;
+  const { critterId, companionId } = state.players[seat];
   const attacker = CRITTERS[critterId];
   const companion = CRITTERS[companionId];
   const defenderType = CRITTERS[enemy.animal].type;
@@ -195,11 +195,19 @@ function companionControl(player, canAct, pending, solo) {
   </button>`;
 }
 
+export function combatSeat(state, room) {
+  return state.simultaneous && room ? room.seat : state.activePlayer;
+}
+
+export function combatTurn(state, seat) {
+  return `${state.encounter}:${state.round}:${seat}`;
+}
+
 export function combat(state, { room, pending, newCards }) {
-  const seat = state.activePlayer;
+  const seat = combatSeat(state, room);
   const player = state.players[seat];
   const waitingSeat = room && room.seat !== seat ? room.seat : null;
-  const canAct = !room || room.seat === seat;
+  const canAct = canTakeTurn(state, seat) && (!room || room.seat === seat);
   const enabled = canAct && !pending;
   const entry = getEncounter(state);
   const other = state.players[1 - seat];
@@ -211,9 +219,16 @@ export function combat(state, { room, pending, newCards }) {
   const playableCards = player.hand.filter((id) => canAffordCard(CARDS[id], player.energy));
   const canAim = freeMoveReady || playableCards.some((id) => CARDS[id].target === 'enemy');
   const canTap = playableCards.some((id) => CARDS[id].target !== 'enemy');
-  const turnTitle = room ? canAct ? `Your turn as ${name}` : `Waiting for ${name}` : `${name}’s turn`;
-  const next = seat === 0 && other?.hp > 0 ? `${CRITTERS[other.critterId].name} goes next.` : 'The rivals act next.';
-  return `<div class="combat-screen${state.enemies.length >= 3 ? ' has-crowded-rivals' : ''}" data-turn="${state.round}:${seat}">
+  const partnerName = other && CRITTERS[other.critterId].name;
+  const waiting = state.simultaneous ? `Waiting for ${partnerName}` : `Waiting for ${name}`;
+  const turnTitle = room ? canAct ? `Your turn as ${name}` : waiting : `${name}’s turn`;
+  const waitingInstructions = state.simultaneous && player.hp > 0
+    ? 'You ended your turn. Your partner can keep playing.'
+    : 'You can look at the rivals while you wait.';
+  let next = 'The rivals act next.';
+  if (state.simultaneous && other && canTakeTurn(state, other.id)) next = `The rivals act when ${partnerName} ends their turn.`;
+  if (!state.simultaneous && seat === 0 && other?.hp > 0) next = `${partnerName} goes next.`;
+  return `<div class="combat-screen${state.enemies.length >= 3 ? ' has-crowded-rivals' : ''}" data-turn="${combatTurn(state, seat)}">
     <header class="fight-heading">
       <div><p class="eyebrow">Act ${trailPosition(state.encounter).actIndex + 1} · Round ${state.round}</p><h1>${escape(entry.name)}</h1></div>
       <details class="combat-info" data-view-state="combat-info"><summary class="button button-ghost">Battle info</summary>
@@ -237,7 +252,7 @@ export function combat(state, { room, pending, newCards }) {
         ${cardReveal(newCards)}
         <div class="rival-heading"><h2>Rivals</h2><p id="aim-status" role="status"></p></div>
         <section class="clearing-party" aria-label="Your party">${state.players.map((member, index) => clearingFamiliar(member, index === seat)).join('')}</section>
-        <div class="combat-row clearing-rivals">${state.enemies.map((enemy, index) => enemyCard(enemy, index, state)).join('')}</div>
+        <div class="combat-row clearing-rivals">${state.enemies.map((enemy, index) => enemyCard(enemy, index, state, seat)).join('')}</div>
       </section>
     </div>
     <section class="hand-panel" aria-labelledby="turn-heading" tabindex="-1">
@@ -255,7 +270,7 @@ export function combat(state, { room, pending, newCards }) {
           ${button('End turn', 'end', { style: 'primary', disabled: !enabled, data: `data-seat="${seat}" title="${escape(next)}"` })}
         </div>
         ${companionControl(companionOwner, canAct, pending, state.players.length === 1)}
-        <div class="hud-instructions"><p class="turn-instructions" id="attack-instructions">${!canAct ? 'You can look at the rivals while you wait.' : [canAim && 'Choose a move, then a rival.', canTap && 'Play Block directly.'].filter(Boolean).join(' ') || 'End your turn when you’re ready.'}</p>${button('Cancel aim', 'cancel-aim', { data: 'hidden' })}</div>
+        <div class="hud-instructions"><p class="turn-instructions" id="attack-instructions">${!canAct ? waitingInstructions : [canAim && 'Choose a move, then a rival.', canTap && 'Play Block directly.'].filter(Boolean).join(' ') || 'End your turn when you’re ready.'}</p>${button('Cancel aim', 'cancel-aim', { data: 'hidden' })}</div>
         ${effects(player, 'active', 'hand-effects')}
         <div class="card-table">
           ${combatPile('draw', 'Draw', player.drawPile.length, seat)}
