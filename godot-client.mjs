@@ -9,11 +9,18 @@ import {
 } from './data.mjs';
 import { readStorage, writeStorage } from './storage.mjs';
 import { createRoom, joinRoom, resumeRoom } from './transport.mjs';
-import { escape, intentLabel } from './views.mjs';
+import { battleCardViews, escape, intentLabel } from './views.mjs';
 
 const controls = document.querySelector('#controls');
 const combat = document.querySelector('#combat');
 const status = document.querySelector('#status');
+const vitals = document.querySelector('#battle-vitals');
+const partyHealth = document.querySelector('#party-health');
+const rivalHealth = document.querySelector('#rival-health');
+const pileDialog = document.querySelector('#pile-dialog');
+const pileTitle = document.querySelector('#pile-title');
+const pileSummary = document.querySelector('#pile-summary');
+const pileCards = document.querySelector('#pile-cards');
 const roomKey = 'crittercards.room.v1';
 const mutationKey = 'crittercards.mutations.v1';
 const collectionKey = 'crittercards.collection.v1';
@@ -28,6 +35,8 @@ let pending = false;
 let selection = null;
 let renderedScene;
 let renderedHand;
+let renderedHealth;
+let inspectedPile;
 const state = () => room ? room.state : solo;
 const seat = () => room?.seat ?? 0;
 const name = (id) => CRITTERS[id]?.name ?? '';
@@ -83,9 +92,53 @@ function saveCollection(next) {
   }
 }
 
+function renderHealth(next) {
+  const inCombat = next?.phase === 'combat';
+  vitals.hidden = !inCombat;
+  if (!inCombat) return;
+  const party = next.players.map((player) => ({
+    label: player.id === seat() ? 'You · ' + name(player.critterId) : name(player.critterId),
+    hp: player.hp, maxHp: player.maxHp,
+  }));
+  const rivals = next.enemies.map((enemy) => ({
+    label: enemy.name, hp: enemy.hp, maxHp: enemy.maxHp,
+  }));
+  const health = JSON.stringify([party, rivals]);
+  if (health === renderedHealth) return;
+  renderedHealth = health;
+  const row = ({ label, hp, maxHp }) =>
+    '<div class="hp-row"><span>' + escape(label) + '</span><strong>' + hp + '/' + maxHp + ' HP</strong></div>';
+  partyHealth.innerHTML = party.map(row).join('');
+  rivalHealth.innerHTML = rivals.map(row).join('');
+}
+
+function renderPile(next) {
+  if (next?.phase !== 'combat') {
+    if (pileDialog.open) pileDialog.close();
+    return;
+  }
+  const view = battleCardViews[inspectedPile];
+  const cards = next.players[seat()][view.key];
+  const counts = new Map();
+  for (const id of cards) counts.set(id, (counts.get(id) ?? 0) + 1);
+  pileTitle.textContent = view.label[0].toUpperCase() + view.label.slice(1) + ' · ' + cards.length;
+  pileSummary.textContent = cards.length ? view.summary : 'This pile is empty.';
+  const byName = ([a], [b]) => CARDS[a].name.localeCompare(CARDS[b].name);
+  pileCards.innerHTML = [...counts].sort(byName).map(([id, count]) =>
+    '<li><strong>' + escape(CARDS[id].name) + ' × ' + count + '</strong><span>' +
+    escape(getCardDescription(next, seat(), id, { compact: true })) + '</span></li>').join('');
+}
+
+pileDialog.addEventListener('close', () => {
+  inspectedPile = null;
+  if (!combat.hidden) combat.focus();
+});
+
 function render() {
   const next = state();
   if (next) saveCollection(next);
+  renderHealth(next);
+  if (pileDialog.open) renderPile(next);
   const scene = next ? `${next.runId}:${next.encounter}:${next.phase}` : 'lobby';
   if (scene !== renderedScene) selection = null;
   const phase = next?.phase;
@@ -261,7 +314,14 @@ function chooseCard(index) {
 window.crittercardsGodot = {
   attachView(callback) { delivery = callback; delivery(JSON.stringify(combatModel())); },
   input(kind, index, target) {
-    if (pending || state()?.phase !== 'combat') return;
+    if (state()?.phase !== 'combat') return;
+    if (kind === 'draw' || kind === 'discard') {
+      inspectedPile = kind;
+      renderPile(state());
+      if (!pileDialog.open) pileDialog.showModal();
+      return;
+    }
+    if (pending) return;
     if (kind === 'card') return chooseCard(index);
     if (kind === 'drag') return play(index, target);
     if (kind === 'target' && selection === 'companion') {

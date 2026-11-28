@@ -33,6 +33,13 @@ func _ready() -> void:
 	bramble.hide()
 	hand.max_hand_size = 15
 	_make_button("companion", "Companion", _input_action.bind("companion"))
+	for pile in ["draw", "discard"]:
+		_make_button(pile + "_pile", "", _input_action.bind(pile))
+		var area: Button = buttons[pile + "_pile"]
+		area.flat = true
+		area.tooltip_text = "Inspect " + pile + " pile"
+		area.accessibility_name = area.tooltip_text
+		area.z_index = 25
 	rivals.add_theme_constant_override("separation", 5)
 	potion_row.add_theme_constant_override("separation", 5)
 	potion_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -56,6 +63,8 @@ func _layout() -> void:
 	_place(potion_row, Vector2(center, floor_y - 310), Vector2(minf(size.x - 22, 610), 43))
 	_place(buttons.companion, Vector2(center - 98, floor_y - 62), Vector2(150, 46))
 	_place(buttons.turn, Vector2(center + 82, floor_y - 62), Vector2(150, 46))
+	_place(buttons.draw_pile, Vector2(62, floor_y - 252), Vector2(100, 218))
+	_place(buttons.discard_pile, Vector2(size.x - 62, floor_y - 252), Vector2(100, 218))
 
 
 func _receive(args: Array) -> void:
@@ -70,8 +79,8 @@ func _receive(args: Array) -> void:
 		return
 	has_combat = true
 	labels.title.text = model.title
-	labels.player.text = "%s · %s HP · %s Block" % [model.player.name, model.player.hp, model.player.block]
-	labels.status.text = "Round %s · %s energy%s" % [model.round, model.energy, " · Choose a rival" if model.targeting else ("" if model.enabled else " · Waiting")]
+	labels.player.text = "%s · %s HP · %s Block" % [model.player.name, int(model.player.hp), int(model.player.block)]
+	labels.status.text = "Round %s · %s energy%s" % [int(model.round), int(model.energy), " · Choose a rival" if model.targeting else ("" if model.enabled else " · Waiting")]
 	hudson.texture = _portrait(model.player.animal)
 	_apply_skin(hudson, model.player.skin)
 
@@ -118,7 +127,7 @@ func _render_rivals(entries: Array) -> void:
 	for rival in entries:
 		var target := Button.new()
 		target.text = "%s · %s HP%s\n%s" % [
-			rival.name, rival.hp, " · %s Block" % rival.block if rival.block else "", rival.intent
+			rival.name, int(rival.hp), " · %s Block" % int(rival.block) if rival.block else "", rival.intent
 		]
 		target.tooltip_text = rival.intent
 		target.custom_minimum_size.y = 60

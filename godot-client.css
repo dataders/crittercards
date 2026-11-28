@@ -17,3 +17,57 @@ h1 { margin: .5rem 0; }
 [hidden] { display: none !important; }
 
 footer { margin-top: 1.2rem; font-size: .8rem; }
+
+#battle-vitals {
+  position: sticky;
+  z-index: 2;
+  top: env(safe-area-inset-top, 0px);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .4rem;
+  margin: .45rem 0;
+  padding: .35rem;
+  background: #10201b;
+  border: 1px solid #526957;
+  border-radius: .5rem;
+}
+.health-group { display: grid; align-content: start; gap: .2rem; }
+.hp-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .1rem .5rem;
+  padding: .18rem .38rem;
+  border-radius: .3rem;
+  background: #294336;
+  font-size: .84rem;
+  overflow-wrap: anywhere;
+}
+#rival-health .hp-row { background: #46312d; }
+.hp-row strong { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+#pile-dialog {
+  width: min(29rem, calc(100vw - 2rem));
+  max-height: 75dvh;
+  box-sizing: border-box;
+  padding: 0 .8rem .8rem;
+  color: inherit;
+  background: #142a21;
+  border: 1px solid #8f9b78;
+  border-radius: .55rem;
+}
+#pile-dialog::backdrop { background: rgb(0 0 0 / .65); }
+.pile-heading {
+  position: sticky;
+  top: 0;
+  background: #142a21;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .45rem;
+  padding-top: .55rem;
+}
+#pile-title { margin: 0; font-size: 1.1rem; }
+#pile-cards { display: grid; gap: .4rem; padding: 0; list-style: none; }
+#pile-cards li { display: grid; padding: .4rem .6rem; background: #263d32; border-radius: .3rem; }

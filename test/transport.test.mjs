@@ -34,3 +34,30 @@ for (const [description, changed, retry] of [
     assert.deepEqual(revisions, retry ? [12, 13] : [12]);
   });
 }
+
+for (const [description, changed, retry] of [
+  ['the other player has rested', { campChoices: ['heal', null] }, true],
+  ['this player already chose', { campChoices: ['heal', 'heal'] }, false],
+  ['the party is at a later camp', { encounter: 6, campChoices: ['heal', null] }, false],
+]) {
+  test('stale online camp choice when ' + description, async (t) => {
+    const state = { phase: 'camp', runId: 'run', encounter: 2, campChoices: [null, null] };
+    const snapshot = (revision, state) => ({ code: 'ROOM', seat: 1, revision, state });
+    const action = { type: 'camp', choice: 'heal' };
+    const revisions = [];
+    t.mock.method(globalThis, 'fetch', async (_url, options) => {
+      if (options.method === 'GET') return Response.json(snapshot(12, state));
+      const body = JSON.parse(options.body);
+      assert.deepEqual(body.action, action);
+      revisions.push(body.revision);
+      if (body.revision === 12) {
+        return Response.json({ message: 'The room has changed.', snapshot: snapshot(13, { ...state, ...changed }) }, { status: 409 });
+      }
+      return Response.json(snapshot(14, { ...state, phase: 'route' }));
+    });
+    const room = await resumeRoom('ROOM', 'test-seat');
+    if (retry) assert.equal((await room.act(action)).state.phase, 'route');
+    else await assert.rejects(room.act(action), /room has changed/);
+    assert.deepEqual(revisions, retry ? [12, 13] : [12]);
+  });
+}

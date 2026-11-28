@@ -39,6 +39,14 @@ function canRetryDraft(before, after, seat) {
     JSON.stringify(before.rewardOptions[seat]) === JSON.stringify(after.rewardOptions[seat]);
 }
 
+function canRetryCamp(before, after, seat) {
+  if (before?.phase !== 'camp' || after?.phase !== 'camp' ||
+      before.runId !== after.runId || before.encounter !== after.encounter) return false;
+  const other = 1 - seat;
+  return !before.campChoices[seat] && !after.campChoices[seat] &&
+    !before.campChoices[other] && Boolean(after.campChoices[other]);
+}
+
 function connect(data) {
   const { token, ...initial } = data;
   const path = roomPath(initial.code);
@@ -67,13 +75,14 @@ function connect(data) {
         } catch (error) {
           if (error.snapshot) accept(error.snapshot);
           if (attempt >= 2 || error.status !== 409 || !error.snapshot || latest.revision <= revision) throw error;
-          // Only replay independent choices that still belong to the same setup or reward.
+          // Retry independent choices that still belong to the same screen.
           const sameSetup = setupAction && !before.state && !latest.state &&
             before.picks[seat] === latest.picks[seat] &&
             before.companions[seat] === latest.companions[seat] &&
             JSON.stringify(before.deck) === JSON.stringify(latest.deck);
           const sameDraft = action.type === 'draft' && canRetryDraft(before.state, latest.state, seat);
-          if (!sameSetup && !sameDraft) throw error;
+          const sameCamp = action.type === 'camp' && canRetryCamp(before.state, latest.state, seat);
+          if (!sameSetup && !sameDraft && !sameCamp) throw error;
         }
       }
     },
