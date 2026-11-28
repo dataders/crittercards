@@ -63,6 +63,85 @@ test('private recovery code restores both players and game after a server restar
   assert.equal(guestResume.body.recoveryCode, undefined);
 });
 
+test('room partners can play and end concurrently while stale repeats are rejected after recovery', async () => {
+  process.env.ROOM_RECOVERY_SECRET = 'test-only-signing-key-never-use-in-production';
+  const request = createClient();
+  const host = (await request('/api/rooms', { body: { critterId: 'fox' } })).body;
+  const path = roomPath(host);
+  const guest = (await request(`${path}/join`, { body: { critterId: 'hare' } })).body;
+  const act = (send, { token }, revision, action) =>
+    send(`${path}/actions`, { token, body: { revision, action } });
+  const deck = { type: 'deck', cards: ['guard', 'guard', 'cover', 'cover', 'strike'] };
+  const hostReady = await act(request, host, guest.revision, deck);
+  const bothReady = await act(request, guest, hostReady.body.revision, deck);
+  const started = await act(request, host, bothReady.body.revision, { type: 'start' });
+  assert.equal(started.body.state.simultaneous, true);
+  const battle = await act(request, host, started.body.revision, { type: 'route', routeId: 'steady' });
+  assert.equal(battle.body.state.phase, 'combat');
+  const { revision: openingRevision, state: opening } = battle.body;
+
+  const moves = opening.players.map(({ hand }) => ({
+    type: 'play', cardIndex: hand.findIndex((id) => id === 'guard' || id === 'cover'),
+  }));
+  const played = await Promise.all([
+    act(request, host, openingRevision, moves[0]),
+    act(request, guest, openingRevision, moves[1]),
+  ]);
+  assert.deepEqual(played.map(({ status }) => status), [200, 200]);
+  const checkpoint = (await readRoom(request, host)).body;
+  assert.equal(checkpoint.revision, openingRevision + 2);
+  assert.deepEqual(checkpoint.state.players.map(({ hand }) => hand.length), [4, 4]);
+  assert.equal(checkpoint.state.round, opening.round);
+
+  const restarted = createClient();
+  const restored = await restarted('/api/rooms/recover', { body: { recoveryCode: checkpoint.recoveryCode } });
+  assert.equal(restored.status, 200);
+  const replay = await act(restarted, guest, openingRevision, moves[1]);
+  assert.equal(replay.status, 409);
+  assert.equal(replay.body.snapshot.revision, checkpoint.revision);
+  assert.deepEqual(replay.body.snapshot.state, checkpoint.state);
+
+  const finished = await Promise.all([host, guest].map((seat) =>
+    act(restarted, seat, checkpoint.revision, { type: 'endTurn' })));
+  assert.deepEqual(finished.map(({ status }) => status), [200, 200]);
+  const [firstDone, nextRound] = finished.map(({ body }) => body).toSorted((a, b) => a.revision - b.revision);
+  assert.equal(firstDone.state.round, opening.round);
+  assert.deepEqual(firstDone.state.players.map(({ hp }) => hp), checkpoint.state.players.map(({ hp }) => hp));
+  assert.equal(nextRound.state.round, opening.round + 1);
+  assert.deepEqual(nextRound.state.players.map(({ hand }) => hand.length), [5, 5]);
+
+  const oldRound = await act(restarted, host, checkpoint.revision, { type: 'endTurn' });
+  assert.equal(oldRound.status, 409);
+  assert.deepEqual(oldRound.body.snapshot.state, nextRound.state);
+  const resumed = await readRoom(restarted, guest);
+  assert.equal(resumed.body.revision, nextRound.revision);
+  assert.deepEqual(resumed.body.state, nextRound.state);
+});
+
+test('recovery checkpoints honor the room inactivity window and active-room conflicts', async (t) => {
+  process.env.ROOM_RECOVERY_SECRET = 'test-only-signing-key-never-use-in-production';
+  let now = 1_000_000;
+  t.mock.method(Date, 'now', () => now);
+  const original = createClient();
+  const host = (await original('/api/rooms', { body: {} })).body;
+  const queue = (await enterQueue(original)).body;
+  const recover = (request, room) => request('/api/rooms/recover', { body: { recoveryCode: room.recoveryCode } });
+
+  assert.equal((await recover(original, host)).status, 409);
+  now += 44_999;
+  assert.equal((await recover(createClient(), queue)).status, 200);
+  now += 1;
+  assert.equal((await recover(createClient(), queue)).status, 410);
+
+  now = 1_000_000 + 6 * 60 * 60 * 1000 - 1;
+  const beforeExpiry = await recover(createClient(), host);
+  assert.equal(beforeExpiry.status, 200);
+  assert.equal(beforeExpiry.body.code, host.code);
+  assert.equal(beforeExpiry.body.revision, host.revision);
+  now += 1;
+  assert.equal((await recover(createClient(), host)).status, 410);
+});
+
 test('concurrent public requests share one room and leave private rooms available by code', async () => {
   const request = createClient();
   const { body: privateRoom } = await request('/api/rooms', { body: {} });

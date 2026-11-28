@@ -16,10 +16,10 @@ The campaign remains three acts of 20 levels. Treat 90–120 minutes as a human 
 
 | Lane | Sibling Codex chat | Feedback and last confirmed boundary | Next handoff |
 | --- | --- | --- | --- |
-| Rooms and gold economy | Build co-op animal deckbuilder MVP | Reported “Room not found,” recover after restart, and keep storage free. The Postgres change was reverted. Signed recovery is committed at [`c0fb70b`](https://github.com/dataders/crittercards/commit/c0fb70b) and awaits authorized hosted configuration. Guest-first browser reconnect still needs work. Price floor is 15 gold, removal costs 30, and Hard pays triple. | Own CC-01 and CC-02. Hand off exact release evidence and the remaining economy question for CC-07. |
+| Rooms and gold economy | Build co-op animal deckbuilder MVP | Signed recovery is committed at [`c0fb70b`](https://github.com/dataders/crittercards/commit/c0fb70b). Guest-first and host-first reconnect passed locally. Checkpoint expiry passes in a local candidate. Hosted restart recovery needs signing configuration. Price floor is 15 gold, removal costs 30, and Hard pays triple. | Own CC-01 and CC-02. Coordinate the companion picker release separately from the art candidate. |
 | Characters and hand size | Add Four Cousin Characters | Hudson, Quinn, Alba, and Tito have distinct roles. Tito is fragile, with Secret Star opening odds of one in three and a round-two fallback. Five-card hands and both seeded fixtures are committed in [`5c43bdd`](https://github.com/dataders/crittercards/commit/5c43bdd). The chat verified the five-card opening and round two in the browser. | Own character inputs to CC-07 and lead CC-09 only after the first playtest. |
-| Combat controls and fixtures | Add enemy targeting by dragging | Players wanted obvious targets and deliberate aiming. Drag works for attack cards and companion moves, with a keyboard path and direct Block controls. The chat verified mouse, touch, and keyboard in Chrome. It confirmed that the five-card fixtures were already in the hand-size commit. | Own CC-03. Coordinate with the gameplay owner before refreshing shared fixtures. |
-| Runtime, release, and regression checks | Review architecture and safeguards | One seeded rules engine serves all modes. The full co-op replay covers all three trials through level 60. The chat verified Render at [`f49a76d`](https://github.com/dataders/crittercards/commit/f49a76d6aae7dbdee9d957299a03940b4c386a27) with a two-client room check. That evidence applies to that release. | Own CC-05 and maintain the release evidence. |
+| Combat controls and fixtures | Add enemy targeting by dragging | Direct play feedback called out an unreadable drag preview and uncertain Secret Star targeting. [`6d231e4`](https://github.com/dataders/crittercards/commit/6d231e4) supports click or tap, drag, and keyboard, with explicit cancellation. The themed candidate passes the same mouse and mobile tests. | Own CC-03. Keep physical touch and player acceptance open. |
+| Runtime, release, and regression checks | Review architecture and safeguards | The full co-op replay covers all three trials through level 60. The release chat reported 33 tests and private room-code play on hosted [`6d231e4`](https://github.com/dataders/crittercards/commit/6d231e4). That evidence applies to that release. | Own CC-05. Repeat for the next approved release. |
 | Music, presentation, and pacing | Compare Crittercards to Slay the Spire | The user asked for 90–120 minutes, six original act/boss tracks, continuous play, and an attachment download for the one-hour mix. The chat verified the public download. | Own soundtrack checks in CC-05 and contribute the pacing protocol for CC-06. |
 | Trials, campaign balance, and integration | Update Crittercards roadmap · current coordinator | Floodgate recoil is committed in [`68811a9`](https://github.com/dataders/crittercards/commit/68811a9). Matched starter runs on that revision found a tempo advantage in 9/16 co-op fights and a full round saved in 2/16 solo fights. Full-block and two-hit cancellation are covered separately. | Own CC-04, prioritize the queue, and resolve cross-lane conflicts before release. |
 
@@ -115,6 +115,7 @@ Priority P2. [Existing #2](https://github.com/dataders/crittercards/issues/2) an
 - [ ] From solo and shared-screen, save and reload during route choice, combat, merchant, camp, reward and an act transition. Resume the same pending choice, hand, inventory and ownership.
 - [ ] A malformed or older save gives a recoverable explanation or migrates cleanly. A resumed purchase, unlock or reward applies once. A completed or abandoned save can be intentionally cleared.
 - [ ] On a narrow viewport, players can find the current level, selected route, upcoming Hard/Trial and optional stops, and the next act boss. Record any [#2](https://github.com/dataders/crittercards/issues/2) criteria already covered by the current map.
+- [ ] Each act shows one location picture and a short description. Use the corresponding enchanted-woods scene in battle with dark-green surfaces and readable intent, HP, and controls. Test desktop and narrow touch views.
 
 ### CC-09 · Make recruitment and familiar progression shape the next run
 
@@ -181,3 +182,31 @@ The first block is ready to run independently of human playtest scheduling or ho
 | CC-04 | Local verified · coordinator | Pinned `68811a9`: both openings won all 48 normal-health pairs across three profiles. Rush won sooner in 2/16 solo-starter, 9/16 co-op-starter, and 3/16 upgraded-solo pairs by player turns. Block preserved more HP in 14/16, 16/16, and 11/16. Both starter lines lost both constructed low-HP starts in each starter profile. |
 | CC-05 | Local verified · coordinator | Clean `68811a9`: 32/32 Node tests. The release owner’s earlier hosted result was `f49a76d`. Await the new exact hosted record. |
 | CC-08 | Local scenes verified · coordinator | On clean `68811a9`, Chrome saved and restored route choice, combat, camp, shop, and reward in solo and shared-screen. The shared-screen Act II transition also round-tripped. An unsupported version showed a recovery message. A version-1 save with malformed nested data raised a rendering error instead. Duplicate-effect checks remain open. |
+
+## Run the first human playtest
+
+Pin the build and use a fresh browser profile. Let players use their usual devices and the in-game tutorial. Start with “Start a game in this mode and see how far you get.” Keep quiet as they make their first route, combat, and reward choices. When they ask for help, record the question before giving a hint.
+
+| Session | Setup | Watch first |
+| --- | --- | --- |
+| New solo player | Choose Tito, then let them choose a companion and deck. | Whether they find Solo and recognize when they can play. |
+| Shared-screen pair | One screen and one set of controls, with Tito in either seat. | Who hands over control, whether both can read whose turn it is, and whether each player claims a reward. |
+| Two devices | One private room. Put Tito on touch if the players have that option. | Create-to-join and join-to-start separately. Check readiness, handoff, and whether the screens agree. Reload the guest’s original tab at a safe handoff and record recovery. |
+
+- **Secret Star:** Record the input, intended rival, actual target, and whether the card spent three energy once. Watch whether the player discovers click or tap, drag, or keyboard aim. Note canceled drops, scrolling trouble, and when they spend energy before the spell appears. Discuss the gesture after the attempt.
+- **First decisions:** At Act I level 4, note whether the merchant is found and the purchaser understands whose deck changes. At level 5, note why they choose or skip Briar Infirmary and which rival they target first. Watch each player draft or skip.
+- **Pacing:** Start the timer on entry to the first trail map. Count decisions and ordinary discussion. Pause for external interruptions and record them separately. Capture time at each boss, the position at 90 active minutes, and the exact act, level, phase, and reason if they stop before a clear. End at 120 active minutes if still playing. Keep the soundtrack check outside the timer.
+
+| Build, mode, devices | Join and start | Secret Star input and result | L4/L5 choices | Handoffs, stalls, recovery | Boss times | Position at 90m | Stop and active time | Next issue |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+|  |  |  |  |  |  |  |  |  |
+
+## Area art
+
+Built-in ImageGen created the three original 1536 × 1024 scenes. The game uses the same WebP in an area header and behind its battles.
+
+Shared prompt: “Original game environment art for Crittercards, a dark mythic woodland deckbuilder. Ink woodcut hatching under textured gouache, slightly irregular painted paper grain, rich dark pine green and charcoal with restrained moss and small moonlit highlights. Wide landscape 3:2. Layered distance, trees frame both sides, a coherent spacious clearing low center suitable behind game controls and a readable center crop on mobile. Let scenery be visibly enchanted even in a dim UI. Environment only, no animals, people, characters, text, logo, UI, frame, or watermark.”
+
+- [Hollow Trail](assets/hollow-battle.webp): “The Hollow Trail. An enchanted spruce woodland with old twisted roots, a moonlit stone arch partly lost in the distant fog, glints of tiny moss-green fireflies, a winding path over leaf litter. Quiet, inviting mystery.”
+- [Drowned Canopy](assets/drowned-canopy-battle.webp): “The Drowned Canopy. A flooded enchanted woodland beneath tall willow roots, still forest-green water, low mist, and a few dim amber lights reflected in the water. A narrow mossy causeway across the foreground. More teal and muted silver than the spruce forest, still predominantly dark green.”
+- [Thorn Court](assets/thorn-court-battle.webp): “The Thorn Court. Dark enchanted woodland with twisted blackthorn hedges, ancient arching oaks, and an overgrown stone court opening into a clearing. A distant dim moon picks out green briars and fern shapes, a little olive warmth, dramatic without a bright glare.”

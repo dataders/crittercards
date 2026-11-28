@@ -290,6 +290,8 @@ export function getCompanionDescription(animalId, attackBonus = 0) {
   return describeCard(COMPANION_ABILITIES[animalId], attackBonus);
 }
 
+const signatureCardIds = new Set(Object.values(CRITTERS).map(({ signature }) => signature));
+const draftCardIds = Object.keys(CARDS).filter((id) => !signatureCardIds.has(id));
 for (const card of Object.values(CARDS)) {
   const upgraded = { ...card, id: `${card.id}+`, name: `${card.name}+` };
   const improvedFields = ['damage', 'block', 'allyBlock', 'heal', 'allyHeal', 'stealBlock', 'woundedBonus', 'strength'];
@@ -633,9 +635,16 @@ export const MERCHANTS = Object.fromEntries(ACTS.flatMap((_, actIndex) =>
 ));
 
 export const CAMPS = ACTS.flatMap((_, index) => [2, 6, 10, 14, 18].map((level) => index * LEVELS_PER_ACT + level));
+export const SKIP_FIGHT_ROUTE = 'skip-fight';
 
-export function getEncounter(state) {
-  return TRAIL[state.encounter].find((route) => route.id === state.path[state.encounter]);
+export function canSkipFight(state) {
+  const { encounter, phase, visitedShops, visitedCamps } = state;
+  return (phase === 'route' || phase === 'shop') && !trailPosition(encounter).bossLevel &&
+    (visitedShops.includes(encounter) || (visitedCamps ?? []).includes(encounter));
+}
+
+export function getEncounter(state, level = state.encounter) {
+  return TRAIL[level].find((route) => route.id === state.path[level]);
 }
 
 export function rivalHealth(enemy, encounter, playerCount) {
@@ -750,11 +759,19 @@ export function getEnemyIntent(state, encounter, enemyIndex, round) {
   return intent;
 }
 
-function startTurn(state, index) {
-  state.activePlayer = index;
-  const player = state.players[index];
+export function canTakeTurn(state, seat) {
+  return state.phase === 'combat' && state.players[seat]?.hp > 0 &&
+    (state.simultaneous ? !state.endedTurns[seat] : state.activePlayer === seat);
+}
+
+function applyReservedEnergy(player) {
   player.energy += player.reserveEnergy;
   player.reserveEnergy = 0;
+}
+
+function startTurn(state, index) {
+  state.activePlayer = index;
+  applyReservedEnergy(state.players[index]);
 }
 
 function beginRound(state) {
@@ -770,7 +787,13 @@ function beginRound(state) {
     player.energy = player.hp > 0 ? TURN_ENERGY + (state.round === 1 ? player.perks.filter((perk) => perk === 'spirit').length : 0) : 0;
     if (player.hp > 0) drawHand(state, player);
   }
-  startTurn(state, state.players.findIndex((player) => player.hp > 0));
+  state.activePlayer = state.players.findIndex((player) => player.hp > 0);
+  if (state.simultaneous) {
+    state.endedTurns = state.players.map(({ hp }) => hp <= 0);
+    for (const player of state.players.filter(({ hp }) => hp > 0)) applyReservedEnergy(player);
+  } else {
+    applyReservedEnergy(state.players[state.activePlayer]);
+  }
   const encounter = getEncounter(state);
   state.enemies.forEach((enemy, index) => {
     enemy.intent = enemy.hp > 0 ? getEnemyIntent(state, encounter, index, state.round) : null;
@@ -822,7 +845,7 @@ function beginEncounter(state) {
   beginRound(state);
 }
 
-export function createRun(critterIds, seed = Date.now(), startingDecks, companions) {
+export function createRun(critterIds, seed = Date.now(), startingDecks, companions, { simultaneous = false } = {}) {
   if (!Array.isArray(critterIds) || ![1, 2].includes(critterIds.length) ||
       [...critterIds].some((id) => typeof id !== 'string' || !Object.hasOwn(CRITTERS, id))) {
     throw new Error('Choose a critter for each player.');
@@ -857,6 +880,7 @@ export function createRun(critterIds, seed = Date.now(), startingDecks, companio
   });
   return {
     runId: String(seed), seed: seed >>> 0, phase: 'route', encounter: 0, players,
+    ...(simultaneous && players.length === 2 ? { simultaneous: true } : {}),
     enemies: [], path: [], gold: 0, visitedShops: [], visitedCamps: [], campChoices: [], soldCards: [], log: [],
   };
 }
@@ -899,11 +923,15 @@ function finishEncounter(state) {
   state.phase = 'reward';
   const encounter = getEncounter(state);
   state.hardReward = encounter.hardReward === true;
-  const available = TRAIL.slice(0, state.encounter + 1).flatMap((routes, level) =>
-    routes.find(({ id }) => id === state.path[level]).enemies.flatMap((enemy) => CARD_UNLOCKS[enemy.animal] ?? []));
+  const available = state.path.slice(0, state.encounter + 1).flatMap((_, level) =>
+    (getEncounter(state, level)?.enemies ?? []).flatMap((enemy) => CARD_UNLOCKS[enemy.animal] ?? []));
   state.rewardOptions = state.players.map(() => {
     const pool = [...new Set([...available, ...BASE_CARDS, 'spark', 'ward', 'thorns', 'moonmend', 'avalanche', 'sanctuary'])];
     const offers = [0, 2, 3].map((cost) => shuffle(state, pool.filter((id) => CARDS[id].cost === cost))[0]);
+    const openPool = draftCardIds.filter((id) => !offers.includes(id) && id !== encounter.trialReward);
+    // Keep the extra offer from changing the seeded combat draws.
+    const extraOffer = nextRandom({ seed: state.seed });
+    offers.push(openPool[Math.floor(extraOffer * openPool.length)]);
     if (encounter.trialReward) offers.push(encounter.trialReward);
     return offers;
   });
@@ -991,7 +1019,10 @@ function resolveCardEffect(state, player, card, target, attackerId = player.crit
   if (card.frail && enemy.hp > 0) enemy.frail += card.frail;
   if (card.block) gainBlock(player, card.block);
   if (card.allyBlock && ally.hp > 0) gainBlock(ally, card.allyBlock);
-  if (card.allyEnergy && ally.hp > 0) ally.reserveEnergy += card.allyEnergy;
+  if (card.allyEnergy && ally.hp > 0) {
+    if (state.simultaneous && canTakeTurn(state, ally.id)) ally.energy += card.allyEnergy;
+    else ally.reserveEnergy += card.allyEnergy;
+  }
   if (card.heal) heal(player, card.heal);
   if (card.allyHeal) heal(ally, card.allyHeal);
 }
@@ -1069,7 +1100,14 @@ function finishTurn(state, playerIndex) {
   player.hand = [];
   player.energy = 0;
 
-  if (playerIndex === 0 && state.players[1]?.hp > 0) {
+  if (state.simultaneous) {
+    state.endedTurns[playerIndex] = true;
+    const remaining = state.players.findIndex(({ id }) => canTakeTurn(state, id));
+    if (remaining !== -1) {
+      state.activePlayer = remaining;
+      return;
+    }
+  } else if (playerIndex === 0 && state.players[1]?.hp > 0) {
     startTurn(state, 1);
     return;
   }
@@ -1153,7 +1191,6 @@ function draftCard(state, { player: playerIndex, cardId = null, perkId = 'fang',
   player.level += 1;
   player.maxHp += 3;
   if (player.hp === 0) player.hp = Math.ceil(player.maxHp / 2);
-  heal(player, 7);
   if (perkId === 'fang') {
     player.attackBonus += 1;
   } else if (perkId === 'bark') {
@@ -1177,8 +1214,16 @@ function draftCard(state, { player: playerIndex, cardId = null, perkId = 'fang',
 }
 
 function chooseRoute(state, { player, routeId }) {
-  if (state.phase !== 'route') throw new Error('Choose a route from the trail map.');
   if (player !== 0) throw new Error('Player 1 chooses the route.');
+  if (routeId === SKIP_FIGHT_ROUTE) {
+    if (!canSkipFight(state)) throw new Error('Visit a merchant or finish resting at camp before continuing without a fight.');
+    state.path[state.encounter] = routeId;
+    state.encounter += 1;
+    state.phase = 'route';
+    log(state, 'The pack moves on without fighting.');
+    return;
+  }
+  if (state.phase !== 'route') throw new Error('Choose a route from the trail map.');
   if (routeId === 'merchant') {
     if (!MERCHANTS[state.encounter] || state.visitedShops.includes(state.encounter)) {
       throw new Error('The merchant is unavailable.');
@@ -1265,7 +1310,9 @@ export function applyAction(state, action) {
   }
   if (action.type !== 'play' && action.type !== 'endTurn' && action.type !== 'companionStrike') throw new Error('Unknown game action.');
   if (state.phase !== 'combat') throw new Error('This action requires an active battle.');
-  if (action.player !== state.activePlayer) throw new Error('Wait for your critter’s turn.');
+  if (!canTakeTurn(state, action.player)) {
+    throw new Error(state.simultaneous ? 'Your turn is over for this round.' : 'Wait for your critter’s turn.');
+  }
   const next = structuredClone(state);
   if (action.type === 'play') playCard(next, action);
   else if (action.type === 'companionStrike') {

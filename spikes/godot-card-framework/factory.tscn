@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://addons/card-framework/card_factory.gd" id="1"]
+
+[node name="Factory" type="Node"]
+script = ExtResource("1")

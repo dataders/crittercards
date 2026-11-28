@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyAction, CARD_REMOVAL_PRICE, CARDS, CRITTERS, createRun, matchup, TYPES } from '../game.mjs';
+import { applyAction, CARD_REMOVAL_PRICE, CARDS, CRITTERS, createRun, matchup, SKIP_FIGHT_ROUTE, TYPES } from '../game.mjs';
 
 test('types apply before Vulnerable and Block to each individual hit', () => {
   assert.equal(Object.values(CRITTERS).every(({ type }) => Object.hasOwn(TYPES, type)), true);
@@ -92,4 +92,41 @@ test('merchant removal costs shared gold, targets one deck and rejects invalid p
   assert.throws(() => applyAction(run, action), /merchant/);
   const restored = JSON.parse(JSON.stringify(result));
   assert.deepEqual(restored.players[1].deck, result.players[1].deck);
+});
+
+test('a completed camp or a merchant visit can advance a level without starting combat', () => {
+  const skip = { type: 'route', player: 0, routeId: SKIP_FIGHT_ROUTE };
+  const run = createRun(['fox', 'hare'], 12);
+  run.encounter = 2;
+  run.path = ['steady', 'steady'];
+  assert.throws(() => applyAction(run, skip), /Visit a merchant or finish resting/);
+  const camp = applyAction(run, { type: 'route', player: 0, routeId: 'camp' });
+  const oneReady = applyAction(camp, { type: 'camp', player: 0, choice: 'upgrade', cardIndex: 0 });
+  assert.throws(() => applyAction(oneReady, skip), /finish resting/);
+  const rested = applyAction(oneReady, { type: 'camp', player: 1, choice: 'heal' });
+  const nextLevel = applyAction(rested, skip);
+  assert.equal(nextLevel.encounter, 3);
+  assert.equal(nextLevel.players[0].deck[0], 'strike+');
+  assert.equal(nextLevel.path[2], SKIP_FIGHT_ROUTE);
+  assert.throws(() => applyAction(nextLevel, skip), /Visit a merchant/);
+
+  const shop = applyAction(nextLevel, { type: 'route', player: 0, routeId: 'merchant' });
+  assert.throws(() => applyAction(shop, { ...skip, player: 1 }), /Player 1/);
+  const passed = applyAction(JSON.parse(JSON.stringify(shop)), skip);
+  assert.equal(passed.encounter, 4);
+  assert.equal(passed.phase, 'route');
+  assert.equal(passed.path[3], SKIP_FIGHT_ROUTE);
+  assert.equal(passed.gold, run.gold);
+  assert.deepEqual(passed.players.map(({ level }) => level), [1, 1]);
+  assert.deepEqual(passed.enemies, []);
+  assert.throws(() => applyAction({ ...passed, encounter: 19, visitedShops: [19] }, skip), /Visit a merchant/);
+
+  let fight = applyAction(passed, { type: 'route', player: 0, routeId: 'steady' });
+  fight.players[0].hand = fight.enemies.map(() => 'jab');
+  for (const enemy of fight.enemies) Object.assign(enemy, { hp: 1, block: 0 });
+  for (const target of fight.enemies.keys()) {
+    fight = applyAction(fight, { type: 'play', player: 0, cardIndex: 0, target });
+  }
+  assert.equal(fight.phase, 'reward');
+  assert.equal(fight.rewardOptions[0].length, 4);
 });
