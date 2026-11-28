@@ -1,16 +1,16 @@
 import { applyAction, CARDS, CRITTERS, createRun } from '../game.mjs';
-import { ENERGY_CARDS } from '../data.mjs';
+import { BUILD_PATHS, ENERGY_CARDS } from '../data.mjs';
 
 const startingEnergy = 3;
 const signatures = new Set(Object.values(CRITTERS).map(({ signature }) => signature));
-const generalCards = Object.keys(CARDS).filter((id) => !id.endsWith('+') && !signatures.has(id));
+const generalCards = Object.keys(CARDS).filter((id) => !id.endsWith('+') && !signatures.has(id) && !CARDS[id].build);
 const scenarios = [
   { name: 'open target', block: 0, guarded: false, wounded: false },
   { name: 'armored target', block: 14, guarded: false, wounded: false },
   { name: 'low HP and guarding', block: 0, guarded: true, wounded: true },
   { name: 'finishing a rival', block: 0, guarded: false, wounded: true, targetHp: 4 },
 ];
-const characters = ['tita', 'alba', 'fox'];
+const characters = ['tita', 'alba', 'fox', 'hudson', 'quinn'];
 
 function playAll(battle, cards) {
   let state = {
@@ -36,7 +36,8 @@ const findings = { burst: [], extraEnergy: [], repeatableEnergy: [] };
 let checked = 0;
 for (const critter of characters) {
   const signature = CRITTERS[critter].signature;
-  const cards = [...generalCards, signature];
+  const paths = BUILD_PATHS[critter] ?? [];
+  const cards = [...generalCards, signature, ...paths.flat()];
   const finishers = cards.filter((id) => CARDS[id].damage);
   for (const scenario of scenarios) {
     const battle = applyAction(createRun([critter], 40), { type: 'route', player: 0, routeId: 'steady' });
@@ -45,7 +46,7 @@ for (const critter of characters) {
     player.block = scenario.guarded ? 3 : 0;
     player.energy = startingEnergy;
     for (const rival of battle.enemies) {
-      rival.animal = { tide: 'raccoon', grove: 'hare', ember: 'fox' }[CRITTERS[critter].type];
+      rival.animal = { tide: 'raccoon', grove: 'hare', ember: 'fox', stone: 'badger' }[CRITTERS[critter].type];
       rival.hp = rival.maxHp = 100;
       rival.block = scenario.block;
     }
@@ -70,13 +71,16 @@ for (const critter of characters) {
       }
     }
     for (const first of cards) for (const second of cards) check([first, second]);
+    for (const [setup, payoff] of paths) {
+      for (const finisher of finishers) check([setup, payoff, finisher]);
+    }
     for (const first of ENERGY_CARDS) for (const second of ENERGY_CARDS) {
       for (const finisher of finishers) check([first, second, finisher]);
     }
   }
 }
 
-console.log(`Checked ${checked} legal sequences with three starting energy. All pairs and two-energy-card attack chains were tried on Tito, Alba, and Ember.`);
+console.log(`Tried ${checked} legal card pairs, energy chains, and cousin build chains with three starting energy.`);
 const labels = {
   burst: 'Bonus damage over the cards played separately (8 or more)',
   extraEnergy: 'Net energy gained now or next turn (2 or more)',

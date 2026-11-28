@@ -1,5 +1,5 @@
 import {
-  COUSINS, CRITTERS, CARDS, matchup, FRAIL_BLOCK_LOSS, POTIONS, POTION_LIMIT, potionPrice,
+  COUSINS, CRITTERS, CARDS, matchup, FRAIL_BLOCK_LOSS, POTIONS, POTION_LIMIT, potionPrice, BUILD_PATHS,
   COMPANION_ABILITIES, LEVEL_PERKS, HARD_PERKS, hardPerkOptions, trailPosition,
   FLOODGATE_RECOIL_PERCENT, TRAIL, MERCHANTS, CAMPS, getEncounter,
   rivalHealth, briarHealer, BASE_CARDS, BASIC_CARDS, ENERGY_CARDS, STARTER_DECK, STARTING_DECK_SIZE, MIN_STARTING_ONE_COST, MAX_STARTING_COPIES,
@@ -310,6 +310,16 @@ function finishEncounter(state) {
     if (level % 4 === 0) {
       offers.push(ENERGY_CARDS[Math.floor(nextRandom(bonusRandom) * ENERGY_CARDS.length)]);
     }
+    const paths = BUILD_PATHS[state.players[seat].critterId];
+    if (paths && (level <= 2 || level % 3 === 0)) {
+      const deck = state.players[seat].deck;
+      const copies = (cardId) => deck.filter((id) => id === cardId || id === cardId + '+').length;
+      for (const [setup, payoff] of paths) {
+        const setupCopies = copies(setup);
+        const payoffCopies = copies(payoff);
+        offers.push(level === 1 ? setup : level === 2 ? payoff : setupCopies <= payoffCopies ? setup : payoff);
+      }
+    }
     if (trialReward) {
       const duplicate = offers.indexOf(trialReward);
       if (duplicate >= 0) {
@@ -392,7 +402,13 @@ function resolveCardEffect(state, player, card, target, attackerId = player.crit
     const bond = ally !== player && !state.bondTriggered && state.lastAttacker === ally.id && state.lastTarget === target;
     const woundedBonus = enemy.hp <= enemy.maxHp / 2 ? card.woundedBonus ?? 0 : 0;
     const ambush = player.hardPerk === 'ambush' && !player.ambushUsed ? HARD_PERKS.ambush.damage : 0;
-    const damage = card.damage + player.attackBonus + player.strength + woundedBonus + ambush + (enemy.marked ? MARK_DAMAGE : 0) + (bond ? BOND_DAMAGE : 0);
+    const spentBlock = Math.min(player.block, card.spendBlock ?? 0);
+    player.block -= spentBlock;
+    const poisonBonus = Math.min((enemy.poison ?? 0) * 2, card.poisonDamageCap ?? 0);
+    const vulnerableBonus = enemy.vulnerable ? card.vulnerableBonus ?? 0 : 0;
+    if (enemy.vulnerable && card.vulnerableBlock) gainBlock(player, card.vulnerableBlock);
+    const damage = card.damage + player.attackBonus + player.strength + woundedBonus + ambush + spentBlock * 2 +
+      poisonBonus + vulnerableBonus + (enemy.marked ? MARK_DAMAGE : 0) + (bond ? BOND_DAMAGE : 0);
     if (ambush) {
       player.ambushUsed = true;
       log(state, `${critterName(player)} springs a Briar Ambush.`);
@@ -427,6 +443,7 @@ function resolveCardEffect(state, player, card, target, attackerId = player.crit
   if (card.poison && enemy.hp > 0) enemy.poison = (enemy.poison ?? 0) + card.poison;
   if (card.mark && enemy.hp > 0) enemy.marked = true;
   if (card.strength) player.strength += card.strength;
+  if (card.frailStrength && enemy.frail) player.strength += card.frailStrength;
   if (card.vulnerable && enemy.hp > 0) enemy.vulnerable += card.vulnerable;
   if (card.frail && enemy.hp > 0) enemy.frail += card.frail;
   if (card.block) gainBlock(player, card.block);

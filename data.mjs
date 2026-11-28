@@ -42,8 +42,27 @@ export function potionPrice(encounter, potionId) {
   return POTIONS[potionId].basePrice + trailPosition(encounter).actIndex * 8;
 }
 
+export const BUILD_PATHS = {
+  hudson: [
+    ['venomSalve', 'venomFang'],
+    ['rootBrace', 'shieldBash'],
+  ],
+  quinn: [
+    ['graveOmen', 'graveBreaker'],
+    ['boneBulwark', 'grimResolve'],
+  ],
+};
+
 export const CARDS = {
   ...energyCards,
+  venomSalve: { id: 'venomSalve', name: 'Venom Salve', build: 'Poison', cost: 1, type: 'support', target: 'enemy', poison: 8, block: 6 },
+  venomFang: { id: 'venomFang', name: 'Venom Fang', build: 'Poison', cost: 1, type: 'attack', target: 'enemy', damage: 4, poisonDamageCap: 28 },
+  rootBrace: { id: 'rootBrace', name: 'Root Brace', build: 'Block', cost: 1, type: 'skill', target: 'none', block: 17, nextEnergy: 1 },
+  shieldBash: { id: 'shieldBash', name: 'Shield Bash', build: 'Block', cost: 1, type: 'attack', target: 'enemy', damage: 5, spendBlock: 12 },
+  graveOmen: { id: 'graveOmen', name: 'Grave Omen', build: 'Vulnerable', cost: 0, type: 'support', target: 'enemy', mark: true, vulnerable: 1, exhaust: true },
+  graveBreaker: { id: 'graveBreaker', name: 'Gravebreaker', build: 'Vulnerable', cost: 1, type: 'attack', target: 'enemy', damage: 5, vulnerableBonus: 21, vulnerableBlock: 12 },
+  boneBulwark: { id: 'boneBulwark', name: 'Bone Bulwark', build: 'Frail', cost: 1, type: 'support', target: 'enemy', block: 15, frail: 2 },
+  grimResolve: { id: 'grimResolve', name: 'Grim Resolve', build: 'Frail', cost: 0, type: 'support', target: 'enemy', block: 5, frailStrength: 8, exhaust: true },
   shieldWall: { id: 'shieldWall', name: 'Venom Ward', cost: 1, type: 'support', target: 'enemy', block: 6, allyBlock: 5, poison: 3 },
   witchHex: { id: 'witchHex', name: 'Bone Hex', cost: 1, type: 'support', target: 'enemy', vulnerable: 1, frail: 1, block: 4 },
   cuttingChorus: { id: 'cuttingChorus', name: 'Spirit Chorus', cost: 'X', type: 'attack', target: 'enemy', damage: 5 },
@@ -264,6 +283,10 @@ export function describeCard(card, attackBonus, { compact = false, solo = false 
   const sentences = [];
   if (card.stealBlock) sentences.push(`Steal up to ${card.stealBlock} Block.`);
   if (card.damage) sentences.push(`Deal ${card.damage + attackBonus} damage${card.pierce ? ', ignoring Block' : ''}.`);
+  if (card.poisonDamageCap) sentences.push(`+2 damage per Poison on the target, up to +${card.poisonDamageCap}.`);
+  if (card.spendBlock) sentences.push(`Spend up to ${card.spendBlock} Block. Deal 2 extra damage per Block spent.`);
+  if (card.vulnerableBonus) sentences.push(`Against Vulnerable rivals, deal ${card.vulnerableBonus} more damage${card.vulnerableBlock ? ` and gain ${card.vulnerableBlock} Block` : ''}.`);
+  if (card.frailStrength) sentences.push(`Gain ${card.frailStrength} Strength if the rival is Frail.`);
   if (card.woundedBonus) sentences.push(`Deal +${card.woundedBonus} damage to targets at half HP or below.`);
   if (card.block || (solo && card.allyBlock)) {
     const extra = solo && card.block && card.allyBlock ? `, then ${card.allyBlock} more` : '';
@@ -285,8 +308,8 @@ export function describeCard(card, attackBonus, { compact = false, solo = false 
   if (card.selfFrail) sentences.push(`Gain ${card.selfFrail} Frail.${compact ? '' : ' ' + COMBAT_TERMS.frail.text}`);
   if (card.mark) sentences.push(compact ? 'Mark the rival.' : `Mark the target. ${COMBAT_TERMS.marked.text}`);
   if (card.strength) sentences.push(`Gain ${card.strength} Strength.${compact ? '' : ' ' + COMBAT_TERMS.strength.text}`);
-  if (card.vulnerable) sentences.push(compact ? 'Apply Vulnerable.' : `Apply Vulnerable. ${COMBAT_TERMS.vulnerable.text}`);
-  if (card.frail) sentences.push(compact ? 'Apply Frail.' : `Apply Frail. ${COMBAT_TERMS.frail.text}`);
+  if (card.vulnerable) sentences.push(`Apply ${card.vulnerable > 1 ? card.vulnerable + ' ' : ''}Vulnerable.${compact ? '' : ' ' + COMBAT_TERMS.vulnerable.text}`);
+  if (card.frail) sentences.push(`Apply ${card.frail > 1 ? card.frail + ' ' : ''}Frail.${compact ? '' : ' ' + COMBAT_TERMS.frail.text}`);
   if (card.openingDrawDenominator) sentences.push(`1 in ${card.openingDrawDenominator} chance to draw in round 1. Otherwise, draw in round ${card.drawRound}.`);
   if (card.exhaust) sentences.push(compact ? 'Exhaust.' : COMBAT_TERMS.exhaust.text);
   const effect = sentences.join(' ');

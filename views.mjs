@@ -168,6 +168,7 @@ export function actionCard(state, seat, cardId, index, enabled, draft = false, s
     ${draft ? '' : `<span class="card-emblem" aria-hidden="true">${emblem}</span>`}
     <strong class="card-title">${escape(card.name)}</strong>
     <span class="card-effect">${escape(getCardDescription(state, seat, cardId, { compact: !draft }))}</span>
+    ${draft && card.build ? `<span class="draft-card-copies">${escape(card.build)} build</span>` : ''}
     ${copies ? `<span class="draft-card-copies">${copies} in deck</span>` : ''}
   </button>`;
 }
