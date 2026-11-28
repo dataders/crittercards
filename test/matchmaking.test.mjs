@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import test from 'node:test';
 
+import { CARDS, startingLibraryFor } from '../game.mjs';
 import { createGameServer } from '../server.mjs';
+import { findPublicMatch, recoverRoom, resumeRoom } from '../transport.mjs';
+
 
 function createClient() {
   // Exercise the HTTP handler without opening a socket during node --test.
@@ -32,15 +35,24 @@ const cancelQueue = (request, room, revision = room.revision) => request(`${room
   body: { revision, action: { type: 'cancelMatch' } },
 });
 
-test('private recovery code restores both players and game after a server restart', async () => {
+function useRecoverySecret(t) {
+  const previous = process.env.ROOM_RECOVERY_SECRET;
   process.env.ROOM_RECOVERY_SECRET = 'test-only-signing-key-never-use-in-production';
+  t.after(() => {
+    if (previous === undefined) delete process.env.ROOM_RECOVERY_SECRET;
+    else process.env.ROOM_RECOVERY_SECRET = previous;
+  });
+}
+
+test('private recovery code restores both players and game after a server restart', async (t) => {
+  useRecoverySecret(t);
   const firstServer = createClient();
   const host = (await firstServer('/api/rooms', { body: {} })).body;
   const path = roomPath(host);
   const guest = (await firstServer(`${path}/join`, { body: {} })).body;
   assert.equal(guest.recoveryCode, undefined);
   let revision = guest.revision;
-  for (const [token, action] of [[host.token, { type: 'select', critterId: 'fox' }], [guest.token, { type: 'select', critterId: 'hare' }], [host.token, { type: 'deck', cards: ['strike', 'strike', 'guard', 'cover', 'mark'] }], [guest.token, { type: 'deck', cards: ['strike', 'strike', 'guard', 'cover', 'mark'] }], [host.token, { type: 'start' }]]) {
+  for (const [token, action] of [[host.token, { type: 'select', critterId: 'fox' }], [guest.token, { type: 'select', critterId: 'hare' }], [host.token, { type: 'deck' }], [guest.token, { type: 'deck' }], [host.token, { type: 'start' }]]) {
     const result = await firstServer(`${path}/actions`, { token, body: { revision, action } });
     assert.equal(result.status, 200);
     revision = result.body.revision;
@@ -63,15 +75,15 @@ test('private recovery code restores both players and game after a server restar
   assert.equal(guestResume.body.recoveryCode, undefined);
 });
 
-test('room partners can play and end concurrently while stale repeats are rejected after recovery', async () => {
-  process.env.ROOM_RECOVERY_SECRET = 'test-only-signing-key-never-use-in-production';
+test('room partners can play and end concurrently while stale repeats are rejected after recovery', async (t) => {
+  useRecoverySecret(t);
   const request = createClient();
   const host = (await request('/api/rooms', { body: { critterId: 'fox' } })).body;
   const path = roomPath(host);
   const guest = (await request(`${path}/join`, { body: { critterId: 'hare' } })).body;
   const act = (send, { token }, revision, action) =>
     send(`${path}/actions`, { token, body: { revision, action } });
-  const deck = { type: 'deck', cards: ['guard', 'guard', 'cover', 'cover', 'strike'] };
+  const deck = { type: 'deck' };
   const hostReady = await act(request, host, guest.revision, deck);
   const bothReady = await act(request, guest, hostReady.body.revision, deck);
   const started = await act(request, host, bothReady.body.revision, { type: 'start' });
@@ -80,8 +92,8 @@ test('room partners can play and end concurrently while stale repeats are reject
   assert.equal(battle.body.state.phase, 'combat');
   const { revision: openingRevision, state: opening } = battle.body;
 
-  const moves = opening.players.map(({ hand }) => ({
-    type: 'play', cardIndex: hand.findIndex((id) => id === 'guard' || id === 'cover'),
+  const moves = opening.players.map(({ hand }, seat) => ({
+    type: 'play', cardIndex: 0, ...(CARDS[hand[0]].target === 'enemy' ? { target: seat } : {}),
   }));
   const played = await Promise.all([
     act(request, host, openingRevision, moves[0]),
@@ -116,30 +128,6 @@ test('room partners can play and end concurrently while stale repeats are reject
   const resumed = await readRoom(restarted, guest);
   assert.equal(resumed.body.revision, nextRound.revision);
   assert.deepEqual(resumed.body.state, nextRound.state);
-});
-
-test('recovery checkpoints honor the room inactivity window and active-room conflicts', async (t) => {
-  process.env.ROOM_RECOVERY_SECRET = 'test-only-signing-key-never-use-in-production';
-  let now = 1_000_000;
-  t.mock.method(Date, 'now', () => now);
-  const original = createClient();
-  const host = (await original('/api/rooms', { body: {} })).body;
-  const queue = (await enterQueue(original)).body;
-  const recover = (request, room) => request('/api/rooms/recover', { body: { recoveryCode: room.recoveryCode } });
-
-  assert.equal((await recover(original, host)).status, 409);
-  now += 44_999;
-  assert.equal((await recover(createClient(), queue)).status, 200);
-  now += 1;
-  assert.equal((await recover(createClient(), queue)).status, 410);
-
-  now = 1_000_000 + 6 * 60 * 60 * 1000 - 1;
-  const beforeExpiry = await recover(createClient(), host);
-  assert.equal(beforeExpiry.status, 200);
-  assert.equal(beforeExpiry.body.code, host.code);
-  assert.equal(beforeExpiry.body.revision, host.revision);
-  now += 1;
-  assert.equal((await recover(createClient(), host)).status, 410);
 });
 
 test('concurrent public requests share one room and leave private rooms available by code', async () => {
@@ -206,4 +194,78 @@ test('only authenticated host polls extend the short public waiting lifetime', a
 
   now += 45000;
   assert.equal((await readRoom(request, waiting)).status, 200);
+});
+
+test('a reloaded guest can resume with the original ticket after the host restores', async (t) => {
+  useRecoverySecret(t);
+  const original = createClient();
+  const host = (await original('/api/rooms', { body: { critterId: 'fox' } })).body;
+  const { body: guest } = await original(`${roomPath(host)}/join`, { body: { critterId: 'hare' } });
+  const { body: backup } = await readRoom(original, host);
+  const restarted = createClient();
+  t.mock.method(globalThis, 'fetch', async (path, { headers, body }) => {
+    const result = await restarted(path, {
+      token: headers.Authorization?.slice('Bearer '.length),
+      body: body === undefined ? undefined : JSON.parse(body),
+    });
+    return Response.json(result.body, { status: result.status });
+  });
+
+  await assert.rejects(resumeRoom(guest.code, guest.token), { status: 404 });
+  const restored = await recoverRoom(backup.recoveryCode);
+  assert.equal(restored.revision, backup.revision);
+  const resumed = await resumeRoom(guest.code, guest.token);
+  assert.equal(resumed.seat, 1);
+  assert.equal(resumed.revision, restored.revision);
+  assert.deepEqual(resumed.picks, ['fox', 'hare']);
+});
+
+test('unchanged recovery codes are reused and an expired room can be restored', async (t) => {
+  useRecoverySecret(t);
+  let now = 1;
+  t.mock.method(Date, 'now', () => now);
+  const request = createClient();
+  const { body: waiting } = await enterQueue(request);
+  now += 40000;
+  const { body: refreshed } = await readRoom(request, waiting);
+  assert.equal(refreshed.revision, waiting.revision);
+  assert.equal(refreshed.recoveryCode, waiting.recoveryCode);
+
+  now += 45000;
+  const restore = await request('/api/rooms/recover', { body: { recoveryCode: waiting.recoveryCode } });
+  assert.equal(restore.status, 200);
+  assert.equal(restore.body.code, waiting.code);
+  const { body: guest } = await request(`${roomPath(waiting)}/join`, { body: { critterId: 'hare' } });
+  assert.ok(guest.revision > refreshed.revision);
+  const { body: matched } = await readRoom(request, waiting);
+  assert.notEqual(matched.recoveryCode, restore.body.recoveryCode);
+});
+
+test('public teammates can pick and confirm their own decks on the same revision', async (t) => {
+  const client = createClient();
+  t.mock.method(globalThis, 'fetch', async (path, { headers, body }) => {
+    const result = await client(path, {
+      token: headers.Authorization?.slice('Bearer '.length),
+      body: body === undefined ? undefined : JSON.parse(body),
+    });
+    return Response.json(result.body, { status: result.status });
+  });
+  const first = await findPublicMatch();
+  const guest = await findPublicMatch();
+  const host = await resumeRoom(first.code, first.token);
+  await Promise.all([
+    host.act({ type: 'select', critterId: 'fox' }),
+    guest.act({ type: 'select', critterId: 'hare' }),
+  ]);
+  const hostDeck = host.dealtDeck;
+  const guestDeck = guest.dealtDeck;
+  await assert.rejects(host.act({ type: 'deck', cards: startingLibraryFor('hare') }), { status: 400 });
+  await Promise.all([
+    host.act({ type: 'deck' }),
+    guest.act({ type: 'deck' }),
+  ]);
+  const ready = await resumeRoom(host.code, host.token);
+  assert.deepEqual(ready.ready, [true, true]);
+  const started = await ready.act({ type: 'start' });
+  assert.deepEqual(started.state.players.map(({ deck }) => deck.slice(0, 13)), [hostDeck, guestDeck]);
 });

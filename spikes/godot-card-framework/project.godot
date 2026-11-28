@@ -2,7 +2,7 @@ config_version=5
 
 [application]
 config/name="Crittercards Godot Spike"
-run/main_scene="res://battle.tscn"
+run/main_scene="res://client.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 
 [display]

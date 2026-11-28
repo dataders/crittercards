@@ -1,29 +1,38 @@
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { open } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { resolve } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
-import { gzipSync, gunzipSync } from 'node:zlib';
+import { createGunzip, gzipSync, gunzipSync } from 'node:zlib';
 
-import { applyAction, createRun, COUSINS, CRITTERS, STARTER_DECK, validateStartingDeck } from './game.mjs';
+import { applyAction, createRun, COUSINS, CRITTERS, startingLibraryFor } from './game.mjs';
 
 const roomLifetime = 6 * 60 * 60 * 1000;
 const publicWaitLifetime = 45 * 1000;
 const roomCapacity = 300;
+const jsonLimit = 65536;
+const cachedRecoveryCodes = new WeakMap();
 const codeAlphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-const concurrentCombatActions = new Set(['play', 'companionStrike', 'endTurn']);
+const concurrentCombatActions = new Set(['play', 'companionStrike', 'usePotion', 'endTurn']);
 const hourSoundtrackFile = 'crittercards-faster-soundtrack-one-hour.mp3';
 const hourSoundtrackDownload = `/downloads/${hourSoundtrackFile}`;
 const enchantedWoodsAlbum = '/assets/crittercards-enchanted-woods-album.zip';
 const staticFiles = new Set([
   '/index.html', '/soundtrack.html', '/styles.css', '/app.mjs', '/game.mjs', '/transport.mjs',
+  '/audio.mjs', '/solo-progress.mjs', '/combat-input.mjs', '/combat-effects.mjs', '/data.mjs', '/storage.mjs', '/view-state.mjs', '/views.mjs',
   '/assets/crittercards-soundtrack.zip', enchantedWoodsAlbum,
+  '/godot-client.html', '/godot-client.css', '/godot-client.mjs',
+  ...['godot', 'godot-third-party', 'card-framework'].map((name) => '/godot-preview/licenses/' + name + '.txt'),
+  ...['html', 'js', 'wasm', 'pck', 'png', 'icon.png', 'apple-touch-icon.png',
+    'audio.worklet.js', 'audio.position.worklet.js'].map((ext) => '/godot-preview/index.' + ext),
 ]);
 const assetPath = /^\/assets\/(?:[\w-]+\/)*[\w.-]+\.(?:avif|gif|ico|jpe?g|mp3|png|svg|webp|woff2)$/i;
 const types = {
   avif: 'image/avif', css: 'text/css; charset=utf-8', gif: 'image/gif',
   html: 'text/html; charset=utf-8', ico: 'image/x-icon', jpeg: 'image/jpeg',
   jpg: 'image/jpeg', mjs: 'text/javascript; charset=utf-8', mp3: 'audio/mpeg', png: 'image/png',
+  txt: 'text/plain; charset=utf-8', js: 'text/javascript; charset=utf-8', pck: 'application/octet-stream', wasm: 'application/wasm',
   svg: 'image/svg+xml', webp: 'image/webp', woff2: 'font/woff2', zip: 'application/zip',
 };
 
@@ -34,11 +43,12 @@ class RequestError extends Error {
   }
 }
 
-function sendJson(response, status, data) {
+function sendJson(response, status, data, headers = {}) {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
+    ...headers,
   });
   response.end(JSON.stringify(data));
 }
@@ -48,13 +58,15 @@ async function readJson(request) {
     throw new RequestError(415, 'Send a JSON request.');
   }
 
+  if (Number(request.headers['content-length']) > jsonLimit) throw new RequestError(413, 'Request is too large.');
   const chunks = [];
   let bytes = 0;
-  for await (const chunk of request) {
+  // Leave the socket open long enough to send the 413 response, then close it.
+  for await (const chunk of request.iterator({ destroyOnReturn: false })) {
     bytes += chunk.length;
-    if (bytes <= 65536) chunks.push(chunk);
+    if (bytes > jsonLimit) throw new RequestError(413, 'Request is too large.');
+    chunks.push(chunk);
   }
-  if (bytes > 65536) throw new RequestError(413, 'Request is too large.');
 
   let data;
   try {
@@ -85,12 +97,20 @@ function isExpired(room, now) {
   return now - room.updatedAt >= lifetime;
 }
 
+function pruneExpiredRooms(rooms, now) {
+  for (const [code, room] of rooms) {
+    if (isExpired(room, now)) rooms.delete(code);
+  }
+}
+
 function createRoom(rooms, { critterId, publicMatch, now }) {
   const code = newRoomCode(rooms);
   const token = randomBytes(32).toString('base64url');
+  const dealt = critterId ? startingLibraryFor(critterId) : null;
   const room = {
     code, tokens: [token, null], picks: [critterId, null], companions: [null, null],
-    decks: [critterId && !COUSINS[critterId] ? STARTER_DECK : null, null],
+    dealtDecks: [dealt, null],
+    decks: [critterId && !COUSINS[critterId] ? dealt : null, null],
     state: null, revision: 0, updatedAt: now, publicMatch,
   };
   rooms.set(code, room);
@@ -103,7 +123,8 @@ function joinRoom(room, critterId, now) {
   const token = randomBytes(32).toString('base64url');
   room.tokens[1] = token;
   room.picks[1] = critterId;
-  room.decks[1] = critterId && !COUSINS[critterId] ? STARTER_DECK : null;
+  room.dealtDecks[1] = critterId ? startingLibraryFor(critterId) : null;
+  room.decks[1] = critterId && !COUSINS[critterId] ? room.dealtDecks[1] : null;
   room.updatedAt = now;
   room.revision += 1;
   return { ...snapshot(room, 1), token };
@@ -112,9 +133,13 @@ function joinRoom(room, critterId, now) {
 function signedRecoveryCode(room) {
   const secret = process.env.ROOM_RECOVERY_SECRET;
   if (!secret) return undefined;
+  const cached = cachedRecoveryCodes.get(room);
+  if (cached?.revision === room.revision && cached.secret === secret) return cached.code;
   const payload = gzipSync(JSON.stringify(room)).toString('base64url');
   const signature = createHmac('sha256', secret).update(payload).digest('base64url');
-  return `CR2-${payload}.${signature}`;
+  const code = `CR2-${payload}.${signature}`;
+  cachedRecoveryCodes.set(room, { revision: room.revision, secret, code });
+  return code;
 }
 
 function snapshot(room, seat) {
@@ -128,6 +153,7 @@ function snapshot(room, seat) {
     picks: room.picks,
     companions: room.companions,
     deck: room.decks[seat],
+    dealtDeck: room.dealtDecks[seat],
     ready: room.decks.map(Boolean),
     ...(seat === 0 && process.env.ROOM_RECOVERY_SECRET ? { recoveryCode: signedRecoveryCode(room) } : {}),
   };
@@ -147,14 +173,15 @@ function recoverRoom(rooms, recoveryCode) {
   if (!room || !/^[A-Z2-9]{6}$/.test(room.code) || !Array.isArray(room.tokens) || room.tokens.length !== 2 ||
       typeof room.tokens[0] !== 'string' || !room.tokens.every((token) => token === null || /^[\w-]{43}$/.test(token)) ||
       !Array.isArray(room.picks) || !Array.isArray(room.decks) || !Array.isArray(room.companions) ||
-      !Number.isSafeInteger(room.revision) || room.revision < 0 || !Number.isSafeInteger(room.updatedAt) ||
-      (room.state !== null && typeof room.state !== 'object')) {
+      !Number.isSafeInteger(room.revision) || room.revision < 0 || (room.state !== null && typeof room.state !== 'object')) {
     throw new RequestError(400, 'Invalid recovery code.');
   }
+  const now = Date.now();
+  pruneExpiredRooms(rooms, now);
   if (rooms.has(room.code)) throw new RequestError(409, 'This room is already active.');
-  if (isExpired(room, Date.now())) throw new RequestError(410, 'This recovery code has expired.');
   if (rooms.size >= roomCapacity) throw new RequestError(503, 'All rooms are currently in use.');
-  room.updatedAt = Date.now();
+  room.dealtDecks ??= room.picks.map((pick, seat) => room.decks[seat] ?? (pick ? startingLibraryFor(pick) : null));
+  room.updatedAt = now;
   rooms.set(room.code, room);
   return { ...snapshot(room, 0), token: room.tokens[0] };
 }
@@ -188,6 +215,9 @@ function takeAction(room, seat, action) {
 
   if (action.type === 'select') {
     validateCritter(action.critterId);
+    if (room.picks[seat] !== action.critterId || !room.dealtDecks[seat]) {
+      room.dealtDecks[seat] = startingLibraryFor(action.critterId);
+    }
     room.picks[seat] = action.critterId;
     room.companions[seat] = null;
     room.decks[seat] = null;
@@ -206,11 +236,8 @@ function takeAction(room, seat, action) {
   if (action.type === 'deck') {
     if (!room.picks[seat]) throw new RequestError(409, 'Choose your creature first.');
     if (COUSINS[room.picks[seat]] && !room.companions[seat]) throw new RequestError(409, 'Choose an animal companion first.');
-    if (action.cards !== null) {
-      try { validateStartingDeck(action.cards); }
-      catch (error) { throw new RequestError(400, error.message); }
-    }
-    room.decks[seat] = action.cards;
+    if (action.cards !== undefined) throw new RequestError(400, 'Starting cards are assigned by character.');
+    room.decks[seat] = room.dealtDecks[seat];
     return;
   }
 
@@ -243,50 +270,83 @@ function recordCombatRevision(room, seat, previous) {
 
 async function serveStatic(request, response, pathname) {
   const download = pathname === hourSoundtrackDownload;
-  const path = download ? `/assets/${hourSoundtrackFile}` : pathname === '/' ? '/index.html' : pathname;
+  const landing = { '/': '/index.html', '/godot': '/godot-client.html', '/godot-preview/': '/godot-preview/index.html' };
+  const path = download ? `/assets/${hourSoundtrackFile}` : landing[pathname] ?? pathname;
   if (!['GET', 'HEAD'].includes(request.method) || (!staticFiles.has(path) && !assetPath.test(path))) {
     throw new RequestError(404, 'Page not found.');
   }
 
-  let data;
+  const compressedWasm = path === '/godot-preview/index.wasm';
+  const gzipAccepted = /(?:^|,)\s*gzip\s*(?:,|$)/i.test(request.headers['accept-encoding'] ?? '');
+  let file;
   try {
-    data = await readFile(new URL(`.${path}`, import.meta.url));
-  } catch (error) {
-    if (error.code === 'ENOENT') throw new RequestError(404, 'Page not found.');
-    throw error;
-  }
+    file = await open(new URL(`.${path}${compressedWasm ? '.gz' : ''}`, import.meta.url), 'r');
+    const details = await file.stat();
+    if (!details.isFile()) throw new RequestError(404, 'Page not found.');
+    const { size } = details;
+    const etag = `W/"${size.toString(16)}-${Math.trunc(details.mtimeMs).toString(16)}"`;
+    const lastModified = details.mtime.toUTCString();
+    const headers = {
+      'Content-Type': types[path.split('.').at(-1).toLowerCase()],
+      'Content-Length': size,
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'no-cache',
+      ETag: etag,
+      'Last-Modified': lastModified,
+      'Accept-Ranges': 'bytes',
+    };
+    if (compressedWasm) {
+      delete headers['Accept-Ranges'];
+      headers.Vary = 'Accept-Encoding';
+      if (gzipAccepted) headers['Content-Encoding'] = 'gzip';
+      else {
+        delete headers['Content-Length'];
+        delete headers.ETag;
+      }
+    }
+    if (download || path === enchantedWoodsAlbum) {
+      headers['Content-Disposition'] = `attachment; filename="${path.split('/').at(-1)}"`;
+    }
+    const validators = request.headers['if-none-match']?.split(',').map((value) => value.trim().replace(/^W\//, ''));
+    if (headers.ETag && validators?.some((value) => value === '*' || value === etag.slice(2))) {
+      delete headers['Content-Length'];
+      response.writeHead(304, headers).end();
+      return;
+    }
 
-  const headers = {
-    'Content-Type': types[path.split('.').at(-1).toLowerCase()],
-    'Content-Length': data.length,
-    'X-Content-Type-Options': 'nosniff',
-    'Cache-Control': 'no-cache',
-  };
-  if (download || path === enchantedWoodsAlbum) {
-    headers['Content-Disposition'] = `attachment; filename="${path.split('/').at(-1)}"`;
-  }
-  if (headers['Content-Type'] === 'audio/mpeg') {
-    headers['Accept-Ranges'] = 'bytes';
-    const range = request.method === 'GET' && /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
+    if (compressedWasm) {
+      response.writeHead(200, headers);
+      if (request.method === 'HEAD') response.end();
+      else if (gzipAccepted) await pipeline(file.createReadStream(), response);
+      else await pipeline(file.createReadStream(), createGunzip(), response);
+      return;
+    }
+    const ifRange = request.headers['if-range'];
+    const range = request.method === 'GET' && (!ifRange || ifRange === lastModified) &&
+      /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
+    let status = 200;
+    let byteRange;
     if (range && (range[1] || range[2])) {
-      const size = data.length;
       const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
       const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
       if (start > end) {
-        response.writeHead(416, { 'Content-Range': `bytes */${size}`, 'Content-Length': 0 });
-        response.end();
+        response.writeHead(416, { ...headers, 'Content-Range': `bytes */${size}`, 'Content-Length': 0 }).end();
         return;
       }
-      data = data.subarray(start, end + 1);
+      status = 206;
+      byteRange = { start, end };
       headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
-      headers['Content-Length'] = data.length;
-      response.writeHead(206, headers);
-      response.end(data);
-      return;
+      headers['Content-Length'] = end - start + 1;
     }
+    response.writeHead(status, headers);
+    if (request.method === 'HEAD') response.end();
+    else await pipeline(file.createReadStream(byteRange), response);
+  } catch (error) {
+    if (error.code === 'ENOENT') throw new RequestError(404, 'Page not found.');
+    if (!response.destroyed) throw error;
+  } finally {
+    await file?.close();
   }
-  response.writeHead(200, headers);
-  response.end(request.method === 'HEAD' ? undefined : data);
 }
 
 export function createGameServer() {
@@ -311,9 +371,7 @@ export function createGameServer() {
         if (critterId !== null) validateCritter(critterId);
 
         const now = Date.now();
-        for (const [code, room] of rooms) {
-          if (isExpired(room, now)) rooms.delete(code);
-        }
+        pruneExpiredRooms(rooms, now);
         if (publicMatch) {
           const waitingRoom = [...rooms.values()].find(isWaitingForPublicMatch);
           if (waitingRoom) {
@@ -375,7 +433,8 @@ export function createGameServer() {
     } catch (error) {
       if (response.destroyed) return;
       if (error instanceof RequestError) {
-        sendJson(response, error.status, { message: error.message });
+        const headers = error.status === 413 ? { Connection: 'close' } : {};
+        sendJson(response, error.status, { message: error.message }, headers);
         return;
       }
       console.error(error);
@@ -386,7 +445,7 @@ export function createGameServer() {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT ?? process.argv[2] ?? 4173);
-  const host = process.env.HOST ?? '127.0.0.1';
+  const host = process.env.HOST ?? (process.env.RENDER === 'true' ? '0.0.0.0' : '127.0.0.1');
   const server = createGameServer();
   server.listen(port, host, () => {
     const address = server.address();

@@ -4,6 +4,12 @@ import test from 'node:test';
 
 import { ACTS, CAMPS, CARDS, CRITTERS, LEVELS_PER_ACT, MERCHANTS, TRAIL, applyAction, createRun, getEncounter, matchup, trailPosition } from '../game.mjs';
 
+import { isEliteRoute } from '../data.mjs';
+
+function eliteCount(path) {
+  return path.filter((id, index) => isEliteRoute(TRAIL[index].find((route) => route.id === id))).length;
+}
+
 function replay({ critters, seed, decks, companions }, actions) {
   let state = createRun(critters, seed, decks, companions);
   return actions.map((action, index) => {
@@ -34,10 +40,10 @@ test('solo defeat stops the enemy turn after the last familiar falls', () => {
 
 test('Tito can draw one powerful Secret Star in the opening hand or on round two', () => {
   assert.ok(Object.values(CRITTERS).every(({ id, maxHp }) => id === 'tita' || maxHp > CRITTERS.tita.maxHp));
-  // Seed 17 rolls between 1 in 4 and 1 in 3, so it exercises the higher chance.
-  for (const [seed, drawsEarly] of [[1, false], [17, true]]) {
+  // These seeds exercise both Secret Star draw timings with the fifteen-card deal.
+  for (const [seed, drawsEarly] of [[2, false], [5, true]]) {
     const run = createRun(['tita'], seed);
-    assert.equal(run.players[0].hp, 24);
+    assert.equal(run.players[0].hp, 28);
     assert.equal(run.players[0].deck.filter((id) => id === 'secretStar').length, 1);
     const opening = applyAction(run, { type: 'route', player: 0, routeId: 'steady' });
     assert.equal(opening.players[0].hand.length, 5);
@@ -46,11 +52,17 @@ test('Tito can draw one powerful Secret Star in the opening hand or on round two
     assert.equal(spellRound.players[0].hand.length, 5);
     const cardIndex = spellRound.players[0].hand.indexOf('secretStar');
     assert.ok(cardIndex >= 0);
-    // A guarded Tide rival lets us measure the full neutral damage.
+    // Against a Tide rival, Block absorbs the neutral damage before HP.
+    const play = { type: 'play', player: 0, cardIndex, target: 1 };
     Object.assign(spellRound.enemies[1], { hp: 30, maxHp: 30, block: 30 });
-    const cast = applyAction(spellRound, { type: 'play', player: 0, cardIndex, target: 1 });
-    assert.equal(cast.enemies[1].hp, 8);
-    assert.equal(cast.enemies[1].block, 30);
+    const blocked = applyAction(spellRound, play);
+    assert.equal(blocked.enemies[1].hp, 30);
+    assert.equal(blocked.enemies[1].block, 10);
+
+    spellRound.enemies[1].block = 6;
+    const cast = applyAction(spellRound, play);
+    assert.equal(cast.enemies[1].hp, 16);
+    assert.equal(cast.enemies[1].block, 0);
     assert.equal(cast.players[0].energy, 0);
     const { hand, drawPile, discardPile, deck } = cast.players[0];
     assert.ok(![...hand, ...drawPile, ...discardPile].includes('secretStar'));
@@ -77,7 +89,7 @@ test('a saved co-op deck with two Secret Stars keeps its upgraded copy and draws
 
 test('Venom Ward protects both witches and Poison ticks before the rival acts', () => {
   const player = 0;
-  const combat = applyAction(createRun(['hudson', 'quinn'], 1), { type: 'route', player, routeId: 'steady' });
+  const combat = applyAction(createRun(['hudson', 'quinn'], 5), { type: 'route', player, routeId: 'steady' });
   const cardIndex = combat.players[player].hand.indexOf('shieldWall');
   assert.ok(cardIndex >= 0);
   const warded = applyAction(combat, { type: 'play', player, cardIndex, target: 0 });
@@ -148,6 +160,67 @@ test('lethal Poison bypasses Block and ends the encounter before a rival can att
   assert.equal(reward.enemies[0].intent, null);
 });
 
+test('Act I levels 8–12 open with distinct tactics on both routes', () => {
+  const open = (level, routeId = 'steady') => {
+    const run = createRun(['fox'], 40);
+    run.encounter = level - 1;
+    run.path = Array(level - 1).fill('steady');
+    return applyAction(run, { type: 'route', player: 0, routeId });
+  };
+  const end = (state) => applyAction(state, { type: 'endTurn', player: 0 });
+  const intents = (state) => state.enemies.map(({ intent }) => intent.type);
+  const openers = [
+    ['guard', 'attack'], ['frailAttack', 'guard'], ['rally', 'attack'],
+    ['attack', 'teamAttack'], ['attack', 'mendRivals'],
+  ];
+
+  for (const routeId of ['steady', 'perilous']) {
+    assert.deepEqual(openers.map((_, index) => intents(open(index + 8, routeId))), openers);
+  }
+  const barricade = end(open(8));
+  assert.equal(barricade.enemies[0].block, 16);
+  assert.equal(barricade.enemies[0].intent.type, 'attack');
+
+  const splinters = end(open(9));
+  assert.equal(splinters.players[0].frail, 1);
+  assert.deepEqual(intents(splinters), ['attack', 'attack']);
+
+  const rally = end(open(10));
+  assert.equal(rally.enemies[0].strength, 6);
+  assert.equal(rally.enemies[0].intent.type, 'attack');
+
+  const crossfire = end(open(11));
+  assert.ok(crossfire.players[0].hp < crossfire.players[0].maxHp);
+  assert.deepEqual(intents(crossfire), ['guard', 'guard']);
+
+  const healing = open(12);
+  assert.equal(healing.enemies[0].block, 12);
+  healing.enemies[0].hp -= 8;
+  assert.equal(end(healing).enemies[0].hp, healing.enemies[0].maxHp);
+});
+
+test('the final Thorn Court approach presents distinct solo intents on both routes', () => {
+  const openers = [
+    ['guard', 'attack'], ['attack', 'teamAttack'], ['rally', 'attack'],
+    ['crownCurse', 'rally'], ['attack', 'mendRivals'],
+  ];
+  for (const routeId of ['steady', 'perilous']) {
+    for (const [index, expected] of openers.entries()) {
+      const run = createRun(['fox'], 40);
+      run.encounter = 54 + index;
+      run.path = Array(run.encounter).fill('steady');
+      const battle = applyAction(run, { type: 'route', player: 0, routeId });
+      assert.deepEqual(battle.enemies.map(({ intent }) => intent.type), expected);
+      assert.ok(battle.enemies.every(({ block }) => block > 0));
+    }
+  }
+  const run = createRun(['fox'], 40);
+  run.encounter = 56;
+  run.path = Array(run.encounter).fill('steady');
+  const trial = applyAction(run, { type: 'route', player: 0, routeId: 'trial' });
+  assert.equal(getEncounter(trial).name, 'The War Grove');
+});
+
 test('a seeded solo replay clears 20 levels and defeats the Ash Regent', () => {
   const fixture = new URL('./fixtures/solo-campaign.json', import.meta.url);
   const { setup, actions } = JSON.parse(readFileSync(fixture, 'utf8'));
@@ -159,9 +232,9 @@ test('a seeded solo replay clears 20 levels and defeats the Ash Regent', () => {
   const rewards = timeline.filter(({ phase }) => phase === 'reward');
   assert.deepEqual(rewards.map(({ encounter }) => encounter), Array.from({ length: LEVELS_PER_ACT }, (_, index) => index));
 
-  const purchase = timeline[actions.findIndex(({ type }) => type === 'buy')];
+  const purchase = timeline[actions.findIndex(({ type }) => type === 'buyPotion')];
   assert.equal(purchase?.encounter, 3);
-  assert.deepEqual(purchase.soldCards, ['lunge']);
+  assert.deepEqual(purchase.soldPotions, ['vigor']);
 
   const bossOpening = timeline.find(({ encounter, phase }) => encounter === 19 && phase === 'combat');
   const boss = bossOpening?.enemies.find((enemy) => enemy.boss);
@@ -169,25 +242,39 @@ test('a seeded solo replay clears 20 levels and defeats the Ash Regent', () => {
   assert.ok(boss.hp > 0);
   assert.equal(boss.intent.type, 'eclipse');
 
-  const bossTurns = timeline.filter(({ encounter }, index) => encounter === 19 && actions[index].type === 'endTurn');
-  assert.deepEqual(bossTurns.map(({ round }) => round), [2, 3, 4]);
-  const [afterEclipse, afterWard, afterCurse] = bossTurns;
-  assert.equal(afterEclipse.players[0].vulnerable, 1);
-  const beforeWard = timeline[timeline.indexOf(afterWard) - 1];
-  const wardedBoss = afterWard.enemies.find((enemy) => enemy.boss);
-  assert.equal(wardedBoss.block, 16);
-  assert.equal(wardedBoss.hp, beforeWard.enemies.find((enemy) => enemy.boss).hp + 8);
-  assert.equal(afterCurse.players[0].frail, 1);
-  assert.equal(afterCurse.players[0].vulnerable, 1);
-
   const final = timeline.at(-1);
   assert.equal(final.phase, 'reward');
   assert.equal(final.encounter, 19);
   assert.equal(final.path.length, 20);
   assert.equal(final.path.at(-1), 'perilous');
-  assert.equal(final.players[0].level, 20);
+  assert.equal(final.players[0].level, 1 + eliteCount(final.path.slice(0, -1)));
+  assert.equal(final.eliteReward, true);
   assert.ok(final.players[0].hp > 0);
   assert.equal(final.enemies.find((enemy) => enemy.boss)?.hp, 0);
+});
+
+test('the Ash Regent cycles through Eclipse, Shadow Ward, and Crown Curse', () => {
+  const route = createRun(['hudson'], 40);
+  route.encounter = 19;
+  route.path = Array(19).fill('steady');
+  let battle = applyAction(route, { type: 'route', player: 0, routeId: 'perilous' });
+  battle.players[0].hp = 100;
+  battle.enemies[0].hp -= 12;
+  Object.assign(battle.enemies[1], { hp: 0, intent: null });
+  const end = (state) => applyAction(state, { type: 'endTurn', player: 0 });
+  assert.equal(battle.enemies[0].intent.type, 'eclipse');
+  battle = end(battle);
+  assert.equal(battle.players[0].vulnerable, 1);
+  const ward = battle.enemies[0].intent;
+  assert.equal(ward.type, 'shadowWard');
+  const before = battle.enemies[0].hp;
+  battle = end(battle);
+  assert.equal(battle.enemies[0].block, ward.amount);
+  assert.equal(battle.enemies[0].hp, before + 8);
+  assert.equal(battle.enemies[0].intent.type, 'crownCurse');
+  battle = end(battle);
+  assert.equal(battle.players[0].frail, 1);
+  assert.equal(battle.players[0].vulnerable, 1);
 });
 
 test('a seeded co-op replay clears all three trial types and defeats the Thorn Sovereign', () => {
@@ -238,27 +325,27 @@ test('a seeded co-op replay clears all three trial types and defeats the Thorn S
   for (const [index, act] of ACTS.entries()) {
     const encounter = (index + 1) * LEVELS_PER_ACT - 1;
     const victory = timeline.find((state) => state.encounter === encounter && ['reward', 'victory'].includes(state.phase));
-    assert.equal(victory?.phase, index === ACTS.length - 1 ? 'victory' : 'reward', act.boss);
+    assert.equal(victory?.phase, 'reward', act.boss);
     const defeatedBoss = victory.enemies.find(({ boss }) => boss);
     assert.equal(defeatedBoss?.name, act.boss);
     assert.equal(defeatedBoss.hp, 0);
     assert.equal(victory.path[encounter], 'perilous');
 
-    if (victory.phase === 'reward') {
+    if (index < ACTS.length - 1) {
       const nextAct = timeline.find((state) => state.encounter === encounter + 1 && state.phase === 'route');
       assert.ok(nextAct, `Expected to advance after defeating ${act.boss}`);
       assert.deepEqual(nextAct.players.map(({ hp }) => hp), nextAct.players.map(({ maxHp }) => maxHp));
-      assert.deepEqual(nextAct.players.map(({ level }) => level), [encounter + 2, encounter + 2]);
+      assert.deepEqual(nextAct.players.map(({ level }) => level), nextAct.players.map(() => 1 + eliteCount(nextAct.path)));
     }
   }
 
   const final = timeline.at(-1);
   assert.equal(final.phase, 'victory');
   assert.deepEqual(final.visitedCamps, CAMPS);
-  assert.deepEqual(final.visitedShops, [3, 23, 43]);
+  assert.ok([3, 23, 43].every((level) => final.visitedShops.includes(level)));
   assert.ok(final.players.every((player) => player.deck.some((id) => id.endsWith('+'))));
   assert.deepEqual(final.players.map(({ hardPerk, level }) => [hardPerk, level]), [
-    ['bondWard', TRAIL.length], ['bondWard', TRAIL.length],
+    ['bondWard', 1 + eliteCount(final.path)], ['bondWard', 1 + eliteCount(final.path)],
   ]);
 });
 
@@ -279,17 +366,19 @@ test('all three acts have 20 levels and only the last boss ends the campaign', (
     run = applyAction(run, { type: 'route', player: 0, routeId: 'steady' });
     assert.equal(run.enemies.find((enemy) => enemy.boss)?.name, act.boss);
     run.players[0].hand = ['jab', 'jab'];
-    for (const enemy of run.enemies) enemy.hp = 1;
+    for (const enemy of run.enemies) { enemy.hp = 1; enemy.block = 0; }
     run = applyAction(run, { type: 'play', player: 0, cardIndex: 0, target: 0 });
     run = applyAction(run, { type: 'play', player: 0, cardIndex: 0, target: 1 });
-    if (actIndex === ACTS.length - 1) {
-      assert.equal(run.phase, 'victory');
-      continue;
-    }
     assert.equal(run.phase, 'reward');
     run = applyAction(run, { type: 'draft', player: 0, cardId: null, perkId: 'fang' });
     assert.equal(run.phase, 'reward');
     run = applyAction(JSON.parse(JSON.stringify(run)), { type: 'draft', player: 1, cardId: null, perkId: 'fang' });
+    assert.deepEqual(run.players.map(({ level }) => level), [2, 2]);
+    if (actIndex === ACTS.length - 1) {
+      assert.equal(run.phase, 'victory');
+      assert.equal(run.encounter, encounter);
+      continue;
+    }
     assert.equal(run.phase, 'route');
     assert.equal(run.encounter, encounter + 1);
     assert.equal(trailPosition(run.encounter).level, 1);
@@ -356,7 +445,7 @@ test('act trials change enemy tactics and offer their featured card to both play
       const rallying = trial.enemies.findIndex(({ intent }) => intent.type === 'rally');
       trial = finishRound(trial);
       assert.equal(trial.enemies[rallying].strength, 8);
-      assert.equal(trial.enemies[rallying].intent.amount, 27);
+      assert.equal(trial.enemies[rallying].intent.amount, 29);
     }
 
     // Finish with both seats still present so each can claim their own reward.
@@ -511,4 +600,25 @@ test('Briar Ward halves piercing attacks, drops with the healer, and lets Poison
   const nextRound = applyAction(poisoned, { type: 'endTurn', player: 0 });
   assert.equal(nextRound.enemies[patient].hp, 0);
   assert.ok(nextRound.enemies[healer].hp > 0);
+});
+
+test('an X-cost attack that reaches the surger counts once toward Floodgate recoil', () => {
+  const run = createRun(['fox'], 23);
+  run.encounter = 24;
+  run.path = Array(run.encounter).fill('steady');
+  const battle = applyAction(run, { type: 'route', player: 0, routeId: 'trial' });
+  const surger = battle.enemies.findIndex(({ intent }) => intent.type === 'openingSurge');
+  const bracing = 1 - surger;
+  Object.assign(battle.enemies[bracing], { hp: 1, block: 0 });
+  battle.enemies[surger].block = 100;
+
+  battle.players[0].hand = ['flurry', 'jab'];
+  const play = (state, target) => applyAction(state, { type: 'play', player: 0, cardIndex: 0, target });
+  const first = play(battle, bracing);
+  assert.equal(first.enemies[bracing].hp, 0);
+  assert.equal(first.enemies[surger].intent.attacksRemaining, 1);
+  assert.equal(first.enemies[surger].intent.focusedAttacks, 1);
+  const second = play(first, surger);
+  assert.equal(second.enemies[surger].intent.type, 'spentSurge');
+  assert.equal(second.enemies[surger].hp, first.enemies[surger].hp - Math.ceil(first.enemies[surger].maxHp * 0.35));
 });

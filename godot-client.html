@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Crittercards · Godot preview</title>
+  <link rel="stylesheet" href="/godot-client.css">
+  <script type="module" src="/godot-client.mjs"></script>
+</head>
+<body>
+  <header><a href="/">Crittercards</a><span>Godot preview</span></header>
+  <aside id="battle-vitals" aria-label="Combat health" hidden>
+    <div id="party-health" class="health-group" role="group" aria-label="Party health"></div>
+    <div id="rival-health" class="health-group" role="group" aria-label="Rival health"></div>
+  </aside>
+  <main>
+    <p id="status" role="status" hidden></p>
+    <details id="room-checkpoint" hidden>
+      <summary>Private room recovery code</summary>
+      <p>Keep this code private. Save the latest copy after playing so you can restore this room if the server restarts.</p>
+      <label>Private recovery code <textarea id="checkpoint-code" readonly rows="3" spellcheck="false"></textarea></label>
+    </details>
+    <section id="controls" aria-label="Trail and room controls"></section>
+    <iframe title="Crittercards Godot combat" id="combat" hidden></iframe>
+  </main>
+  <dialog id="pile-dialog" aria-labelledby="pile-title">
+    <div class="pile-heading">
+      <h2 id="pile-title"></h2>
+      <form method="dialog"><button autofocus>Close</button></form>
+    </div>
+    <p id="pile-summary"></p>
+    <ul id="pile-cards"></ul>
+  </dialog>
+  <footer><a href="/godot-preview/licenses/godot.txt">Godot license</a> · <a href="/godot-preview/licenses/godot-third-party.txt">Third-party notices</a> · <a href="/godot-preview/licenses/card-framework.txt">Card Framework license</a></footer>
+</body>
+</html>

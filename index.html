@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#13231e">
   <meta name="description" content="A co-op deckbuilding roguelite set in a mythic woodland.">
   <meta property="og:type" content="website">
@@ -31,25 +31,55 @@
         <summary class="button button-ghost">Menu</summary>
         <div class="game-menu-panel">
         <div id="run-tools"></div>
-        <button class="button button-ghost" id="music-toggle" type="button" data-do="music" aria-pressed="false">Music</button>
+        <button class="button button-ghost" id="music-toggle" type="button" data-do="music" aria-pressed="false">Music <span aria-hidden="true">· <span data-music-state>Off</span></span></button>
         <a class="button button-ghost" href="soundtrack.html" target="_blank" rel="noopener" data-do="open-soundtrack" aria-label="Soundtrack (opens in a new tab)">Soundtrack</a>
+        <a class="button button-ghost" href="/godot">Godot preview</a>
         <button class="button button-secondary" type="button" data-do="share-game">Share game</button>
+        <button class="button button-ghost" type="button" data-do="mutation-index" aria-haspopup="dialog">Mutation index</button>
         <button class="button button-ghost" type="button" data-do="rules">How to play</button>
         </div>
       </details>
     </header>
     <main class="game-main" id="game"></main>
   </div>
+  <div id="effect-tooltip" class="effect-tooltip" aria-hidden="true" hidden></div>
   <audio id="soundtrack" preload="none" loop></audio>
+  <dialog id="battle-deck" aria-labelledby="battle-deck-title">
+    <div class="battle-deck-content">
+      <div class="section-heading"><h2 id="battle-deck-title">Your deck</h2><form method="dialog"><button class="button button-ghost" autofocus>Close</button></form></div>
+      <p id="battle-deck-summary" class="muted"></p>
+      <div id="battle-deck-cards" class="battle-deck-cards"></div>
+    </div>
+  </dialog>
+  <dialog id="mutation-index" aria-labelledby="mutation-index-title">
+    <div class="mutation-index-content">
+      <div class="section-heading"><h2 id="mutation-index-title">Mutation index</h2><form method="dialog"><button class="button button-ghost" autofocus>Close</button></form></div>
+      <p id="mutation-index-summary" class="muted" aria-live="polite"></p>
+      <div id="mutation-index-animals" class="mutation-index-animals"></div>
+    </div>
+  </dialog>
   <dialog id="rules" aria-labelledby="rules-title" aria-describedby="tutorial-progress">
     <div class="lobby-panel tutorial">
       <div class="tutorial-top"><span class="eyebrow">The Hollow Trail</span><span id="tutorial-progress" class="muted" aria-live="polite"></span></div>
-      <h2 id="rules-title" tabindex="-1">How to play</h2>
-      <div class="tutorial-content" aria-live="polite" tabindex="0">
+      <div class="tutorial-heading">
+        <h2 id="rules-title" tabindex="-1">How to play</h2>
+        <button class="button button-secondary tutorial-narrator" type="button" data-tutorial-narrate hidden>
+          <img src="assets/hare.webp" alt="" width="32" height="32">
+          <span><small>Pip the hare</small><span data-narration-label>Read aloud</span></span>
+        </button>
+        <p class="tutorial-narration-status muted" role="status" hidden></p>
+      </div>
+      <div class="tutorial-content" role="region" aria-label="Tutorial lesson" aria-live="polite" tabindex="0">
         <section data-tutorial-step>
           <h3>Choose your team</h3>
-          <div class="tutorial-example">
-            <img src="assets/tutorial/choose-team.webp" width="1040" height="684" alt="Quinn’s companion picker with Ember the fox selected and Ember Pounce shown.">
+          <div class="tutorial-lesson">
+            <figure class="tutorial-visual">
+              <button class="tutorial-enlarge" type="button" data-enlarge-picture aria-haspopup="dialog" aria-controls="tutorial-picture">
+                <img src="assets/tutorial/choose-team.webp" width="990" height="659" alt="The character screen shows play modes and portrait cards for the four cousins.">
+                <span>Enlarge picture</span>
+              </button>
+              <figcaption>Choose a play mode, then pick a character.</figcaption>
+            </figure>
             <div class="tutorial-copy">
               <p><strong>Quick start.</strong> Pick a character and begin the trail. Choose a fight, select a rival, play your cards, then end your turn.</p>
               <p>Choose <strong>Single player</strong> for one character, or <strong>Share a screen</strong> for two. To play on separate screens, find a public match or share a private room code.</p>
@@ -59,31 +89,49 @@
         </section>
         <section data-tutorial-step hidden>
           <h3>Build a deck</h3>
-          <div class="tutorial-example">
-            <img src="assets/tutorial/build-deck.webp" width="1040" height="1206" loading="lazy" alt="Quinn’s deck builder showing Bone Hex as her signature and all five library card slots.">
+          <div class="tutorial-lesson">
+            <figure class="tutorial-visual">
+              <button class="tutorial-enlarge" type="button" data-enlarge-picture aria-haspopup="dialog" aria-controls="tutorial-picture">
+                <img src="assets/tutorial/build-deck.webp" width="990" height="836" alt="The expanded starting deck shows Ember’s signature and shared starter cards." loading="lazy">
+                <span>Enlarge picture</span>
+              </button>
+              <figcaption>Review your shared basics and character cards before starting.</figcaption>
+            </figure>
             <div class="tutorial-copy">
-              <p>Choose five cards for each character. You can keep the starting selection or change it. Most characters bring two signature cards. Tito brings one Secret Star per fight.</p>
-              <p>Include at least one attack, and use no more than two copies of any library card. Then choose <strong>Begin the trail</strong>.</p>
+              <p>Each character starts with 15 cards. Everyone shares 12 basics, including Claw Strike and Hold Fast. The other three cards suit your character, including their signature moves.</p>
+              <p>In single player, open <strong>Review starting deck</strong> to see your cards. Choose <strong>Begin the trail</strong> when you’re ready. You can change your deck during the run through rewards, merchants, and camps.</p>
             </div>
           </div>
         </section>
         <section data-tutorial-step hidden>
           <h3>Choose a path</h3>
-          <div class="tutorial-example">
-            <img src="assets/tutorial/choose-path.webp" width="1112" height="1138" loading="lazy" alt="The level 3 map shows the Standard fight, the Hard fight with a run-long perk, and an optional campfire.">
+          <div class="tutorial-lesson">
+            <figure class="tutorial-visual">
+              <button class="tutorial-enlarge" type="button" data-enlarge-picture aria-haspopup="dialog" aria-controls="tutorial-picture">
+                <img src="assets/tutorial/choose-path.webp" width="1040" height="260" alt="Two routes appear side by side with rival portraits and their difficulty." loading="lazy">
+                <span>Enlarge picture</span>
+              </button>
+              <figcaption>Pick a route to fight the rivals shown on it.</figcaption>
+            </figure>
             <div class="tutorial-copy">
-              <p>Pick a fight on the trail map. Hard fights pay more gold. Win the level 3 Hard fight to choose an extra perk for the rest of the run.</p>
-              <p>Merchants sell cards and remove unwanted cards for 30 gold. At camp, each character can heal 30% of maximum health, upgrade a card, or remove a card for 30 gold. After visiting either stop, choose <strong>Continue without fighting</strong> to move to the next level. Trials offer new rival tactics and a featured draft card.</p>
+              <p>Pick a fight on the trail map. Hard fights and bosses count as Elites. Hard fights also pay more gold. Win the level 3 Hard fight to choose an extra perk for the rest of the run.</p>
+              <p>Merchants sell cards and potions, and remove unwanted cards for 30 gold. You can carry three potions per player and drink them during combat. At camp, each character can heal 40% of maximum health, upgrade a card, or remove a card for 30 gold. Trials offer new rival tactics and a featured draft card. These stops and routes are optional.</p>
             </div>
           </div>
         </section>
         <section data-tutorial-step hidden>
           <h3>Play a turn</h3>
-          <div class="tutorial-example">
-            <img src="assets/tutorial/play-turn.webp" width="1128" height="1366" loading="lazy" alt="Claw Strike is selected, both rivals show Choose target, and the hand shows 3 energy and End turn.">
+          <div class="tutorial-lesson">
+            <figure class="tutorial-visual">
+              <button class="tutorial-enlarge" type="button" data-enlarge-picture aria-haspopup="dialog" aria-controls="tutorial-picture">
+                <img src="assets/tutorial/play-turn.webp" width="1046" height="312" alt="The battle HUD shows energy and End turn above the hand, with Draw and Discard on either side." loading="lazy">
+                <span>Enlarge picture</span>
+              </button>
+              <figcaption>Hold Fast is a Block card. Tap it to gain 8 Block.</figcaption>
+            </figure>
             <div class="tutorial-copy">
               <p>The rival cards show who you are fighting. Look for <strong>Next move</strong> to see who they’ll hit or how they’ll defend.</p>
-              <p>Drag a targeted move onto a rival, or tap the move and then the rival. Tap a Block card to play it immediately, or drag it onto your familiar. Tap other untargeted moves to play them. With a keyboard, press Enter on a targeted move, then use Tab and Enter to choose a rival. A companion’s move is free once per turn.</p>
+              <p>Drag a targeted move onto a rival, or tap the move and then the rival. Tap a Block card to play it immediately, or drag it onto your familiar. Tap other untargeted moves to play them. With a keyboard, press Enter on a targeted move, then use Tab and Enter to choose a rival. A companion’s move is free once per round. When you play solo as an animal, your own ability is also free once per round.</p>
               <p>Each round, draw <strong>5 cards</strong> and usually start with <strong>3 energy</strong>. A card’s number is its cost. An X card spends all remaining energy and repeats once per energy spent. Choose <strong>End turn</strong> when you’re ready.</p>
               <p>In online co-op, both players can play cards at the same time. The rivals act after both players end their turns. Follow up on your partner’s latest target to trigger a Bond Strike once per round.</p>
             </div>
@@ -91,28 +139,49 @@
         </section>
         <section data-tutorial-step hidden>
           <h3>Types and effects</h3>
-          <div class="tutorial-example">
-            <img src="assets/tutorial/types-effects.webp" width="536" height="424" loading="lazy" alt="Ironhide’s rival card shows Vulnerable, Frail, and a resisted attack matchup of ×0.75.">
+          <div class="tutorial-lesson">
+            <figure class="tutorial-visual">
+              <button class="tutorial-enlarge" type="button" data-enlarge-picture aria-haspopup="dialog" aria-controls="tutorial-picture">
+                <img src="assets/tutorial/types-effects.webp" width="249" height="337" alt="Ironhide is a Stone rival with 19 HP. Its next move hits you for 10, and it resists your attacks." loading="lazy">
+                <span>Enlarge picture</span>
+              </button>
+              <figcaption>Check each rival’s next move beside its portrait and HP.</figcaption>
+            </figure>
             <div class="tutorial-copy">
               <p><strong>Ember beats Grove · Grove beats Tide · Tide beats Stone · Stone beats Ember.</strong> A strong matchup deals 50% more damage. The reverse matchup deals 25% less.</p>
-              <p><strong>Strength</strong> adds attack damage. <strong>Vulnerable</strong> increases the next hit by 50%. <strong>Frail</strong> reduces the next Block gain by 3. The battle screen shows active effects and matchups.</p>
+              <p>Hover, focus, or tap a next move or effect such as <strong>Frail</strong> for details. For the full list, open <strong>Battle info → Combat terms</strong>.</p>
             </div>
           </div>
         </section>
         <section data-tutorial-step hidden>
           <h3>Grow and save your run</h3>
-          <div class="tutorial-example">
-            <img src="assets/tutorial/grow-run.webp" width="1384" height="1762" loading="lazy" alt="Quinn’s level-up screen shows a selected Fang perk and four draft cards, with Ember Spark selected.">
+          <div class="tutorial-lesson">
+            <figure class="tutorial-visual">
+              <button class="tutorial-enlarge" type="button" data-enlarge-picture aria-haspopup="dialog" aria-controls="tutorial-picture">
+                <img src="assets/tutorial/grow-save.webp" width="1040" height="638" alt="The level-up screen shows six perks, optional cards, Skip card, and Claim reward." loading="lazy">
+                <span>Enlarge picture</span>
+              </button>
+              <figcaption>After an Elite fight, choose a perk even if you skip the card.</figcaption>
+            </figure>
             <div class="tutorial-copy">
-              <p>After a trainer fight, choose a level-up perk and take a card or skip it. Any non-signature base card can appear in the draft. Trials add a guaranteed featured card. Each player confirms their own choice.</p>
-              <p>Defeating rivals also unlocks cards and creatures for future runs.</p>
-              <p>Choose <strong>Save game</strong> during a run, then <strong>Continue saved game</strong> on the opening screen. Saves stay in this browser. A saved room game resumes on one shared screen.</p>
+              <p>After any fight, take a card or select <strong>Skip card</strong>. Trials offer a featured card. Each rival defeated in an Elite fight fills part of your XP bar. Win the fight and claim your reward to level up, gain max HP, and choose a perk. You can also recruit one defeated animal for future runs. Its signature card and companion ability help you decide.</p>
+              <p>Choose <strong>Save game</strong> during a run, then <strong>Continue saved game</strong> on the opening screen. Saves stay in this browser. If you save during a solo reward, claiming it updates that save. A saved room game resumes on one shared screen.</p>
               <p>Clear three acts of 20 levels each. Defeat each act's boss to continue. A full run is designed for 90–120 minutes, and you can save your progress along the way.</p>
             </div>
           </div>
         </section>
       </div>
       <div class="tutorial-actions"><button type="button" class="button button-ghost" data-do="tutorial-close">Skip tutorial</button><button type="button" class="button button-secondary" data-do="tutorial-back">Back</button><button type="button" class="button button-primary" data-do="tutorial-next">Next</button></div>
+    </div>
+  </dialog>
+  <dialog id="tutorial-picture" aria-labelledby="tutorial-picture-title">
+    <div class="tutorial-picture-header">
+      <h2 id="tutorial-picture-title"></h2>
+      <button class="button button-secondary" type="button" data-picture-zoom aria-controls="tutorial-picture-scroll">Zoom in</button>
+      <form method="dialog"><button class="button button-primary" autofocus>Close</button></form>
+    </div>
+    <div id="tutorial-picture-scroll" class="tutorial-picture-scroll" role="region" aria-label="Tutorial picture" tabindex="0">
+      <img alt="">
     </div>
   </dialog>
   <dialog id="share-dialog" aria-labelledby="share-title">

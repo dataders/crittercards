@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { CARDS, CRITTERS, applyAction, createRun } from '../game.mjs';
+import { applyAction, CARDS, CRITTERS, createRun, levelXp, LEVEL_UP_XP } from '../game.mjs';
 
 const route = (state, routeId = 'steady') => applyAction(state, { type: 'route', player: 0, routeId });
 const draft = (state, choices = {}) => applyAction(state, { type: 'draft', player: 0, perkId: 'fang', ...choices });
@@ -13,36 +13,21 @@ function win(critterIds, encounter, routeId, seed = 40) {
   run.path = Array(encounter).fill('steady');
   const battle = route(run, routeId);
   battle.players[0].hand = ['jab', 'jab'];
-  for (const enemy of battle.enemies) enemy.hp = 1;
+  for (const enemy of battle.enemies) { enemy.hp = 1; enemy.block = 0; }
   return play(play(battle, 0), 0, 1);
 }
 
-test('standard rewards can offer every non-signature base card from the first fight', () => {
-  const signatures = new Set(Object.values(CRITTERS).map(({ signature }) => signature));
-  const expected = Object.keys(CARDS).filter((id) => !id.endsWith('+') && !signatures.has(id)).sort();
-  const seen = new Set();
-  for (let seed = 0; seed < 512; seed++) {
-    const won = win(['fox', 'tita'], 0, 'steady', seed);
-    assert.ok(won.rewardOptions.every((offers) => offers.length === 4 && new Set(offers).size === 4));
-    assert.ok(won.rewardOptions.flat().every((id) => !signatures.has(id)));
-    const cardId = won.rewardOptions[0][3];
-    seen.add(cardId);
-    assert.equal(draft(won, { cardId }).players[0].deck.at(-1), cardId);
-  }
-  assert.deepEqual([...seen].sort(), expected);
-});
-
-test('both reward choices preserve current HP while granting level-up benefits', () => {
+test('standard rewards allow a take or skip without leveling up', () => {
   const won = win(['fox', 'tita'], 0, 'steady');
   won.players[0].hp = 10;
   won.players[1].hp = 12;
   const skipped = draft(won);
   assert.equal(skipped.phase, 'reward');
-  assert.deepEqual(skipped.rewardPicks[0], { cardId: null, perkId: 'fang', hardPerkId: null });
+  assert.deepEqual(skipped.rewardPicks[0], { cardId: null, perkId: null, hardPerkId: null });
   assert.deepEqual(skipped.players[0].deck, won.players[0].deck);
-  assert.equal(skipped.players[0].level, 2);
-  assert.equal(skipped.players[0].attackBonus, 1);
-  assert.equal(skipped.players[0].maxHp, won.players[0].maxHp + 3);
+  assert.equal(skipped.players[0].level, 1);
+  assert.equal(skipped.players[0].attackBonus, 0);
+  assert.equal(skipped.players[0].maxHp, won.players[0].maxHp);
   assert.equal(skipped.players[0].hp, 10);
   assert.throws(() => draft(skipped), /already claimed/);
   assert.throws(() => draft(skipped, { player: 1, hardPerkId: 'trailWard' }), /No Hard route perk/);
@@ -51,6 +36,69 @@ test('both reward choices preserve current HP while granting level-up benefits',
   assert.equal(next.phase, 'route');
   assert.deepEqual(next.players[1].deck, [...won.players[1].deck, cardId]);
   assert.deepEqual(route(next).players.map(({ hp }) => hp), [10, 12]);
+});
+
+test('level XP tracks defeated Elite rivals and resets for each player after claiming', () => {
+  const run = createRun(['fox', 'hare'], 40);
+  run.encounter = 2;
+  run.path = ['steady', 'steady'];
+  const weakened = (routeId) => {
+    const battle = route(run, routeId);
+    battle.players[0].hand = ['jab', 'jab'];
+    for (const enemy of battle.enemies) Object.assign(enemy, { hp: 1, block: 0 });
+    return battle;
+  };
+
+  const standard = play(weakened('steady'), 0);
+  assert.equal(levelXp(standard, 0), 0);
+  assert.equal(levelXp(play(standard, 0, 1), 0), 0);
+
+  const elite = weakened('perilous');
+  assert.equal(levelXp(elite, 0), 0);
+  const partial = play(elite, 0);
+  assert.equal(levelXp(partial, 0), LEVEL_UP_XP / 2);
+  assert.equal(levelXp(partial, 1), LEVEL_UP_XP / 2);
+  const won = play(partial, 0, 1);
+  assert.equal(levelXp(won, 0), LEVEL_UP_XP);
+  const claimed = draft(won, { hardPerkId: 'trailWard' });
+  assert.equal(claimed.players[0].level, 2);
+  assert.equal(levelXp(claimed, 0), 0);
+  assert.equal(levelXp(claimed, 1), LEVEL_UP_XP);
+  const next = draft(claimed, { player: 1, hardPerkId: 'trailWard' });
+  assert.equal(next.phase, 'route');
+  assert.equal(levelXp(next, 1), 0);
+});
+
+test('Hard fights and both boss variants level up even when the card is skipped', () => {
+  for (const [encounter, routeId] of [[5, 'perilous'], [19, 'steady'], [39, 'perilous'], [59, 'steady']]) {
+    const won = win(['fox'], encounter, routeId);
+    assert.equal(won.eliteReward, true);
+    const next = draft(won);
+    assert.equal(next.players[0].level, 2);
+    assert.equal(next.players[0].maxHp, won.players[0].maxHp + 3);
+    assert.equal(next.players[0].attackBonus, 1);
+    assert.deepEqual(next.players[0].deck, won.players[0].deck);
+    assert.equal(next.phase, encounter === 59 ? 'victory' : 'route');
+  }
+  const alternate = draft(win(['fox'], 3, 'perilous'));
+  assert.equal(alternate.players[0].level, 1);
+});
+
+test('claiming the level 2 reward leads to the tuned Shadow Grove encounter', () => {
+  const reward = win(['fox'], 1, 'steady');
+  const next = draft(reward, { cardId: reward.rewardOptions[0][0] });
+  assert.equal(next.phase, 'route');
+  assert.equal(next.encounter, 2);
+
+  const standard = route(next);
+  assert.deepEqual(standard.enemies.map(({ hp, intent }) => [hp, intent.type]), [
+    [23, 'attack'], [18, 'attack'],
+  ]);
+  const hard = route(next, 'perilous');
+  assert.deepEqual(hard.enemies.map(({ name, hp, intent }) => [name, hp, intent.type, intent.amount]), [
+    ['Echo of the Wilds', 30, 'frailAttack', 12],
+    ['Cairn of the Wilds', 25, 'attack', 9],
+  ]);
 });
 
 test('level 3 Hard offers a bonus and solo perks reset at the start of each fight', () => {
@@ -94,4 +142,109 @@ test('both co-op perk choices count and Bond Ward triggers once per fight', () =
   battle = play(end(play(battle, 0), 0), 1);
   assert.equal(battle.bondTriggered, true);
   assert.deepEqual(battle.players.map(({ block }) => block), [0, 0]);
+});
+
+test('standard familiar drafts retain the first three slots and offer any non-signature base card in the fourth', () => {
+  const signatures = new Set(Object.values(CRITTERS).map(({ signature }) => signature));
+  const expected = Object.keys(CARDS).filter((id) => !id.endsWith('+') && !signatures.has(id));
+  const bonusOffers = new Set();
+  for (let seed = 0; seed < 512; seed += 1) {
+    const won = win(['fox'], 0, 'steady', seed);
+    const [offers] = won.rewardOptions;
+    assert.deepEqual(offers.slice(0, 3).map((id) => CARDS[id].cost), [0, 2, 3]);
+    assert.equal(offers.length, 4);
+    assert.equal(new Set(offers).size, offers.length);
+    assert.ok(draft(won, { cardId: offers[3] }).players[0].deck.includes(offers[3]));
+    bonusOffers.add(offers[3]);
+  }
+  assert.deepEqual(bonusOffers, new Set(expected));
+});
+
+test('middle Act I drafts rotate the heavy slot and prefer a card missing from the deck', () => {
+  const winWithDeck = (level, extraCards = []) => {
+    const run = createRun(['fox'], 40);
+    run.encounter = level - 1;
+    run.path = Array(run.encounter).fill('steady');
+    const battle = route(run);
+    battle.players[0].deck.push(...extraCards);
+    battle.players[0].hand = ['strike', 'strike'];
+    for (const enemy of battle.enemies) {
+      enemy.hp = 1;
+      enemy.block = 0;
+    }
+    return play(play(battle, 0), 0, 1);
+  };
+  for (const level of [6, 8, 10, 12, 14, 16, 18]) {
+    const reward = winWithDeck(level);
+    const [offers] = reward.rewardOptions;
+    assert.equal(offers.length, level % 4 === 0 ? 5 : 4);
+    assert.deepEqual(new Set(offers.slice(2, 4).map((id) => CARDS[id].cost)), new Set([1, 'X']));
+    assert.equal(new Set(offers).size, offers.length);
+    assert.ok(draft(reward, { cardId: offers[2] }).players[0].deck.includes(offers[2]));
+  }
+  const [original] = winWithDeck(6).rewardOptions;
+  const [withUpgrade] = winWithDeck(6, [original[2] + '+']).rewardOptions;
+  assert.notEqual(withUpgrade[2], original[2]);
+  for (const level of [5, 7, 19, 20, 26]) {
+    assert.equal(CARDS[winWithDeck(level).rewardOptions[0][2]].cost, 3);
+  }
+});
+
+test('each Act I trial features one selectable prize matching its route preview', () => {
+  for (const [level, prize, pairedIntent] of [
+    [5, 'thornbreak', 'attack'], [9, 'thorns', 'attack'],
+    [13, 'sharpen', 'rally'], [17, 'starwell', 'frailAttack'],
+  ]) {
+    for (let seed = 0; seed < 16; seed++) {
+      const run = createRun(['fox'], seed);
+      run.encounter = level - 1;
+      run.path = Array(run.encounter).fill('steady');
+      const battle = route(run, 'trial');
+      assert.deepEqual(new Set(battle.enemies.map(({ intent }) => intent.type)), new Set(['mendRivals', pairedIntent]));
+      battle.players[0].hand = ['strike', 'strike'];
+      for (const enemy of battle.enemies) {
+        enemy.hp = 1;
+        enemy.block = 0;
+      }
+      const reward = play(play(battle, 0), 0, 1);
+      const [offers] = reward.rewardOptions;
+      assert.equal(offers.length, 5);
+      assert.equal(offers.at(-1), prize);
+      assert.equal(new Set(offers).size, offers.length);
+      const drafted = draft(reward, { cardId: prize });
+      assert.equal(drafted.players[0].deck.at(-1), prize);
+      assert.equal(drafted.players[0].level, 1);
+    }
+  }
+});
+
+test('Elites cap repeated Fang, Keen Senses and Renewal while allowing another perk', () => {
+  const reward = win(['fox'], 5, 'perilous');
+  reward.players[0].perks = ['fang', 'fang', 'fang', 'keen', 'keen', 'renewal', 'renewal'];
+  reward.players[0].attackBonus = 3;
+  const capped = draft(reward, { perkId: 'fang' });
+  assert.equal(capped.players[0].attackBonus, 4);
+  reward.players[0].perks.push('fang', 'fang');
+  for (const perkId of ['fang', 'keen', 'renewal']) {
+    assert.throws(() => draft(reward, { perkId }), /maxed out/);
+  }
+  const next = draft(reward, { perkId: 'bark' });
+  assert.equal(next.phase, 'route');
+  assert.equal(next.players[0].maxHp, reward.players[0].maxHp + 7);
+  assert.equal(next.players[0].perks.filter((id) => id === 'fang').length, 5);
+});
+
+test('Renewal heals two HP per copy after ordinary wins and three after Elites', () => {
+  for (const [routeId, recovered] of [['steady', 4], ['perilous', 6]]) {
+    const run = createRun(['fox'], 40);
+    run.encounter = 5;
+    run.path = Array(5).fill('steady');
+    run.players[0].hp = 10;
+    run.players[0].perks = ['renewal', 'renewal'];
+    const battle = route(run, routeId);
+    battle.players[0].hand = ['jab', 'jab'];
+    for (const enemy of battle.enemies) { enemy.hp = 1; enemy.block = 0; }
+    const reward = play(play(battle, 0), 0, 1);
+    assert.equal(reward.players[0].hp, 10 + recovered);
+  }
 });

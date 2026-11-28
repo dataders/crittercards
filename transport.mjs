@@ -29,25 +29,61 @@ function roomPath(code) {
   return `/api/rooms/${encodeURIComponent(String(code).trim().toUpperCase())}`;
 }
 
+function canRetryDraft(before, after, seat) {
+  if (before?.phase !== 'reward' || after?.phase !== 'reward' ||
+      before.runId !== after.runId || before.encounter !== after.encounter ||
+      before.eliteReward !== after.eliteReward || before.hardReward !== after.hardReward) return false;
+  const other = 1 - seat;
+  return !before.rewardPicks[seat] && !after.rewardPicks[seat] &&
+    !before.rewardPicks[other] && Boolean(after.rewardPicks[other]) &&
+    JSON.stringify(before.rewardOptions[seat]) === JSON.stringify(after.rewardOptions[seat]);
+}
+
+function canRetryCamp(before, after, seat) {
+  if (before?.phase !== 'camp' || after?.phase !== 'camp' ||
+      before.runId !== after.runId || before.encounter !== after.encounter) return false;
+  const other = 1 - seat;
+  return !before.campChoices[seat] && !after.campChoices[seat] &&
+    !before.campChoices[other] && Boolean(after.campChoices[other]);
+}
+
 function connect(data) {
   const { token, ...initial } = data;
   const path = roomPath(initial.code);
   let subscription;
   let latest = initial;
 
+  async function sendAction(action, revision) {
+    const snapshot = await request(`${path}/actions`, {
+      method: 'POST', token, data: { action, revision },
+    });
+    accept(snapshot);
+    return latest;
+  }
+
   const room = {
     ...initial,
     token,
     async act(action) {
-      try {
-        const snapshot = await request(`${path}/actions`, {
-          method: 'POST', token, data: { action, revision: latest.revision },
-        });
-        accept(snapshot);
-        return latest;
-      } catch (error) {
-        if (error.snapshot) accept(error.snapshot);
-        throw error;
+      const before = latest;
+      const seat = before.seat;
+      const setupAction = ['select', 'companion', 'deck'].includes(action.type);
+      for (let attempt = 0; ; attempt += 1) {
+        const revision = latest.revision;
+        try {
+          return await sendAction(action, revision);
+        } catch (error) {
+          if (error.snapshot) accept(error.snapshot);
+          if (attempt >= 2 || error.status !== 409 || !error.snapshot || latest.revision <= revision) throw error;
+          // Retry independent choices that still belong to the same screen.
+          const sameSetup = setupAction && !before.state && !latest.state &&
+            before.picks[seat] === latest.picks[seat] &&
+            before.companions[seat] === latest.companions[seat] &&
+            JSON.stringify(before.deck) === JSON.stringify(latest.deck);
+          const sameDraft = action.type === 'draft' && canRetryDraft(before.state, latest.state, seat);
+          const sameCamp = action.type === 'camp' && canRetryCamp(before.state, latest.state, seat);
+          if (!sameSetup && !sameDraft && !sameCamp) throw error;
+        }
       }
     },
 

@@ -4,6 +4,8 @@ const FACTORY = preload("res://factory.tscn")
 const CARD_SCENE = preload("res://addons/card-framework/card.tscn")
 const CardButton = preload("res://card_button.gd")
 const CARD_SIZE := Vector2(94, 126)
+const BATTLE_ART = preload("res://assets/hollow-battle.webp")
+const DRAW_PILE_ART = preload("res://assets/draw-pile-woods.webp")
 const CARDS := {
 	"strike": {"name": "Claw Strike", "cost": 1, "damage": 6, "block": 0},
 	"guard": {"name": "Hold Fast", "cost": 1, "damage": 0, "block": 8},
@@ -38,7 +40,7 @@ func _ready() -> void:
 
 
 func _setup_scene() -> void:
-	var background := _picture(preload("res://assets/hollow-battle.webp"))
+	var background := _picture(BATTLE_ART)
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	var shade := ColorRect.new()
@@ -69,6 +71,7 @@ func _setup_scene() -> void:
 	_make_label("player", "", 21)
 	_make_label("enemy", "", 21)
 	_make_label("status", "", 17)
+	_make_label("draw_title", "Draw pile", 17)
 	_make_label("draw", "", 16)
 	_make_label("discard", "", 16)
 	_make_button("turn", "End turn", _end_turn)
@@ -130,6 +133,8 @@ func _layout() -> void:
 	hand.max_hand_spread = clampf(size.x - 190, 450, 630)
 	for zone in [draw_pile, discard, hand]:
 		zone.update_card_ui()
+	var stack_height: int = (draw_pile.max_stack_display - 1) * draw_pile.stack_display_gap
+	_place(labels.draw_title, Vector2(62, draw_pile.position.y - stack_height - 29), Vector2(110, 25))
 	_place(labels.draw, Vector2(63, bottom - 67), Vector2(118, 44))
 	_place(labels.discard, Vector2(size.x - 63, bottom - 67), Vector2(118, 44))
 	_place(buttons.turn, Vector2(center, bottom - 61), Vector2(158, 46))
@@ -171,10 +176,24 @@ func _create_card(kind: String) -> Card:
 	card.moving_speed = 1600
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-	var back := ColorRect.new()
-	back.color = Color("#173a2d")
+	var back := Panel.new()
 	back.size = CARD_SIZE
+	back.clip_contents = true
 	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var frame := StyleBoxFlat.new()
+	frame.bg_color = Color("#14291f")
+	frame.border_color = Color("#aa915b")
+	frame.set_border_width_all(2)
+	frame.set_corner_radius_all(6)
+	back.add_theme_stylebox_override("panel", frame)
+	var forest := TextureRect.new()
+	forest.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	forest.texture = DRAW_PILE_ART
+	forest.position = Vector2(4, 4)
+	forest.size = CARD_SIZE - Vector2(8, 8)
+	forest.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	forest.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	back.add_child(forest)
 	card.get_node("BackFace/TextureRect").add_child(back)
 
 	var face := CardButton.new()
@@ -279,7 +298,7 @@ func _finish(take: bool) -> void:
 func _update_hud() -> void:
 	labels.player.text = "Hudson   %s HP  ·  %s Block" % [hp, shield]
 	labels.enemy.text = "Bramble   %s HP%s" % [enemy_hp, "  ·  %s Block" % enemy_block if enemy_block else ""]
-	labels.draw.text = "Draw  %s" % draw_pile.get_card_count()
+	labels.draw.text = "%s cards" % draw_pile.get_card_count()
 	labels.discard.text = "Discard  %s" % discard.get_card_count()
 	if phase == "battle":
 		var intent := "Attack 9" if round_number % 2 else "Guard 6"
