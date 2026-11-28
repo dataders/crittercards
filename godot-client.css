@@ -1,0 +1,19 @@
+:root { color-scheme: dark; font: 1rem system-ui, sans-serif; background: #10201b; color: #f3efdb; }
+body { max-width: 70rem; margin: auto; padding: .7rem; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid #6c785c; padding: .5rem 0 .8rem; }
+a { color: #eddda2; }
+main { margin-top: .8rem; }
+button, input, select { font: inherit; min-height: 2.75rem; padding: .35rem .6rem; border: 1px solid #8f9b78; border-radius: .4rem; }
+button { background: #294336; color: inherit; cursor: pointer; }
+button:disabled { opacity: .65; cursor: default; }
+button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #eddda2; outline-offset: 3px; }
+input { width: 8rem; text-transform: uppercase; }
+form, .choices { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+fieldset { border: 1px solid #526957; border-radius: .4rem; margin: .6rem 0; }
+fieldset label { display: flex; flex-direction: column; gap: .3rem; padding: .3rem 0; }
+h1 { margin: .5rem 0; }
+#status { color: #ffcead; }
+#combat { display: block; width: 100%; height: clamp(27rem, 78dvh, 58rem); border: 0; border-radius: .5rem; }
+[hidden] { display: none !important; }
+
+footer { margin-top: 1.2rem; font-size: .8rem; }

@@ -31,7 +31,10 @@ Each rival has one mutation roll. Gold appears 1 in 30, Diamond 1 in 50, Rainbow
 
 Everyone starts with 15 cards. Twelve are shared, including Claw Strike, Hold Fast, and Stand Together. Three slots are specific to the character, including two copies of most signatures or one Secret Star and two specialty cards for Tito. Each character draws five cards per round, with extra draws from Keen Senses. The library has twenty unlocked cards and nine earned from rival encounters. An energy card joins the draft options after every fourth level.
 
-Solo trail goals track your personal best, the Act I boss, three trial wins in a single run, and a full clear. Progress stays in your browser. A solo animal can aim its own special move once per round for free. After a solo run, **Run again with this team** returns you to setup with the familiar and companion preselected. The next run uses a fresh seed.
+Try the [Godot preview](/godot) for a second combat interface using the same game rules and co-op rooms. See the [Godot setup and build notes](spikes/godot-card-framework/README.md).
+
+
+Solo trail goals track your personal best, clearing Act I, three trial wins in a single run, and a full clear. Progress stays in your browser. A solo animal can aim its own special move once per round for free. After a solo run, **Run again with this team** returns you to setup with the familiar and companion preselected. The next run uses a fresh seed.
 
 Rallying Howl adds Strength, which boosts every attack for the rest of the fight. Expose applies Vulnerable, which makes the next hit deal 50% more damage. Brittle Hex applies Frail, which reduces the target’s next Block gain by 3. Ironhide and Cindermaw can apply Frail to your familiars.
 
@@ -46,6 +49,8 @@ Each level offers at least two fights. Hard fights appear at levels 3, 6, 10, 14
 Trials open at levels 5, 9, 13, and 17 of every act. At the **Briar Infirmary**, a healer restores its partner’s HP and halves incoming attack damage to it. Poison bypasses that ward. At the **Floodgate**, the lightly shielded rival surges after the pack’s second attack or at the end of round one, whichever comes first. Each damaging card or companion strike counts once, even if it hits several times. If any familiar fully blocks their hit, both rivals lose Block and become Vulnerable. The bracing rival skips its guard action. If both attacks target the surging rival and nobody fully blocks the surge, the recoil deals 35% of each rival’s max HP through Block. Defeating the surging rival within two attacks cancels the surge outright. At the **War Grove**, rivals build Strength over the fight. The map shows the featured draft card for each trial. Each player can take it, take another offered card, or skip the draft.
 
 Win the level 3 Hard fight in the first act to choose an extra run-long perk per familiar. Briar Ambush adds 5 base damage to your first attack hit each fight. Trail Ward starts every fight with 8 extra Block. In co-op, Bond Ward grants both familiars 5 Block per player who chose it on the first Bond Strike each fight.
+
+Every level offers a third route, **? Mystery**. It opens a hard fight half the time and gives a card, potion, or rare mutated recruit the other half. A mutated recruit appears on about 1 in 200 Mystery routes and unlocks its animal and skin for everyone in co-op. A reward skips combat on regular levels. On boss levels, the reward comes before the required standard boss fight. An ambush on a boss level starts the hard boss fight.
 
 The Ash Regent uses Eclipse to damage the team and apply Vulnerable, Shadow Ward to gain Block and heal, and Crown Curse to attack one familiar and apply Frail and Vulnerable. Watch the intent shown above each turn.
 

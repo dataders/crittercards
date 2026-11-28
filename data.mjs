@@ -898,6 +898,8 @@ const trials = [
   },
 ];
 
+export const MYSTERY_CARDS = ['sharpen', 'moonmend', 'thorns', 'avalanche', 'sanctuary'];
+
 export const TRAIL = [...openingTrail, ...laterActs.flatMap((act, index) => laterTrail(act, index + 1))]
   .map((routes, encounter) => {
     const { actIndex, level } = trailPosition(encounter);
@@ -929,7 +931,19 @@ export const TRAIL = [...openingTrail, ...laterActs.flatMap((act, index) => late
   }).map((routes, encounter) => routes.map((route) => ({
     ...route,
     goldPerEnemy: encounter >= 7 ? route.goldPerEnemy / 2 : route.goldPerEnemy,
-  })));
+  }))).map(([standard, hard, ...trials]) => [
+    standard,
+    hard,
+    { id: 'mystery', name: 'Mystery', difficulty: 'Mystery', enemies: [] },
+    ...trials,
+    {
+      ...hard, id: 'mystery-ambush', name: 'Mystery ambush',
+      difficulty: isEliteRoute(hard) ? hard.difficulty : 'Hard',
+      goldPerEnemy: standard.goldPerEnemy * 3,
+      enemies: isEliteRoute(hard) ? hard.enemies :
+        hard.enemies.map((enemy) => ({ ...enemy, hp: Math.ceil(enemy.hp * 1.1) })),
+    },
+  ]);
 
 const openingMerchants = {
   3: { name: 'The Lantern Peddler', stock: [{ id: 'lunge', price: 6 }, { id: 'armor', price: 9 }, { id: 'circle', price: 13 }] },

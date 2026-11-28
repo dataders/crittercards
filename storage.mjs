@@ -1,4 +1,4 @@
-import { CAMPS, CARDS, COUSINS, CRITTERS, CRITTER_UNLOCKS, HARD_PERKS, LEVEL_PERKS, MERCHANTS, TRAIL, MUTATIONS, parseRecruitKey, POTIONS, POTION_LIMIT } from './data.mjs';
+import { CAMPS, CARDS, COUSINS, CRITTERS, CRITTER_UNLOCKS, HARD_PERKS, LEVEL_PERKS, MERCHANTS, TRAIL, MUTATIONS, parseRecruitKey, POTIONS, POTION_LIMIT, MYSTERY_CARDS } from './data.mjs';
 
 const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isCount = (value) => Number.isSafeInteger(value) && value >= 0;
@@ -109,10 +109,17 @@ export function validateSavedRun(saved) {
     return false;
   }
   const inEncounter = phase === 'combat' || phase === 'reward';
+  const mystery = state.mysteryReward;
+  if (mystery !== undefined && (phase !== 'reward' || !isRecord(mystery) ||
+      (mystery.kind === 'card' ? !MYSTERY_CARDS.includes(mystery.id) :
+        mystery.kind === 'potion' ? !isPotion(mystery.id) :
+          mystery.kind !== 'mutation' || !parseRecruitKey(mystery.id)?.mutation))) return false;
   if (!Array.isArray(path) || path.length !== encounter + Number(inEncounter) ||
       !path.every((id, level) => TRAIL[level].some((route) => route.id === id)) ||
       !isList(enemies, (enemy) => validEnemy(enemy, players.length)) ||
-      (inEncounter ? enemies.length === 0 : enemies.length !== 0) ||
+      (inEncounter && (path[encounter] === 'mystery') !== Boolean(mystery)) ||
+      (inEncounter && !mystery ? enemies.length === 0 : enemies.length !== 0) ||
+      (mystery && (state.eliteReward !== false || state.hardReward)) ||
       (phase === 'shop' && !Object.hasOwn(MERCHANTS, encounter)) ||
       (phase === 'camp' && (!CAMPS.includes(encounter) || !isList(state.campChoices, isCampChoice) ||
         state.campChoices.length !== players.length))) return false;
@@ -123,8 +130,10 @@ export function validateSavedRun(saved) {
   if (phase === 'combat' && state.simultaneous &&
       (!Array.isArray(state.endedTurns) || state.endedTurns.length !== players.length ||
         !state.endedTurns.every((ended) => typeof ended === 'boolean') || state.endedTurns[state.activePlayer])) return false;
-  if (phase === 'reward' && ((encounter === TRAIL.length - 1 && state.eliteReward !== true) || enemies.some(({ hp }) => hp > 0) ||
-      !isList(state.rewardOptions, (offers) => isList(offers, isCard) && offers.length > 0) ||
+  if (phase === 'reward' && ((encounter === TRAIL.length - 1 && !mystery && state.eliteReward !== true) || enemies.some(({ hp }) => hp > 0) ||
+      !isList(state.rewardOptions, (offers) => isList(offers, isCard) && (mystery ?
+        (mystery.kind === 'card' ? offers.length === 1 && offers[0] === mystery.id : offers.length === 0) :
+        offers.length > 0)) ||
       !isList(state.rewardPicks, validRewardPick) ||
       state.rewardOptions.length !== players.length || state.rewardPicks.length !== players.length)) return false;
   return true;

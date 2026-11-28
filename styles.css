@@ -1619,7 +1619,9 @@ body:not([data-battle-area])::before {
 .rival-matchup[data-matchup='resisted'] { color: #ffcaab; }
 
 .route-choice { display: grid; grid-template-rows: 1fr auto; justify-items: start; gap: .25rem; min-width: 0; }
-.route-choice-trial { grid-column: 1 / -1; }
+.route-choice-trial, .route-choice-mystery { grid-column: 1 / -1; }
+.trail-rung .route-mystery { border-color: #8c78b5; }
+.route-mystery .route-tag { color: #dbc5ff; }
 .route-choice .route-option { width: 100%; }
 .route-choice .route-prize { color: #ffe2a0; }
 .route-rules { min-height: 2.75rem; padding: .3rem .6rem; font-size: .82rem; }

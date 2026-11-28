@@ -54,3 +54,26 @@ test('soundtrack downloads retain metadata, validators, and byte-accurate partia
   assert.equal(album.headers['Content-Type'], 'application/zip');
   assert.match(album.headers['Content-Disposition'], /^attachment/);
 });
+
+test('Godot preview serves a same-origin launcher and cacheable WebAssembly', async () => {
+  const launcher = await request('/godot');
+  assert.equal(launcher.status, 200);
+  assert.match(launcher.body.toString(), /godot-client\.mjs/);
+  const shell = await request('/godot-preview/');
+  assert.equal(shell.status, 200);
+  assert.match(shell.body.toString(), /index\.wasm/);
+
+  const path = '/godot-preview/index.wasm';
+  const headers = { 'accept-encoding': 'gzip, br' };
+  const wasm = await request(path, 'HEAD', headers);
+  assert.equal(wasm.status, 200);
+  assert.equal(wasm.headers['Content-Type'], 'application/wasm');
+  assert.equal(wasm.headers['Content-Encoding'], 'gzip');
+  assert.equal(wasm.headers.Vary, 'Accept-Encoding');
+  const cached = await request(path, 'HEAD', { ...headers, 'if-none-match': wasm.headers.ETag });
+  assert.equal(cached.status, 304);
+  const identity = await request(path, 'HEAD', { 'accept-encoding': 'gzip;q=0' });
+  assert.equal(identity.status, 200);
+  assert.equal(identity.headers['Content-Encoding'], undefined);
+  assert.equal(identity.headers['Content-Length'], undefined);
+});

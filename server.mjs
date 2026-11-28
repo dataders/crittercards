@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
-import { gzipSync, gunzipSync } from 'node:zlib';
+import { createGunzip, gzipSync, gunzipSync } from 'node:zlib';
 
 import { applyAction, createRun, COUSINS, CRITTERS, startingLibraryFor } from './game.mjs';
 
@@ -22,12 +22,17 @@ const staticFiles = new Set([
   '/index.html', '/soundtrack.html', '/styles.css', '/app.mjs', '/game.mjs', '/transport.mjs',
   '/audio.mjs', '/solo-progress.mjs', '/combat-input.mjs', '/combat-effects.mjs', '/data.mjs', '/storage.mjs', '/view-state.mjs', '/views.mjs',
   '/assets/crittercards-soundtrack.zip', enchantedWoodsAlbum,
+  '/godot-client.html', '/godot-client.css', '/godot-client.mjs',
+  ...['godot', 'godot-third-party', 'card-framework'].map((name) => '/godot-preview/licenses/' + name + '.txt'),
+  ...['html', 'js', 'wasm', 'pck', 'png', 'icon.png', 'apple-touch-icon.png',
+    'audio.worklet.js', 'audio.position.worklet.js'].map((ext) => '/godot-preview/index.' + ext),
 ]);
 const assetPath = /^\/assets\/(?:[\w-]+\/)*[\w.-]+\.(?:avif|gif|ico|jpe?g|mp3|png|svg|webp|woff2)$/i;
 const types = {
   avif: 'image/avif', css: 'text/css; charset=utf-8', gif: 'image/gif',
   html: 'text/html; charset=utf-8', ico: 'image/x-icon', jpeg: 'image/jpeg',
   jpg: 'image/jpeg', mjs: 'text/javascript; charset=utf-8', mp3: 'audio/mpeg', png: 'image/png',
+  txt: 'text/plain; charset=utf-8', js: 'text/javascript; charset=utf-8', pck: 'application/octet-stream', wasm: 'application/wasm',
   svg: 'image/svg+xml', webp: 'image/webp', woff2: 'font/woff2', zip: 'application/zip',
 };
 
@@ -265,14 +270,17 @@ function recordCombatRevision(room, seat, previous) {
 
 async function serveStatic(request, response, pathname) {
   const download = pathname === hourSoundtrackDownload;
-  const path = download ? `/assets/${hourSoundtrackFile}` : pathname === '/' ? '/index.html' : pathname;
+  const landing = { '/': '/index.html', '/godot': '/godot-client.html', '/godot-preview/': '/godot-preview/index.html' };
+  const path = download ? `/assets/${hourSoundtrackFile}` : landing[pathname] ?? pathname;
   if (!['GET', 'HEAD'].includes(request.method) || (!staticFiles.has(path) && !assetPath.test(path))) {
     throw new RequestError(404, 'Page not found.');
   }
 
+  const compressedWasm = path === '/godot-preview/index.wasm';
+  const gzipAccepted = /(?:^|,)\s*gzip\s*(?:,|$)/i.test(request.headers['accept-encoding'] ?? '');
   let file;
   try {
-    file = await open(new URL(`.${path}`, import.meta.url), 'r');
+    file = await open(new URL(`.${path}${compressedWasm ? '.gz' : ''}`, import.meta.url), 'r');
     const details = await file.stat();
     if (!details.isFile()) throw new RequestError(404, 'Page not found.');
     const { size } = details;
@@ -287,16 +295,32 @@ async function serveStatic(request, response, pathname) {
       'Last-Modified': lastModified,
       'Accept-Ranges': 'bytes',
     };
+    if (compressedWasm) {
+      delete headers['Accept-Ranges'];
+      headers.Vary = 'Accept-Encoding';
+      if (gzipAccepted) headers['Content-Encoding'] = 'gzip';
+      else {
+        delete headers['Content-Length'];
+        delete headers.ETag;
+      }
+    }
     if (download || path === enchantedWoodsAlbum) {
       headers['Content-Disposition'] = `attachment; filename="${path.split('/').at(-1)}"`;
     }
     const validators = request.headers['if-none-match']?.split(',').map((value) => value.trim().replace(/^W\//, ''));
-    if (validators?.some((value) => value === '*' || value === etag.slice(2))) {
+    if (headers.ETag && validators?.some((value) => value === '*' || value === etag.slice(2))) {
       delete headers['Content-Length'];
       response.writeHead(304, headers).end();
       return;
     }
 
+    if (compressedWasm) {
+      response.writeHead(200, headers);
+      if (request.method === 'HEAD') response.end();
+      else if (gzipAccepted) await pipeline(file.createReadStream(), response);
+      else await pipeline(file.createReadStream(), createGunzip(), response);
+      return;
+    }
     const ifRange = request.headers['if-range'];
     const range = request.method === 'GET' && (!ifRange || ifRange === lastModified) &&
       /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');

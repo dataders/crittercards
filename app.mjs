@@ -219,12 +219,16 @@ function updateRecruitProgress(state) {
   if (!state) return;
   const current = readStorage(localStorage, progressKey, recruitProgress);
   const runKey = `${ui.room?.code ?? ui.savedRunOrigin ?? 'local'}:${state.runId}`;
-  const completed = state.phase === 'victory' ? TRAIL.length : state.encounter + Number(state.phase === 'reward');
+  const bossMystery = state.mysteryReward && trailPosition(state.encounter).bossLevel;
+  const completed = state.phase === 'victory' ? TRAIL.length : state.encounter + Number(state.phase === 'reward' && !bossMystery);
   const previous = current.runs[runKey] ?? 0;
   if (completed > previous) {
     current.runs[runKey] = completed;
-    current.wins += completed - previous;
-    current.clears += Math.floor(completed / LEVELS_PER_ACT) - Math.floor(previous / LEVELS_PER_ACT);
+    for (let level = previous; level < completed; level++) {
+      if (state.path[level] === 'mystery') continue;
+      current.wins += 1;
+      if (trailPosition(level).bossLevel) current.clears += 1;
+    }
     current.encounter = Math.max(current.encounter, completed >= LEVELS_PER_ACT ? 3 : Math.min(completed, 2));
     writeStorage(localStorage, progressKey, current);
   }
@@ -483,7 +487,17 @@ function trailMap(state) {
     return `<li class="trail-rung is-current" aria-current="step">
       <h2><span>${bossLevel ? '♛' : '✦'}</span> Level ${index + 1}${bossLevel ? ` · ${escape(act.boss)}` : ''}</h2>
       <div class="route-options">
-        ${routes.map((route) => {
+        ${routes.filter(({ id }) => id !== 'mystery-ambush').map((route) => {
+          if (route.id === 'mystery') {
+            return `<div class="route-choice route-choice-mystery">
+              <button type="button" class="route-option route-mystery" data-do="route" data-id="mystery" ${canLead ? '' : 'disabled'}>
+                <span class="route-tag">Option 3</span>
+                <strong>? Mystery</strong>
+                <span class="route-prize">50% reward · 50% hard fight</span>
+                <span>${bossLevel ? 'A reward comes before the standard boss fight.' : 'A reward skips this level’s fight.'}</span>
+              </button>
+            </div>`;
+          }
           const totalGold = route.goldPerEnemy * route.enemies.length;
           const rivals = `<span class="route-rivals">${route.enemies.map((enemy) => `
             <span class="route-rival">${art(enemy.animal, 'route-rival-art')}<span><b>${escape(enemy.name)}</b><br>${rivalHealth(enemy, route, state.players.length)} HP${enemy.openingBlock ? ` · ${enemy.openingBlock} Block` : ''}</span></span>`).join('')}</span>`;
@@ -699,14 +713,19 @@ function recruitReward(state, seat, options, enabled) {
 function rewards(state) {
   const { actIndex, bossLevel } = trailPosition(state.encounter);
   const levelUp = grantsLevelUp(state);
+  const mystery = state.mysteryReward;
+  const mysteryName = mystery && (mystery.kind === 'card' ? CARDS[mystery.id].name :
+    mystery.kind === 'potion' ? POTIONS[mystery.id].name : recruitName(mystery.id));
   // The last offer is the featured card, including on reward screens saved before a prize rotation.
   const trialReward = getEncounter(state)?.trialReward ? state.rewardOptions[0].at(-1) : null;
   const solo = state.players.length === 1;
   const unlockCount = ui.recruits.length + ui.newCards.length;
   return `
-    <section class="battle-head"><div><p class="eyebrow">${bossLevel ? `Act ${actIndex + 1} cleared` : levelUp ? 'Elite defeated' : 'Trainer defeated'}</p><h1 id="reward-title" tabindex="-1">${levelUp ? (solo ? 'Level up' : 'Level up your familiars') : 'Card reward'}</h1></div>${purse(state)}</section>
-    ${bossLevel && ACTS[actIndex + 1] ? `<p class="status-line">The pack recovers to full health before entering ${escape(ACTS[actIndex + 1].name)}.</p>` : ''}
-    ${state.potionFinds?.length ? `<p class="status-line">Potion drops · ${state.potionFinds.map(({id, seat}) => solo ? escape(POTIONS[id].name) : `${escape(CRITTERS[state.players[seat].critterId].name)} found ${escape(POTIONS[id].name)}`).join(' · ')}</p>` : ''}
+    <section class="battle-head"><div><p class="eyebrow">${mystery ? '? Mystery' : bossLevel ? `Act ${actIndex + 1} cleared` : levelUp ? 'Elite defeated' : 'Trainer defeated'}</p><h1 id="reward-title" tabindex="-1">${mystery ? escape(mysteryName) : levelUp ? (solo ? 'Level up' : 'Level up your familiars') : 'Card reward'}</h1></div>${purse(state)}</section>
+    ${mystery?.kind === 'mutation' ? '<p class="status-line">The animal joins your collection with its skin.</p>' : ''}
+    ${mystery && bossLevel ? '<p class="status-line">The boss fight starts after everyone confirms.</p>' : ''}
+    ${!mystery && bossLevel && ACTS[actIndex + 1] ? `<p class="status-line">The pack recovers to full health before entering ${escape(ACTS[actIndex + 1].name)}.</p>` : ''}
+    ${state.potionFinds?.length ? `<p class="status-line">${mystery ? 'Potion found' : 'Potion drops'} · ${state.potionFinds.map(({id, seat}) => solo ? escape(POTIONS[id].name) : `${escape(CRITTERS[state.players[seat].critterId].name)} found ${escape(POTIONS[id].name)}`).join(' · ')}</p>` : ''}
     ${trialReward ? `<p class="status-line">Trial cleared. Each player can draft ${escape(CARDS[trialReward].name)} as their card reward.</p>` : ''}
     ${!solo ? recruitment() + cardReveal(ui.newCards) : ''}
     ${solo && unlockCount ? `<details class="reward-unlocks" data-view-state="reward-unlocks"><summary>New unlocks · ${unlockCount}</summary>${recruitment()}${cardReveal(ui.newCards)}</details>` : ''}
@@ -720,30 +739,31 @@ function rewards(state) {
         const enabled = !ui.pending && !saved && (!ui.room || ui.room.seat === seat);
         const perks = levelUp ? levelPerkChoices(player) : [];
         const perk = perks.find(({ id, maxed }) => id === ui.perks[seat] && !maxed);
-        const card = ui.drafts[seat];
+        const offers = state.rewardOptions[seat];
+        const card = offers.length ? ui.drafts[seat] : 'skip';
         const recruits = availableRecruits(state, seat);
         const recruit = recruits.includes(ui.recruitSelections[seat]) ? recruitName(ui.recruitSelections[seat]) : null;
         const ready = (!levelUp || perk) && card && (!state.hardReward || ui.hardPerks[seat]);
-        const selection = card === 'skip' ? 'No new card' : CARDS[card]?.name;
+        const selection = offers.length ? (card === 'skip' ? 'No new card' : CARDS[card]?.name) : 'Ready to continue.';
         const guidance = !enabled ? 'Waiting for this player to choose.' : levelUp && !perk ? 'Choose a perk to level up.' :
           !card ? 'Choose a card or select Skip card.' : !ready ? 'Choose a Hard route perk.' :
           solo ? [perk?.name, selection, recruit && `Recruit ${recruit}`].filter(Boolean).join(' · ') : recruit ? `Ready to recruit ${recruit}.` : 'Ready to confirm.';
         return `<section>
           <div class="section-heading"><h2>${escape(critter.name)}${solo ? '' : ` · ${playerName(seat)}`}</h2><span class="muted">${saved ? 'Ready' : levelUp ? `Level ${player.level} → ${player.level + 1}` : ''}</span></div>
           ${levelMeter(state, seat)}
-          ${saved ? `<p>${savedCard ? `Learned ${escape(CARDS[savedCard].name)}` : 'Skipped the card'}${savedPerk ? ` and chose ${escape(LEVEL_PERKS[savedPerk]?.name)}` : ''}${savedHardPerk ? ` and ${escape(HARD_PERKS[savedHardPerk].name)}` : ''}.${saved.recruitId ? ` Recruited ${escape(recruitName(recruitKey(saved.recruitId, saved.recruitMutation)))}.` : ''}</p>` : `
+          ${saved ? `<p>${savedCard ? `Learned ${escape(CARDS[savedCard].name)}` : offers.length ? 'Skipped the card' : 'Confirmed the find'}${savedPerk ? ` and chose ${escape(LEVEL_PERKS[savedPerk]?.name)}` : ''}${savedHardPerk ? ` and ${escape(HARD_PERKS[savedHardPerk].name)}` : ''}.${saved.recruitId ? ` Recruited ${escape(recruitName(recruitKey(saved.recruitId, saved.recruitMutation)))}.` : ''}</p>` : `
             ${recruitReward(state, seat, recruits, enabled)}
             ${levelUp ? `<h3 class="reward-label">1. Choose a perk for this run</h3>
             <div class="level-options" aria-label="Level-up perk">${rewardPerkChoices(perks, 'perk', seat, ui.perks[seat], enabled)}</div>` : ''}
-            <div class="reward-card-heading"><h3 class="reward-label">${levelUp ? '2. ' : ''}Take a card <small>(optional)</small></h3>
+            ${offers.length ? `<div class="reward-card-heading"><h3 class="reward-label">${levelUp ? '2. ' : ''}Take a card <small>(optional)</small></h3>
               ${button('Skip card', 'draft-pick', { disabled: !enabled, data: `data-seat="${seat}" data-id="skip" aria-pressed="${card === 'skip'}"` })}
             </div>
-            <div class="hand-grid">${state.rewardOptions[seat].map((id, index) => actionCard(state, seat, id, index, enabled, true, card)).join('')}</div>
+            <div class="hand-grid">${offers.map((id, index) => actionCard(state, seat, id, index, enabled, true, card)).join('')}</div>` : ''}
             ${state.hardReward ? `<h3 class="reward-label">3. Choose a Hard route perk</h3>
               <div class="level-options" aria-label="Hard route perk">${rewardPerkChoices(hardPerkOptions(state.players.length), 'hard-perk', seat, ui.hardPerks[seat], enabled)}</div>` : ''}
             <div class="reward-confirm">
               <p class="reward-status" aria-live="polite">${escape(guidance)}</p>
-              ${button(solo ? 'Claim reward' : `Confirm ${playerName(seat)} reward`, 'draft', { style: 'primary', disabled: !enabled || !ready, data: `data-seat="${seat}"` })}
+              ${button(solo ? (offers.length ? 'Claim reward' : 'Continue') : `Confirm ${playerName(seat)} reward`, 'draft', { style: 'primary', disabled: !enabled || !ready, data: `data-seat="${seat}"` })}
             </div>
           `}
         </section>`;

@@ -1,6 +1,6 @@
 import {
   COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, matchup, FRAIL_BLOCK_LOSS, POTIONS, POTION_LIMIT, potionPrice, BUILD_PATHS, isEliteRoute, CAMP_HEAL_PERCENT,
-  MUTATIONS, MUTATION_SLOTS, mutationForSlot, recruitKey,
+  MUTATIONS, MUTATION_SLOTS, mutationForSlot, recruitKey, MYSTERY_CARDS,
   COMPANION_ABILITIES, LEVEL_PERKS, levelPerkChoices, HARD_PERKS, hardPerkOptions, trailPosition,
   FLOODGATE_RECOIL_PERCENT, TRAIL, MERCHANTS, CAMPS, getEncounter,
   rivalHealth, briarHealer, BASE_CARDS, BASIC_CARDS, ENERGY_CARDS, STARTER_DECK, STARTING_DECK_SIZE, MIN_STARTING_ONE_COST, MAX_STARTING_COPIES,
@@ -173,9 +173,9 @@ function beginRound(state) {
   });
 }
 
-function initialMutationSeed(state) {
+function mixedRunSeed(state, salt) {
   const runSeed = Number(state.runId);
-  let seed = (Number.isFinite(runSeed) ? runSeed : state.seed) ^ 0x91e10da5;
+  let seed = (Number.isFinite(runSeed) ? runSeed : state.seed) ^ salt;
   // Mix nearby run seeds so that runs started close together get different openings.
   seed = Math.imul(seed ^ (seed >>> 16), 0x7feb352d);
   seed = Math.imul(seed ^ (seed >>> 15), 0x846ca68b);
@@ -183,7 +183,7 @@ function initialMutationSeed(state) {
 }
 
 function rollMutation(state) {
-  const random = { seed: state.mutationSeed ?? initialMutationSeed(state) };
+  const random = { seed: state.mutationSeed ?? mixedRunSeed(state, 0x91e10da5) };
   // Give every slot the same number of 32-bit values while keeping this stream separate from combat.
   const valuesPerSlot = Math.floor(2 ** 32 / MUTATION_SLOTS);
   let slot;
@@ -797,6 +797,14 @@ function draftCard(state, { player: playerIndex, cardId = null, perkId = 'fang',
   if (hardPerkId !== null) log(state, `${critterName(player)} gains ${HARD_PERKS[hardPerkId].name} for the rest of the run.`);
 
   if (state.rewardPicks.every(Boolean)) {
+    if (state.mysteryReward) {
+      delete state.mysteryReward;
+      if (trailPosition(state.encounter).bossLevel) {
+        state.path[state.encounter] = 'steady';
+        beginEncounter(state);
+        return;
+      }
+    }
     if (state.encounter === TRAIL.length - 1) {
       state.phase = 'victory';
       log(state, 'The pack has broken the Hollow Crown.');
@@ -809,6 +817,56 @@ function draftCard(state, { player: playerIndex, cardId = null, perkId = 'fang',
     state.encounter += 1;
     state.enemies = [];
     state.phase = 'route';
+  }
+}
+
+function revealMystery(state) {
+  const random = { seed: mixedRunSeed(state, Math.imul(state.encounter + 1, 0x85ebca6b)) };
+  if (nextRandom(random) < 0.5) {
+    state.path[state.encounter] = 'mystery-ambush';
+    log(state, 'The mystery route is an ambush.');
+    beginEncounter(state);
+    return;
+  }
+
+  state.path[state.encounter] = 'mystery';
+  state.phase = 'reward';
+  state.round = 1;
+  state.activePlayer = 0;
+  state.eliteReward = false;
+  state.hardReward = false;
+  state.potionFinds = [];
+  state.rewardPicks = state.players.map(() => null);
+  state.rewardOptions = state.players.map(() => []);
+  const pick = (items) => items[Math.floor(nextRandom(random) * items.length)];
+  const find = nextRandom(random);
+  // One percent of favorable outcomes, or about one in 200 mystery routes.
+  if (find < 0.01) {
+    const animal = pick(TRAIL[state.encounter][0].enemies).animal;
+    const mutationSlots = Object.values(MUTATIONS).reduce((sum, { odds }) => sum + MUTATION_SLOTS / odds, 0);
+    const mutation = mutationForSlot(Math.floor(nextRandom(random) * mutationSlots));
+    const id = recruitKey(animal, mutation);
+    const recruited = (state.recruited ??= state.players.map(() => []))[0];
+    if (CRITTER_UNLOCKS[animal].kind !== 'starter' && !recruited.includes(animal)) recruited.push(animal);
+    const skins = (state.recruitedMutations ??= state.players.map(() => []))[0];
+    if (!skins.includes(id)) skins.push(id);
+    state.mysteryReward = { kind: 'mutation', id };
+    log(state, `A ${MUTATIONS[mutation].name} ${CRITTERS[animal].name} joins the pack.`);
+  } else if (find < 0.5 && state.players.some(({ potions }) => (potions?.length ?? 0) < POTION_LIMIT)) {
+    const id = pick(potionIds);
+    for (const player of state.players) {
+      const potions = player.potions ??= [];
+      if (potions.length >= POTION_LIMIT) continue;
+      potions.push(id);
+      state.potionFinds.push({ id, seat: player.id });
+    }
+    state.mysteryReward = { kind: 'potion', id };
+    log(state, `The pack finds ${POTIONS[id].name}.`);
+  } else {
+    const id = pick(MYSTERY_CARDS);
+    state.mysteryReward = { kind: 'card', id };
+    state.rewardOptions = state.players.map(() => [id]);
+    log(state, `The pack discovers ${CARDS[id].name}.`);
   }
 }
 
@@ -833,7 +891,8 @@ function chooseRoute(state, { player, routeId }) {
     state.phase = 'camp';
     return;
   }
-  if (!TRAIL[state.encounter].some((route) => route.id === routeId)) throw new Error('Choose an available route.');
+  if (routeId === 'mystery') return revealMystery(state);
+  if (routeId === 'mystery-ambush' || !TRAIL[state.encounter].some((route) => route.id === routeId)) throw new Error('Choose an available route.');
   state.path[state.encounter] = routeId;
   beginEncounter(state);
 }
