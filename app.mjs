@@ -37,7 +37,13 @@ const tutorialSteps = [...rules.querySelectorAll('[data-tutorial-step]')];
 const tutorialProgress = rules.querySelector('#tutorial-progress');
 const tutorialBack = rules.querySelector('[data-do="tutorial-back"]');
 const tutorialNext = rules.querySelector('[data-do="tutorial-next"]');
+const tutorialNarrator = rules.querySelector('[data-tutorial-narrate]');
+const narrationLabel = tutorialNarrator.querySelector('[data-narration-label]');
+const narrationStatus = rules.querySelector('.tutorial-narration-status');
+const synthesizer = window.speechSynthesis;
+let tutorialUtterance = null;
 let tutorialStep = 0;
+tutorialNarrator.hidden = !synthesizer || typeof window.SpeechSynthesisUtterance !== 'function';
 const tutorialPicture = document.querySelector('#tutorial-picture');
 const pictureTitle = tutorialPicture.querySelector('#tutorial-picture-title');
 const pictureScroll = tutorialPicture.querySelector('#tutorial-picture-scroll');
@@ -59,7 +65,52 @@ const areaScenes = [
 const starterIds = [...Object.keys(COUSINS), ...Object.keys(CRITTER_UNLOCKS).filter((id) => CRITTER_UNLOCKS[id].kind === 'starter')];
 const { startMusic, syncSoundtrack, toggle: toggleMusic, pause: pauseMusic } = createAudioController(soundtrack, musicToggle, localStorage);
 
+function setNarrationStatus(text = '') {
+  narrationStatus.textContent = text;
+  narrationStatus.hidden = !text;
+}
+
+function stopTutorialNarration() {
+  if (!tutorialUtterance) return;
+  tutorialUtterance = null;
+  narrationLabel.textContent = 'Read aloud';
+  synthesizer.cancel();
+}
+
+tutorialNarrator.addEventListener('click', () => {
+  setNarrationStatus();
+  if (tutorialUtterance) {
+    stopTutorialNarration();
+    return;
+  }
+  const lesson = tutorialSteps[tutorialStep];
+  const introduction = tutorialStep === 0 ? 'Hi, I’m Pip the hare. Let’s learn how to play.' : '';
+  const text = [
+    introduction,
+    lesson.querySelector('h3').textContent.trim() + '.',
+    ...[...lesson.querySelectorAll('figcaption, .tutorial-copy p')].map((part) => part.textContent.trim()),
+  ].filter(Boolean).join(' ');
+  const utterance = new window.SpeechSynthesisUtterance(text);
+  utterance.lang = document.documentElement.lang || 'en';
+  utterance.rate = 0.93;
+  utterance.pitch = 1.13;
+  const finish = (event) => {
+    if (tutorialUtterance !== utterance) return;
+    tutorialUtterance = null;
+    narrationLabel.textContent = 'Read aloud';
+    if (event.type === 'error') setNarrationStatus('Read aloud is unavailable right now.');
+  };
+  utterance.addEventListener('end', finish);
+  utterance.addEventListener('error', finish);
+  tutorialUtterance = utterance;
+  narrationLabel.textContent = 'Stop reading';
+  try { synthesizer.speak(utterance); }
+  catch { finish({ type: 'error' }); }
+});
+
 function showTutorialStep(index) {
+  stopTutorialNarration();
+  setNarrationStatus();
   tutorialStep = index;
   tutorialSteps.forEach((step, position) => { step.hidden = position !== index; });
   tutorialProgress.textContent = `Step ${index + 1} of ${tutorialSteps.length}`;
@@ -75,6 +126,7 @@ function openTutorial() {
 }
 
 rules.addEventListener('close', () => {
+  stopTutorialNarration();
   writeStorage(localStorage, tutorialKey, true);
   document.querySelector('.game-menu[open] [data-do="rules"], .game-menu:not([open]) summary')?.focus({ preventScroll: true });
 });
@@ -100,6 +152,7 @@ rules.addEventListener('click', (event) => {
 
 pictureZoom.addEventListener('click', () => setPictureZoom(!pictureScroll.classList.contains('is-zoomed')));
 tutorialPicture.addEventListener('close', () => pictureTrigger?.focus({ preventScroll: true }));
+window.addEventListener('pagehide', stopTutorialNarration);
 
 function openShare(roomCode) {
   const url = new URL(location.href);

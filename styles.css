@@ -438,6 +438,12 @@ dialog::backdrop { background: #07120cca; }
 }
 .tutorial-top { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
 .tutorial h2 { font-size: clamp(2rem, 5vw, 2.8rem); }
+.tutorial-heading { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem .75rem; }
+.tutorial-heading h2 { margin: 0 auto 0 0; }
+.tutorial-narrator { display: inline-flex; align-items: center; gap: .48rem; text-align: left; min-height: 2.75rem; }
+.tutorial-narrator img { width: 2rem; height: 2rem; object-fit: cover; border-radius: .35rem; }
+.tutorial-narrator small { display: block; font-size: .72rem; }
+.tutorial-narration-status { flex-basis: 100%; margin: 0; }
 .tutorial-content { overflow-y: auto; overscroll-behavior: contain; }
 .tutorial-content section, .tutorial-copy { display: grid; gap: .75rem; }
 .tutorial-lesson { display: grid; gap: clamp(.85rem, 2.5vw, 1.5rem); align-items: start; }
