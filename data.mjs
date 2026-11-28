@@ -2,7 +2,7 @@ export const COUSINS = {
   hudson: { id: 'hudson', name: 'Hudson', role: 'Poison Witch', maxHp: 45, type: 'stone', signature: 'shieldWall' },
   quinn: { id: 'quinn', name: 'Quinn', role: 'Bone Witch', maxHp: 34, type: 'ember', signature: 'witchHex' },
   alba: { id: 'alba', name: 'Alba', role: 'Spirit-Song Witch', maxHp: 32, type: 'grove', signature: 'cuttingChorus' },
-  tita: { id: 'tita', name: 'Tito', role: 'Star-Spirit Witch', maxHp: 24, type: 'tide', signature: 'secretStar', signatureCopies: 1 },
+  tita: { id: 'tita', name: 'Tito', role: 'Star-Spirit Witch', maxHp: 28, type: 'tide', signature: 'secretStar', signatureCopies: 1 },
 };
 
 export const CRITTERS = {
@@ -51,10 +51,26 @@ export const BUILD_PATHS = {
     ['graveOmen', 'graveBreaker'],
     ['boneBulwark', 'grimResolve'],
   ],
+  alba: [
+    ['chorusPrelude', 'crescendo'],
+    ['hollowRefrain', 'shatteringNote'],
+  ],
+  tita: [
+    ['starChart', 'cometTrail'],
+    ['starlitShelter', 'guidingRay'],
+  ],
 };
 
 export const CARDS = {
   ...energyCards,
+  chorusPrelude: { id: 'chorusPrelude', name: 'Chorus Prelude', build: 'Rhythm', cost: 1, type: 'skill', target: 'none', block: 9, nextEnergy: 2 },
+  crescendo: { id: 'crescendo', name: 'Crescendo', build: 'Rhythm', cost: 'X', type: 'attack', target: 'enemy', damage: 6, block: 2 },
+  hollowRefrain: { id: 'hollowRefrain', name: 'Hollow Refrain', build: 'Echo', cost: 0, type: 'support', target: 'enemy', mark: true, frail: 1, block: 4 },
+  shatteringNote: { id: 'shatteringNote', name: 'Shattering Note', build: 'Echo', cost: 1, type: 'attack', target: 'enemy', damage: 6, markedBonus: 12, block: 5 },
+  starChart: { id: 'starChart', name: 'Star Chart', build: 'Starlight', cost: 0, type: 'skill', target: 'none', block: 6, nextEnergy: 2, exhaust: true },
+  cometTrail: { id: 'cometTrail', name: 'Comet Trail', build: 'Starlight', cost: 1, type: 'attack', target: 'enemy', damage: 9, spendReserve: 3 },
+  starlitShelter: { id: 'starlitShelter', name: 'Starlit Shelter', build: 'Aegis', cost: 1, type: 'skill', target: 'none', block: 13, hurtEnergy: 1 },
+  guidingRay: { id: 'guidingRay', name: 'Guiding Ray', build: 'Aegis', cost: 1, type: 'attack', target: 'enemy', damage: 9, guardedHeal: 5 },
   venomSalve: { id: 'venomSalve', name: 'Venom Salve', build: 'Poison', cost: 1, type: 'support', target: 'enemy', poison: 8, block: 6 },
   venomFang: { id: 'venomFang', name: 'Venom Fang', build: 'Poison', cost: 1, type: 'attack', target: 'enemy', damage: 4, poisonDamageCap: 28 },
   rootBrace: { id: 'rootBrace', name: 'Root Brace', build: 'Block', cost: 1, type: 'skill', target: 'none', block: 17, nextEnergy: 1 },
@@ -284,6 +300,8 @@ export function describeCard(card, attackBonus, { compact = false, solo = false 
   if (card.stealBlock) sentences.push(`Steal up to ${card.stealBlock} Block.`);
   if (card.damage) sentences.push(`Deal ${card.damage + attackBonus} damage${card.pierce ? ', ignoring Block' : ''}.`);
   if (card.poisonDamageCap) sentences.push(`+2 damage per Poison on the target, up to +${card.poisonDamageCap}.`);
+  if (card.spendReserve) sentences.push(`Spend up to ${card.spendReserve} energy saved for next turn. Deal 5 extra damage per energy spent.`);
+  if (card.markedBonus) sentences.push(`Deal ${card.markedBonus} extra damage to Marked rivals.`);
   if (card.spendBlock) sentences.push(`Spend up to ${card.spendBlock} Block. Deal 2 extra damage per Block spent.`);
   if (card.vulnerableBonus) sentences.push(`Against Vulnerable rivals, deal ${card.vulnerableBonus} more damage${card.vulnerableBlock ? ` and gain ${card.vulnerableBlock} Block` : ''}.`);
   if (card.frailStrength) sentences.push(`Gain ${card.frailStrength} Strength if the rival is Frail.`);
@@ -295,6 +313,7 @@ export function describeCard(card, attackBonus, { compact = false, solo = false 
   if (!solo && card.allyBlock) sentences.push(`Give your ally ${card.allyBlock} Block.`);
   if (card.poison) sentences.push(`Apply ${card.poison} Poison.${compact ? '' : ' ' + COMBAT_TERMS.poison.text}`);
   const selfHeal = (card.heal ?? 0) + (solo ? (card.allyHeal ?? 0) : 0);
+  if (card.guardedHeal) sentences.push(`If you already had Block, heal for ${card.guardedHeal}.`);
   if (selfHeal) sentences.push(`Heal for ${selfHeal}.`);
   if (!solo && card.allyHeal) sentences.push(`Heal your ally for ${card.allyHeal}.`);
   if (card.energy) sentences.push(`Gain ${card.energy} energy this turn.`);
@@ -376,13 +395,20 @@ for (const card of Object.values(CARDS)) {
 }
 
 export const LEVEL_PERKS = {
-  fang: { id: 'fang', name: 'Fang', description: 'Your attacks deal +1 damage for the rest of this run.' },
+  fang: { id: 'fang', name: 'Fang', limit: 4, description: 'Your attacks deal +1 damage for the rest of this run.' },
   bark: { id: 'bark', name: 'Bark', description: 'Gain 4 additional max HP and heal 4 more.' },
   shell: { id: 'shell', name: 'Shell', description: 'Start each round with 2 Block for the rest of this run.' },
-  keen: { id: 'keen', name: 'Keen Senses', description: 'Draw 1 extra card each round for the rest of this run.' },
+  keen: { id: 'keen', name: 'Keen Senses', limit: 2, description: 'Draw 1 extra card each round for the rest of this run.' },
   spirit: { id: 'spirit', name: 'Spirit', description: 'Start each fight with 1 extra energy for the rest of this run.' },
-  renewal: { id: 'renewal', name: 'Renewal', description: 'Heal 3 additional HP after each victory for the rest of this run.' },
+  renewal: { id: 'renewal', name: 'Renewal', limit: 2, description: 'Heal 2 HP after regular fights and 3 HP after Elites.' },
 };
+
+export function levelPerkChoices(player) {
+  return Object.values(LEVEL_PERKS).map((perk) => ({
+    ...perk,
+    maxed: Boolean(perk.limit && player.perks.filter((id) => id === perk.id).length >= perk.limit),
+  }));
+}
 
 export const HARD_PERKS = {
   bondWard: { id: 'bondWard', name: 'Bond Ward', block: 5, coOp: true,
@@ -727,7 +753,9 @@ function laterTrail(config, actIndex) {
     return config.routes.map((name, option) => {
       const hard = option === 1 && HARD_LEVELS.has(index);
       const standardCourt = actIndex === 2 && !hard;
-      const healthScale = hard ? 1.25 : standardCourt ? 0.75 : 0.9;
+      const crossing = standardCourt && index === 17;
+      const courtElite = actIndex === 2 && hard && !boss;
+      const healthScale = courtElite ? 1.42 : hard ? 1.25 : standardCourt ? 0.75 : 0.9;
       const moveScale = hard ? 0.8 : standardCourt && tactics ? 0.5 : healthScale * 0.8;
       const trainer = boss ? ACTS[actIndex].boss : config.trainers[index % config.trainers.length];
       const enemies = [0, 1].map((slot) => {
@@ -741,10 +769,11 @@ function laterTrail(config, actIndex) {
           boss: boss && slot === 0,
           hp: Math.ceil(baseHp * (boss ? (slot === 0 ? 1.55 : 1.15) : 1) * healthScale),
           ...(tactics ? { openingBlock: Math.ceil(tactics.openingBlock[slot] * (hard ? 0.5 : 0.28)) } : {}),
-          moves: moves.map(([type, amount]) => {
-            const openingCurse = standardCourt && index === 17 && (type === 'crownCurse' || type === 'rally');
+          moves: moves.map(([type, amount], turn) => {
+            if (crossing && slot === 0 && turn === 1) return ['guard', 12];
+            const openingCurse = crossing && (type === 'crownCurse' || type === 'rally');
             const scale = openingCurse ? 0.3 : moveScale;
-            return [type, Math.ceil(amount * scale) + Math.floor(index / 8) + (hard ? 3 : 0)];
+            return [type, Math.ceil(amount * scale) + Math.floor(index / 8) + (courtElite ? 5 : hard ? 3 : 0)];
           }),
         };
       });
@@ -752,7 +781,7 @@ function laterTrail(config, actIndex) {
         id: option === 0 ? 'steady' : 'perilous',
         name: boss ? (hard ? 'Challenge the court' : 'Enter the court') : (tactics?.names[option] ?? name),
         trainer,
-        subtitle: boss ? `Face ${trainer} and their champion.` : (tactics?.clue ?? `Face ${enemies.map((enemy) => enemy.name).join(' and ')}.`),
+        subtitle: boss ? `Face ${trainer} and their champion.` : crossing ? 'One rival curses you, then guards while its partner attacks. Use that turn to break the rally.' : (tactics?.clue ?? `Face ${enemies.map((enemy) => enemy.name).join(' and ')}.`),
         difficulty: boss ? (hard ? 'Hard boss' : 'Boss') : (hard ? 'Hard' : 'Standard'),
         goldPerEnemy: hard ? 24 : 8,
         coOpHealth: boss ? 1.25 : 1.20,

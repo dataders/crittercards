@@ -43,7 +43,7 @@ test('Tito can draw one powerful Secret Star in the opening hand or on round two
   // These seeds exercise both Secret Star draw timings with the fifteen-card deal.
   for (const [seed, drawsEarly] of [[2, false], [5, true]]) {
     const run = createRun(['tita'], seed);
-    assert.equal(run.players[0].hp, 24);
+    assert.equal(run.players[0].hp, 28);
     assert.equal(run.players[0].deck.filter((id) => id === 'secretStar').length, 1);
     const opening = applyAction(run, { type: 'route', player: 0, routeId: 'steady' });
     assert.equal(opening.players[0].hand.length, 5);

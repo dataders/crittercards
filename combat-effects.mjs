@@ -2,6 +2,14 @@ import { CARDS, COMPANION_ABILITIES } from './data.mjs';
 
 // Each move pairs a caster gesture with artwork, a palette, and a travel pattern.
 const cards = {
+  chorusPrelude: ['howl', 'orbit', '#e0caff', '♩'],
+  crescendo: ['howl', 'wave', '#b8d6ff', '♬'],
+  hollowRefrain: ['howl', 'hex', '#bca7e8', '♫'],
+  shatteringNote: ['howl', 'impact', '#e6c1f3', '✷'],
+  starChart: ['cast', 'orbit', '#ffe6a3', '✴'],
+  cometTrail: ['leap', 'fall', '#ffb572', '✶'],
+  starlitShelter: ['brace', 'wall', '#e3d2ff', '✧'],
+  guidingRay: ['cast', 'bolt', '#ffefaa', '☼'],
   fireflySpark: ['cast', 'orbit', '#e9f68d', '✧'],
   moonwoodCache: ['brace', 'rise', '#aeb9ff', '☾'],
   briarChannel: ['cast', 'rise', '#aee371', '❧'],

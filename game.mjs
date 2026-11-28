@@ -1,6 +1,6 @@
 import {
   COUSINS, CRITTERS, CARDS, matchup, FRAIL_BLOCK_LOSS, POTIONS, POTION_LIMIT, potionPrice, BUILD_PATHS, isEliteRoute, CAMP_HEAL_PERCENT,
-  COMPANION_ABILITIES, LEVEL_PERKS, HARD_PERKS, hardPerkOptions, trailPosition,
+  COMPANION_ABILITIES, LEVEL_PERKS, levelPerkChoices, HARD_PERKS, hardPerkOptions, trailPosition,
   FLOODGATE_RECOIL_PERCENT, TRAIL, MERCHANTS, CAMPS, getEncounter,
   rivalHealth, briarHealer, BASE_CARDS, BASIC_CARDS, ENERGY_CARDS, STARTER_DECK, STARTING_DECK_SIZE, MIN_STARTING_ONE_COST, MAX_STARTING_COPIES,
   MIN_RUN_DECK_SIZE, CARD_UNLOCKS, MARK_DAMAGE, describeCard, deckLibrary, startingLibraryFor,
@@ -265,7 +265,7 @@ export function createRun(critterIds, seed = Date.now(), startingDecks, companio
   };
 }
 
-function hit(target, amount, pierce = false) {
+function hit(target, amount, pierce = false, reportHit) {
   if (target.vulnerable > 0) {
     amount = Math.floor(amount * 1.5);
     target.vulnerable -= 1;
@@ -274,6 +274,7 @@ function hit(target, amount, pierce = false) {
   target.block -= blocked;
   const dealt = Math.min(target.hp, amount - blocked);
   target.hp -= dealt;
+  reportHit?.(target.id, amount, blocked, dealt);
   return dealt;
 }
 
@@ -292,12 +293,13 @@ function heal(target, amount) {
 }
 
 function finishEncounter(state) {
-  for (const player of state.players) {
-    heal(player, 3 * player.perks.filter((perk) => perk === 'renewal').length);
-  }
-  state.phase = 'reward';
   const encounter = getEncounter(state);
   state.eliteReward = isEliteRoute(encounter);
+  const recovery = state.eliteReward ? 3 : 2;
+  for (const player of state.players) {
+    heal(player, recovery * player.perks.filter((perk) => perk === 'renewal').length);
+  }
+  state.phase = 'reward';
   state.hardReward = encounter.hardReward === true;
   const available = TRAIL.slice(0, state.encounter + 1).flatMap((routes, level) =>
     routes.find(({ id }) => id === state.path[level]).enemies.flatMap((enemy) => CARD_UNLOCKS[enemy.animal] ?? []));
@@ -370,7 +372,7 @@ function supportChanges(state, before) {
   });
 }
 
-function playCard(state, action) {
+function playCard(state, action, reportDamage) {
   const player = state.players[action.player];
   if (!Number.isInteger(action.cardIndex) || action.cardIndex < 0 || action.cardIndex >= player.hand.length) {
     throw new Error('Choose a card from your hand.');
@@ -399,7 +401,7 @@ function playCard(state, action) {
       target = state.enemies.findIndex((rival) => rival.hp > 0);
       if (target < 0) break;
     }
-    resolveCardEffect(state, player, card, target);
+    resolveCardEffect(state, player, card, target, player.critterId, reportDamage);
     if (card.target === 'enemy') targets.push(target);
     if (card.damage) lastHitTarget = target;
   }
@@ -434,9 +436,10 @@ function dropPotion(state, enemy, seat) {
   log(state, `${critterName(player)} finds ${item.name}.`);
 }
 
-function resolveCardEffect(state, player, card, target, attackerId = player.critterId) {
+function resolveCardEffect(state, player, card, target, attackerId, reportDamage) {
   const ally = state.players[1 - player.id] ?? player;
   const enemy = state.enemies[target];
+  const guardedHeal = player.block > 0 ? card.guardedHeal ?? 0 : 0;
   let energy = (card.energy ?? 0) + (player.energy === 0 ? card.emptyEnergy ?? 0 : 0) +
     (player.block > 0 ? card.guardedEnergy ?? 0 : 0) + (player.hp <= player.maxHp / 2 ? card.hurtEnergy ?? 0 : 0);
   if (card.damage) {
@@ -445,11 +448,13 @@ function resolveCardEffect(state, player, card, target, attackerId = player.crit
     const ambush = player.hardPerk === 'ambush' && !player.ambushUsed ? HARD_PERKS.ambush.damage : 0;
     const spentBlock = Math.min(player.block, card.spendBlock ?? 0);
     player.block -= spentBlock;
+    const spentReserve = Math.min(player.reserveEnergy, card.spendReserve ?? 0);
+    player.reserveEnergy -= spentReserve;
     const poisonBonus = Math.min((enemy.poison ?? 0) * 2, card.poisonDamageCap ?? 0);
     const vulnerableBonus = enemy.vulnerable ? card.vulnerableBonus ?? 0 : 0;
     if (enemy.vulnerable && card.vulnerableBlock) gainBlock(player, card.vulnerableBlock);
     const damage = card.damage + player.attackBonus + player.strength + woundedBonus + ambush + spentBlock * 2 +
-      poisonBonus + vulnerableBonus + (enemy.marked ? MARK_DAMAGE : 0) + (bond ? BOND_DAMAGE : 0);
+      poisonBonus + vulnerableBonus + spentReserve * 5 + (enemy.marked ? MARK_DAMAGE + (card.markedBonus ?? 0) : 0) + (bond ? BOND_DAMAGE : 0);
     if (ambush) {
       player.ambushUsed = true;
       log(state, `${critterName(player)} springs a Briar Ambush.`);
@@ -461,7 +466,8 @@ function resolveCardEffect(state, player, card, target, attackerId = player.crit
     const multiplier = matchup(CRITTERS[attackerId].type, CRITTERS[enemy.animal].type);
     const typed = typedDamage(damage, CRITTERS[attackerId].type, CRITTERS[enemy.animal].type);
     const warded = briarHealer(state, enemy);
-    const dealt = hit(enemy, warded ? Math.floor(typed / 2) : typed, card.pierce);
+    const dealt = hit(enemy, warded ? Math.floor(typed / 2) : typed, card.pierce,
+      reportDamage && ((_unit, _damage, blocked, hpLoss) => reportDamage(target, blocked, hpLoss)));
     state.lastAttacker = player.id;
     state.lastTarget = target;
     state.bondTriggered ||= bond;
@@ -499,27 +505,28 @@ function resolveCardEffect(state, player, card, target, attackerId = player.crit
     else ally.reserveEnergy += card.allyEnergy;
   }
   if (card.selfFrail) player.frail = (player.frail ?? 0) + card.selfFrail;
-  if (card.heal) heal(player, card.heal);
+  const selfHeal = (card.heal ?? 0) + guardedHeal;
+  if (selfHeal) heal(player, selfHeal);
   if (card.allyHeal) heal(ally, card.allyHeal);
 }
 
-function enemyAttack(state, enemy, player, amount) {
+function enemyAttack(state, enemy, player, amount, reportHit) {
   if (player.hp === 0) return;
   const attacker = CRITTERS[enemy.animal].type;
   const defender = CRITTERS[player.critterId].type;
   const multiplier = matchup(attacker, defender);
-  const dealt = hit(player, typedDamage(amount, attacker, defender));
+  const dealt = hit(player, typedDamage(amount, attacker, defender), false, reportHit);
   log(state, `${enemy.name} deals ${dealt} damage to ${critterName(player)}${multiplier > 1 ? ' (super effective)' : multiplier < 1 ? ' (resisted)' : ''}.`);
   if (player.hp === 0) log(state, `${critterName(player)} is down.`);
 }
 
-function openingSurge(state, enemy) {
+function openingSurge(state, enemy, reportHit) {
   const targets = state.players.filter(({ hp }) => hp > 0).map(({ id }) => id);
   recordEffect(state, 'rival', 'openingSurge', state.enemies.indexOf(enemy), targets);
   let fullyBlocked = false;
   for (const player of state.players) {
     const { hp, block } = player;
-    enemyAttack(state, enemy, player, enemy.intent.amount);
+    enemyAttack(state, enemy, player, enemy.intent.amount, reportHit);
     fullyBlocked ||= player.hp === hp && player.block < block;
   }
   enemy.intent = { type: 'spentSurge' };
@@ -591,9 +598,19 @@ function finishTurn(state, playerIndex) {
     return;
   }
 
-  for (const enemy of state.enemies) {
+  resolveRivals(state);
+  if (state.phase !== 'combat') return;
+  if (state.enemies.every((enemy) => enemy.hp === 0)) {
+    finishEncounter(state);
+    return;
+  }
+  state.round += 1;
+  beginRound(state);
+}
+
+function resolveRivals(state, reportHit) {
+  for (const [index, enemy] of state.enemies.entries()) {
     if (enemy.hp === 0) continue;
-    const index = state.enemies.indexOf(enemy);
     if (enemy.poison > 0) {
       recordEffect(state, 'rival', 'poison', index, []);
       const damage = Math.min(enemy.hp, enemy.poison);
@@ -635,18 +652,18 @@ function finishTurn(state, playerIndex) {
       log(state, `${enemy.name} uses Shadow Ward, gaining ${gained} Block and healing 8 HP.`);
     } else if (type === 'eclipse') {
       state.players.forEach((teammate) => {
-        enemyAttack(state, enemy, teammate, amount);
+        enemyAttack(state, enemy, teammate, amount, reportHit);
         if (teammate.hp > 0) teammate.vulnerable += 1;
       });
       log(state, `${enemy.name} casts Eclipse, making surviving familiars Vulnerable.`);
     } else if (type === 'teamAttack') {
-      state.players.forEach((teammate) => enemyAttack(state, enemy, teammate, amount));
+      state.players.forEach((teammate) => enemyAttack(state, enemy, teammate, amount, reportHit));
     } else if (type === 'openingSurge') {
-      openingSurge(state, enemy);
+      openingSurge(state, enemy, reportHit);
     } else {
       const victim = state.players[target]?.hp > 0 ? target : state.players.findIndex((unit) => unit.hp > 0);
       const defender = state.players[victim];
-      enemyAttack(state, enemy, defender, amount);
+      enemyAttack(state, enemy, defender, amount, reportHit);
       if ((type === 'frailAttack' || type === 'crownCurse') && defender.hp > 0) {
         defender.frail += 1;
         if (type === 'crownCurse') defender.vulnerable += 1;
@@ -656,12 +673,18 @@ function finishTurn(state, playerIndex) {
 
     if (checkPackDefeat(state)) return;
   }
-  if (state.enemies.every((enemy) => enemy.hp === 0)) {
-    finishEncounter(state);
-    return;
+}
+
+export function previewRoundDamage(state) {
+  const forecast = state.players.map(() => ({ incoming: 0, blocked: 0, hpLoss: 0 }));
+  if (state.phase === 'combat') {
+    resolveRivals(structuredClone(state), (seat, incoming, blocked, hpLoss) => {
+      forecast[seat].incoming += incoming;
+      forecast[seat].blocked += blocked;
+      forecast[seat].hpLoss += hpLoss;
+    });
   }
-  state.round += 1;
-  beginRound(state);
+  return forecast;
 }
 
 // Reward screens saved before Elite progression keep their already-earned level-up.
@@ -688,6 +711,7 @@ function draftCard(state, { player: playerIndex, cardId = null, perkId = 'fang',
   } else if (hardPerkId !== null) throw new Error('No Hard route perk is available.');
 
   const player = state.players[playerIndex];
+  if (levelUp && levelPerkChoices(player).find((perk) => perk.id === perkId).maxed) throw new Error('This perk is maxed out for this run.');
   state.rewardPicks[playerIndex] = { cardId, perkId: levelUp ? perkId : null, hardPerkId };
   if (cardId !== null) player.deck.push(cardId);
   if (hardPerkId !== null) player.hardPerk = hardPerkId;
@@ -818,6 +842,34 @@ export function freeMoveAnimal(state, player) {
   return player.companionId ?? (state.players.length === 1 && CRITTERS[player.critterId].animal ? player.critterId : null);
 }
 
+function playCompanionMove(state, action, reportDamage) {
+  const player = state.players[action.player];
+  const animal = freeMoveAnimal(state, player);
+  if (!animal || player.companionUsed) throw new Error('This free move cannot strike again this turn.');
+  if (!Number.isInteger(action.target) || !state.enemies[action.target] || state.enemies[action.target].hp <= 0) throw new Error('Choose a living rival.');
+  player.companionUsed = true;
+  const ability = COMPANION_ABILITIES[animal];
+  const alongside = player.companionId ? ` alongside ${critterName(player)}` : '';
+  log(state, `${CRITTERS[animal].name} uses ${ability.name}${alongside}.`);
+  const before = supportSnapshot(state);
+  resolveCardEffect(state, player, ability, action.target, animal, reportDamage);
+  recordEffect(state, 'companion', animal, action.player, [action.target], supportChanges(state, before));
+  finishAttackAction(state, action);
+}
+
+export function previewMoveDamage(state, action) {
+  if (!canTakeTurn(state, action.player) || !state.enemies[action.target]?.hp) return null;
+  const snapshot = structuredClone(state);
+  const results = snapshot.enemies.map(() => ({ blocked: 0, hpLoss: 0 }));
+  const record = (index, blocked, hpLoss) => {
+    results[index].blocked += blocked;
+    results[index].hpLoss += hpLoss;
+  };
+  if (action.type === 'play') playCard(snapshot, action, record);
+  else if (action.type === 'companionStrike') playCompanionMove(snapshot, action, record);
+  return results;
+}
+
 export function applyAction(state, action) {
   if (!action || !Number.isInteger(action.player) || !state.players[action.player]) throw new Error('Choose a valid player.');
   if (action.type === 'camp') {
@@ -854,19 +906,7 @@ export function applyAction(state, action) {
   const next = structuredClone(state);
   if (action.type === 'play') playCard(next, action);
   else if (action.type === 'usePotion') usePotion(next, action);
-  else if (action.type === 'companionStrike') {
-    const player = next.players[action.player];
-    const animal = freeMoveAnimal(next, player);
-    if (!animal || player.companionUsed) throw new Error('This free move cannot strike again this turn.');
-    if (!Number.isInteger(action.target) || !next.enemies[action.target] || next.enemies[action.target].hp <= 0) throw new Error('Choose a living rival.');
-    player.companionUsed = true;
-    const ability = COMPANION_ABILITIES[animal];
-    const alongside = player.companionId ? ` alongside ${critterName(player)}` : '';
-    log(next, `${CRITTERS[animal].name} uses ${ability.name}${alongside}.`);
-    const before = supportSnapshot(next);
-    resolveCardEffect(next, player, ability, action.target, animal);
-    recordEffect(next, 'companion', animal, action.player, [action.target], supportChanges(next, before));
-    finishAttackAction(next, action);
-  } else finishTurn(next, action.player);
+  else if (action.type === 'companionStrike') playCompanionMove(next, action);
+  else finishTurn(next, action.player);
   return next;
 }

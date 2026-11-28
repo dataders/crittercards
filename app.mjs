@@ -1,10 +1,10 @@
 import {
   COUSINS, CRITTERS, CRITTER_UNLOCKS, CARDS, CARD_UNLOCKS, BASE_CARDS, startingLibraryFor,
   ENCOUNTERS, TRAIL, MERCHANTS, CAMPS, LEVEL_PERKS, HARD_PERKS, TYPES, COMPANION_ABILITIES, getCompanionDescription, createRun, applyAction, getEncounter,
-  ACTS, LEVELS_PER_ACT, trailPosition, hardPerkOptions, getEnemyIntent, rivalHealth,
+  ACTS, LEVELS_PER_ACT, trailPosition, hardPerkOptions, getEnemyIntent, rivalHealth, previewMoveDamage,
   getCardDescription, canRemoveRunCard, canTakeTurn, grantsLevelUp, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE,
 } from './game.mjs';
-import { deckLibrary, describeCard, POTIONS, POTION_LIMIT, potionPrice, isEliteRoute, CAMP_HEAL_PERCENT } from './data.mjs';
+import { deckLibrary, describeCard, POTIONS, POTION_LIMIT, potionPrice, isEliteRoute, CAMP_HEAL_PERCENT, levelPerkChoices } from './data.mjs';
 import { soloGoals, soloProgressKey, updateSoloProgress } from './solo-progress.mjs';
 import { createCombatInput, createEffectHelp } from './combat-input.mjs';
 import { captureCombatActors, freshCombatEffects, playCombatEffects } from './combat-effects.mjs';
@@ -419,19 +419,35 @@ function trailMap(state) {
           const totalGold = route.goldPerEnemy * route.enemies.length;
           const rivals = `<span class="route-rivals">${route.enemies.map((enemy) => `
             <span class="route-rival">${art(enemy.animal, 'route-rival-art')}<span><b>${escape(enemy.name)}</b><br>${rivalHealth(enemy, route, state.players.length)} HP${enemy.openingBlock ? ` · ${enemy.openingBlock} Block` : ''}</span></span>`).join('')}</span>`;
-          const preview = route.hardReward ? `
-            <span class="route-danger">Choose a run-long perk · ${hardPerkOptions(state.players.length).map((perk) => escape(perk.name)).join(' · ')}</span>
-            ${route.enemies.map((enemy, index) => `<span class="route-stats">${escape(enemy.name)} (${escape(TYPES[CRITTERS[enemy.animal].type].name)}) · ${escape(intentLabel(getEnemyIntent(state, route, index, 1), enemy, state))}</span>`).join('')}` : '';
-          const description = !route.subtitle.startsWith('Face ') ? `<span class="route-stats">${escape(route.subtitle)}</span>` : '';
-          const details = `<span class="route-tag">${escape(route.difficulty)}${isEliteRoute(route) ? ' · Elite' : ''} · ${totalGold} gold total</span>
-            <strong>${escape(route.name)}</strong>${description}
-            ${rivals}
-            ${route.trialReward ? `<span class="route-prize">Draft offer for each player · ${escape(CARDS[route.trialReward].name)}</span>` : ''}
-            ${route.trialReward ? `<span class="route-stats">${escape(CARDS[route.trialReward].description)}</span>` : ''}
-            ${route.goldPerEnemy > 8 ? '<span class="route-danger">Stronger attacks · triple gold</span>' : ''}${preview}
-            ${canLead ? '<span class="route-fight-label">Fight these rivals →</span>' : ''}`;
-          const routeClass = route.trialReward ? 'route-trial' : isEliteRoute(route) ? 'route-hard' : 'route-standard';
-          return `<button type="button" class="route-option ${routeClass}" data-do="route" data-id="${route.id}" ${canLead ? '' : 'disabled'}>${details}</button>`;
+          const elite = isEliteRoute(route);
+          const featured = route.trialReward ? CARDS[route.trialReward] : null;
+          const routeName = route.name.replace(/^(?:Level \d+|Final boss) · /, '');
+          const kind = featured ? 'Trial' : elite ? 'Elite' : 'Normal';
+          const reward = featured ? 'Featured card' : elite ? 'Level up + perk' : 'Card draft';
+          const opening = elite ? route.enemies.map((enemy, index) =>
+            `${enemy.name}: ${intentLabel(getEnemyIntent({ ...state, enemies: [] }, route, index, 1), enemy, state, true)}.`).join(' ') : '';
+          const rules = [
+            route.subtitle,
+            opening,
+            featured ? `Each player can draft ${featured.name}. ${featured.description}` :
+              elite ? 'Each player gains one level and 3 max HP, chooses a perk, and can draft or skip a card.' :
+                'Each player can draft one card or skip.',
+            route.hardReward ? `Extra run-long perk: ${hardPerkOptions(state.players.length).map((perk) => perk.name).join(', ')}.` : '',
+            bossLevel && level < TRAIL.length - 1 ? 'The party recovers to full health before the next act.' : '',
+          ].filter(Boolean).join(' ');
+          const helpId = `route-rules-${route.id}`;
+          const routeClass = featured ? 'route-trial' : elite ? 'route-hard' : 'route-standard';
+          return `<div class="route-choice ${featured ? 'route-choice-trial' : ''}">
+            <button type="button" class="route-option ${routeClass}" data-do="route" data-id="${route.id}" ${canLead ? '' : 'disabled'}>
+              <span class="route-tag">${kind} · ${totalGold} gold</span>
+              <strong>${escape(routeName)}</strong>
+              <span class="route-prize">${reward}${featured ? ' · ' + escape(featured.name) : ''}</span>
+              ${rivals}
+              ${canLead ? '<span class="route-fight-label">Start fight →</span>' : ''}
+            </button>
+            <button type="button" class="button route-rules" data-rule aria-label="Details for ${escape(route.name)}" aria-describedby="${helpId}">Details</button>
+            <span id="${helpId}" hidden>${escape(rules)}</span>
+          </div>`;
         }).join('')}
       </div>
       ${merchant ? `<div class="merchant-detour">${!visited ? `<button type="button" class="route-option route-merchant" data-do="route" data-id="merchant" ${canLead ? '' : 'disabled'}>
@@ -527,7 +543,7 @@ function recruitment() {
 
 function rewardPerkChoices(perks, action, seat, selected, enabled) {
   return perks.map((perk) =>
-    `<button type="button" class="level-choice" data-do="${action}" data-seat="${seat}" data-id="${escape(perk.id)}" aria-pressed="${selected === perk.id}" ${enabled ? '' : 'disabled'}><strong>${escape(perk.name)}</strong><span>${escape(action === 'perk' ? perk.description.replace(/ for the rest of this run\.$/, '.') : perk.description)}</span></button>`).join('');
+    `<button type="button" class="level-choice" data-do="${action}" data-seat="${seat}" data-id="${escape(perk.id)}" aria-pressed="${selected === perk.id}" ${enabled && !perk.maxed ? '' : 'disabled'}><strong>${escape(perk.name)}${perk.maxed ? ' · Maxed' : ''}</strong><span>${escape(action === 'perk' ? perk.description.replace(/ for the rest of this run.$/, '.') : perk.description)}${perk.limit ? ` Limit ${perk.limit} per run.` : ''}</span></button>`).join('');
 }
 
 function rewards(state) {
@@ -552,7 +568,8 @@ function rewards(state) {
         const savedPerk = levelUp ? (saved?.perkId ?? player.perks.at(-1)) : null;
         const savedHardPerk = saved?.hardPerkId;
         const enabled = !ui.pending && !saved && (!ui.room || ui.room.seat === seat);
-        const perk = LEVEL_PERKS[ui.perks[seat]];
+        const perks = levelUp ? levelPerkChoices(player) : [];
+        const perk = perks.find(({ id, maxed }) => id === ui.perks[seat] && !maxed);
         const card = ui.drafts[seat];
         const ready = (!levelUp || perk) && card && (!state.hardReward || ui.hardPerks[seat]);
         const selection = card === 'skip' ? 'No new card' : CARDS[card]?.name;
@@ -564,7 +581,7 @@ function rewards(state) {
           ${levelMeter(state, seat)}
           ${saved ? `<p>${savedCard ? `Learned ${escape(CARDS[savedCard].name)}` : 'Skipped the card'}${savedPerk ? ` and chose ${escape(LEVEL_PERKS[savedPerk]?.name)}` : ''}${savedHardPerk ? ` and ${escape(HARD_PERKS[savedHardPerk].name)}` : ''}.</p>` : `
             ${levelUp ? `<h3 class="reward-label">1. Choose a perk for this run</h3>
-            <div class="level-options" aria-label="Level-up perk">${rewardPerkChoices(Object.values(LEVEL_PERKS), 'perk', seat, ui.perks[seat], enabled)}</div>` : ''}
+            <div class="level-options" aria-label="Level-up perk">${rewardPerkChoices(perks, 'perk', seat, ui.perks[seat], enabled)}</div>` : ''}
             <div class="reward-card-heading"><h3 class="reward-label">${levelUp ? '2. ' : ''}Take a card <small>(optional)</small></h3>
               ${button('Skip card', 'draft-pick', { disabled: !enabled, data: `data-seat="${seat}" data-id="skip" aria-pressed="${card === 'skip'}"` })}
             </div>
@@ -918,6 +935,13 @@ function home(mode = 'local', showSetup = mode === 'online', rematch) {
   render();
 }
 
+function moveAction(control, target) {
+  const player = Number(control.dataset.seat);
+  return control.dataset.do === 'play'
+    ? { type: 'play', player, cardIndex: Number(control.dataset.index), target }
+    : { type: 'companionStrike', player, target };
+}
+
 function playCombatMove(control, target) {
   const state = ui.room ? ui.room.state : ui.run;
   const player = Number(control.dataset.seat);
@@ -931,12 +955,18 @@ function playCombatMove(control, target) {
   ui.error = '';
   ui.notice = '';
   startMusic(state);
-  const action = isCard ? { type: 'play', player, cardIndex } : { type: 'companionStrike', player };
-  if (target !== undefined) action.target = target;
-  return dispatch(action);
+  return dispatch(moveAction(control, target));
 }
 
-const { clearAttackDrag, setAimedMove, selectTarget, isDragging, aimedControl } = createCombatInput(game, playCombatMove);
+const { clearAttackDrag, setAimedMove, selectTarget, isDragging, aimedControl } = createCombatInput(game, playCombatMove, (control, target) => {
+  const state = ui.room?.state ?? ui.run;
+  const action = moveAction(control, target);
+  const player = state?.players[action.player];
+  if (!player || control.closest('.combat-screen')?.dataset.turn !== combatTurn(state, action.player) ||
+      (action.type === 'play' && player.hand[action.cardIndex] !== control.dataset.id) ||
+      (action.type === 'companionStrike' && player.companionUsed)) return null;
+  return previewMoveDamage(state, action);
+});
 
 function renderBattleCards(state) {
   const { seat, kind } = battleCardsView;

@@ -215,3 +215,34 @@ test('each Act I trial features one selectable prize matching its route preview'
     }
   }
 });
+
+test('Elites cap repeated Fang, Keen Senses and Renewal while allowing another perk', () => {
+  const reward = win(['fox'], 5, 'perilous');
+  reward.players[0].perks = ['fang', 'fang', 'fang', 'keen', 'keen', 'renewal', 'renewal'];
+  reward.players[0].attackBonus = 3;
+  const capped = draft(reward, { perkId: 'fang' });
+  assert.equal(capped.players[0].attackBonus, 4);
+  reward.players[0].perks.push('fang', 'fang');
+  for (const perkId of ['fang', 'keen', 'renewal']) {
+    assert.throws(() => draft(reward, { perkId }), /maxed out/);
+  }
+  const next = draft(reward, { perkId: 'bark' });
+  assert.equal(next.phase, 'route');
+  assert.equal(next.players[0].maxHp, reward.players[0].maxHp + 7);
+  assert.equal(next.players[0].perks.filter((id) => id === 'fang').length, 5);
+});
+
+test('Renewal heals two HP per copy after ordinary wins and three after Elites', () => {
+  for (const [routeId, recovered] of [['steady', 4], ['perilous', 6]]) {
+    const run = createRun(['fox'], 40);
+    run.encounter = 5;
+    run.path = Array(5).fill('steady');
+    run.players[0].hp = 10;
+    run.players[0].perks = ['renewal', 'renewal'];
+    const battle = route(run, routeId);
+    battle.players[0].hand = ['jab', 'jab'];
+    for (const enemy of battle.enemies) { enemy.hp = 1; enemy.block = 0; }
+    const reward = play(play(battle, 0), 0, 1);
+    assert.equal(reward.players[0].hp, 10 + recovered);
+  }
+});

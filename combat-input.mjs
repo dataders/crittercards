@@ -1,10 +1,32 @@
-const helpControl = 'button[data-effect], button[data-intent]';
+import { matchup } from './data.mjs';
 
-export function createCombatInput(game, playCombatMove) {
+const helpControl = 'button[data-effect], button[data-intent], button[data-rule]';
+
+export function createCombatInput(game, playCombatMove, estimateMove) {
   let attackDrag;
   let aimedMove;
   let suppressDragClick = false;
   const livingRival = '[data-do="target"]:not(:disabled)';
+
+  function showMatchups(source) {
+    for (const rival of game.querySelectorAll(livingRival)) {
+      const label = rival.querySelector('.rival-matchup');
+      const type = source?.dataset.moveType;
+      const index = Number(rival.dataset.index);
+      const forecast = type ? estimateMove(source, index) : null;
+      label.hidden = !forecast;
+      if (!forecast) {
+        label.textContent = '';
+        continue;
+      }
+      const { hpLoss, blocked } = forecast[index];
+      const spill = forecast.reduce((sum, result, seat) => sum + (seat === index ? 0 : result.hpLoss), 0);
+      const multiplier = matchup(type, rival.dataset.rivalType);
+      const matchupLabel = multiplier > 1 ? 'Super effective ×1.5' : multiplier < 1 ? 'Resisted ×0.75' : '';
+      label.textContent = [`${hpLoss} HP damage`, blocked && `${blocked} blocked`, matchupLabel, spill && `+${spill} to other rivals`].filter(Boolean).join(' · ');
+      label.dataset.matchup = multiplier > 1 ? 'strong' : multiplier < 1 ? 'resisted' : 'neutral';
+    }
+  }
 
   function setAimedMove(control) {
     if (aimedMove === control) return;
@@ -13,6 +35,7 @@ export function createCombatInput(game, playCombatMove) {
     const aiming = Boolean(control);
     control?.setAttribute('aria-pressed', 'true');
     game.classList.toggle('is-choosing-target', aiming);
+    showMatchups(control);
     game.querySelector('#aim-status').textContent = aiming ? `${control.dataset.aim} selected. Choose a highlighted rival.` : '';
     game.querySelector('[data-do="cancel-aim"]').hidden = !aiming;
     for (const rival of game.querySelectorAll(livingRival)) rival.tabIndex = aiming ? 0 : -1;
@@ -39,6 +62,7 @@ export function createCombatInput(game, playCombatMove) {
     dropTarget?.classList.remove('is-drop-target');
     source.classList.remove('is-aiming');
     game.classList.remove('is-drag-aiming', 'is-drag-blocking');
+    showMatchups(aimedMove);
     if (source.hasPointerCapture(pointerId)) source.releasePointerCapture(pointerId);
   }
 
@@ -100,6 +124,7 @@ export function createCombatInput(game, playCombatMove) {
     document.body.append(drag.preview);
     drag.source.classList.add('is-aiming');
     game.classList.add(drag.targeted ? 'is-drag-aiming' : 'is-drag-blocking');
+    if (drag.targeted) showMatchups(drag.source);
     drawAttackDrag();
   });
 
@@ -170,6 +195,7 @@ export function createEffectHelp(game, tooltip) {
   function show(button) {
     clearTimeout(closing);
     active = button;
+    tooltip.classList.toggle('is-rule-help', button.hasAttribute('data-rule'));
     tooltip.textContent = document.getElementById(button.getAttribute('aria-describedby')).textContent;
     tooltip.hidden = false;
     const anchor = button.getBoundingClientRect();

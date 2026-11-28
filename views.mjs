@@ -1,4 +1,4 @@
-import { ACTS, CARDS, CRITTERS, COMPANION_ABILITIES, FLOODGATE_RECOIL_PERCENT, FRAIL_BLOCK_LOSS, HARD_PERKS, LEVELS_PER_ACT, TRAIL, TYPES, briarHealer, canAffordCard, canTakeTurn, freeMoveAnimal, getCardDescription, getCompanionDescription, getEncounter, levelXp, LEVEL_UP_XP, matchup, trailPosition } from './game.mjs';
+import { ACTS, CARDS, CRITTERS, COMPANION_ABILITIES, FLOODGATE_RECOIL_PERCENT, FRAIL_BLOCK_LOSS, HARD_PERKS, LEVELS_PER_ACT, TRAIL, TYPES, briarHealer, canAffordCard, canTakeTurn, freeMoveAnimal, getCardDescription, getCompanionDescription, getEncounter, levelXp, LEVEL_UP_XP, matchup, previewRoundDamage, trailPosition } from './game.mjs';
 import { COMBAT_TERMS, POTIONS, POTION_LIMIT } from './data.mjs';
 
 export const playerName = (seat) => `Player ${seat + 1}`;
@@ -116,32 +116,19 @@ function clearingFamiliar(player, active) {
   </div>`;
 }
 
-function attackEffectiveness(attacker, defender) {
-  const multiplier = matchup(attacker, defender);
-  return multiplier > 1 ? 'Super effective · ×1.5' : multiplier < 1 ? 'Resisted · ×0.75' : '';
-}
-
 function enemyCard(enemy, index, state, seat) {
   const alive = enemy.hp > 0;
   const healer = briarHealer(state, enemy);
   const bondTarget = state.players.length > 1 && state.lastTarget === index && state.lastAttacker !== seat && !state.bondTriggered;
-  const { critterId, companionId } = state.players[seat];
-  const attacker = CRITTERS[critterId];
-  const companion = CRITTERS[companionId];
   const defenderType = CRITTERS[enemy.animal].type;
-  const companionEffectiveness = companion && companion.type !== attacker.type &&
-    COMPANION_ABILITIES[companionId].damage
-    ? attackEffectiveness(companion.type, defenderType) : '';
-  const effectiveness = attackEffectiveness(attacker.type, defenderType);
-  return `<div class="rival-entry"><button class="unit-card rival-card ${alive ? '' : 'is-defeated'}" type="button" data-do="target" data-index="${index}" tabindex="-1" ${alive ? '' : 'disabled'}>
+  return `<div class="rival-entry"><button class="unit-card rival-card ${alive ? '' : 'is-defeated'}" type="button" data-do="target" data-index="${index}" data-rival-type="${escape(defenderType)}" tabindex="-1" ${alive ? '' : 'disabled'}>
     ${art(enemy.animal, 'unit-art')}
     <span class="unit-info">
       ${alive ? '<span class="rival-aim-label" aria-hidden="true"></span>' : '<span class="target-label">Defeated</span>'}
       <strong class="unit-name">${escape(enemy.name)}</strong>
       <span class="combat-label">${escape(TYPES[defenderType].name)}${bondTarget ? ' · Bond Strike ready' : enemy.boss ? (state.encounter === TRAIL.length - 1 ? ' · Final boss' : ' · Act boss') : ''}</span>
       <span class="rival-vitals">${health(enemy)}</span>
-      ${alive ? `${effectiveness ? `<span class="type-matchup">${effectiveness}</span>` : ''}
-        ${companionEffectiveness ? `<span class="type-matchup">${escape(companion.name)}’s attacks · ${companionEffectiveness}</span>` : ''}
+      ${alive ? `<span class="rival-matchup" hidden></span>
         ${healer ? `<span class="type-matchup">Briar Ward from ${escape(healer.name)} · half attack damage</span>` : ''}
         ${enemy.poison >= enemy.hp ? '<span class="type-matchup">Poison is lethal at current HP</span>' : ''}` : ''}
     </span>
@@ -163,12 +150,60 @@ export function purse(state) {
   return `<span class="gold-counter" aria-label="Shared wallet, ${state.gold} gold"><span aria-hidden="true">✦</span> ${state.gold} gold</span>`;
 }
 
+const buildHints = {
+  venomSalve: ['venomFang', 'Stacks Poison for {card}.'],
+  venomFang: ['venomSalve', 'Extra damage from {card}’s Poison.'],
+  rootBrace: ['shieldBash', 'Builds Block that {card} can spend.'],
+  shieldBash: ['rootBrace', 'Spends Block gained from {card} for damage.'],
+  graveOmen: ['graveBreaker', 'Applies Vulnerable for {card}’s bonus.'],
+  graveBreaker: ['graveOmen', 'Follow {card} for extra damage and Block.'],
+  boneBulwark: ['grimResolve', 'Applies Frail to trigger {card}’s Strength.'],
+  grimResolve: ['boneBulwark', 'Turns {card}’s Frail into Strength.'],
+  chorusPrelude: ['crescendo', 'Saves energy for more {card} hits next turn.'],
+  crescendo: ['chorusPrelude', 'Spend energy saved by {card} on more hits.'],
+  hollowRefrain: ['shatteringNote', 'Marks a rival for {card}’s bonus damage.'],
+  shatteringNote: ['hollowRefrain', 'Cash in the Mark from {card} before another hit.'],
+  starChart: ['cometTrail', 'Banks energy that {card} can spend this turn.'],
+  cometTrail: ['starChart', 'Spends energy saved by {card} for damage now.'],
+  starlitShelter: ['guidingRay', 'Raises Block so {card} can heal this turn.'],
+  guidingRay: ['starlitShelter', 'Play after {card} to heal behind Block.'],
+};
+
+export function draftDeckHint(cardId, deck) {
+  const baseId = cardId.replace(/\+$/, '');
+  const card = CARDS[cardId];
+  const otherCards = deck.filter((id) => id.replace(/\+$/, '') !== baseId).map((id) => CARDS[id]);
+  const pair = buildHints[baseId];
+  const partner = pair && otherCards.find(({ id }) => id.replace(/\+$/, '') === pair[0]);
+  if (partner) return pair[1].replace('{card}', partner.name);
+
+  const first = (matches) => otherCards.find(matches)?.name;
+  const payoff = [
+    [card.markedBonus, (other) => other.mark, 'Follow {card} to use its Mark.'],
+    [card.poisonDamageCap, (other) => other.poison, 'Follow {card} to use its Poison.'],
+    [card.vulnerableBonus, (other) => other.vulnerable, 'Follow {card} to use its Vulnerable.'],
+    [card.frailStrength, (other) => other.frail, 'Follow {card} to use its Frail.'],
+    [card.spendReserve, (other) => other.nextEnergy, 'Can spend energy saved by {card} this turn.'],
+    [card.guardedHeal || card.spendBlock, (other) => other.block, 'Follow {card} to use its Block.'],
+    [card.cost === 'X', (other) => other.nextEnergy || other.energy, 'Extra energy from {card} lets this repeat more.'],
+    [card.nextEnergy || card.energy, (other) => other.cost === 'X', 'Gives {card} more energy for repeats.'],
+    [card.mark, (other) => other.markedBonus, 'Sets up {card}’s Mark bonus.'],
+    [card.block, (other) => other.guardedHeal || other.spendBlock, 'Builds Block for {card}.'],
+  ];
+  for (const [relevant, matches, hint] of payoff) {
+    const name = relevant && first(matches);
+    if (name) return hint.replace('{card}', name);
+  }
+  return '';
+}
+
 export function actionCard(state, seat, cardId, index, enabled, draft = false, selectedCard) {
   const card = CARDS[cardId];
   const active = draft && selectedCard === cardId;
   const copies = draft ? state.players[seat].deck.filter((id) => id === cardId || id === cardId + '+').length : 0;
+  const hint = draft ? draftDeckHint(cardId, state.players[seat].deck) : '';
   const energyLabel = card.cost === 'X' ? 'X energy, spends all remaining energy' : `${card.cost} energy`;
-  const aim = !draft && card.target === 'enemy' ? `data-aim="${escape(card.name)}" aria-pressed="false" aria-describedby="attack-instructions"` : '';
+  const aim = !draft && card.target === 'enemy' ? `data-aim="${escape(card.name)}" ${card.damage ? `data-move-type="${escape(CRITTERS[state.players[seat].critterId].type)}"` : ''} aria-pressed="false" aria-describedby="attack-instructions"` : '';
   const blockDrag = !draft && card.target === 'none' && (card.block || card.allyBlock);
   const emblem = blockDrag ? '⛨' : ({ attack: '⚔', support: '✦', skill: '☾' })[card.type] ?? '✦';
   const block = blockDrag ? `data-block-drag="${escape(card.name)}" aria-describedby="attack-instructions"` : '';
@@ -179,6 +214,7 @@ export function actionCard(state, seat, cardId, index, enabled, draft = false, s
     <strong class="card-title">${escape(card.name)}</strong>
     <span class="card-effect">${escape(getCardDescription(state, seat, cardId, { compact: !draft }))}</span>
     ${draft && card.build ? `<span class="draft-card-copies">${escape(card.build)} build</span>` : ''}
+    ${hint ? `<span class="draft-deck-hint">${escape(hint)}</span>` : ''}
     ${copies ? `<span class="draft-card-copies">${copies} in deck</span>` : ''}
   </button>`;
 }
@@ -195,7 +231,7 @@ function companionControl(player, canAct, pending, solo) {
   const ability = COMPANION_ABILITIES[animal];
   const status = player.companionUsed ? 'Used this round' : canAct ? 'Ready · 0 energy' : 'Ready on your turn';
   return `<button type="button" class="button battle-companion" data-do="companion-strike" data-seat="${player.id}" data-companion-seat="${player.id}"
-      data-aim="${escape(ability.name)}" aria-pressed="false" aria-describedby="companion-effect attack-instructions"
+      data-aim="${escape(ability.name)}" data-move-type="${escape(CRITTERS[animal].type)}" aria-pressed="false" aria-describedby="companion-effect attack-instructions"
       ${!canAct || pending || player.companionUsed ? 'disabled' : ''}>
     ${art(animal, 'battle-companion-art')}
     <span class="battle-companion-copy"><strong>${escape(CRITTERS[animal].name)} · ${escape(ability.name)}</strong>
@@ -211,6 +247,18 @@ export function combatSeat(state, room) {
 
 export function combatTurn(state, seat) {
   return `${state.encounter}:${state.round}:${seat}`;
+}
+
+function roundDamage(state, seat) {
+  const forecast = previewRoundDamage(state);
+  const { incoming, blocked, hpLoss } = forecast[seat];
+  const summary = incoming ? `${incoming} incoming · ${blocked} blocked · ${hpLoss} HP at risk` : 'No incoming damage';
+  const breakdown = state.players.map((player, index) => {
+    const risk = forecast[index];
+    return `${CRITTERS[player.critterId].name}: ${risk.incoming} incoming, ${risk.blocked} blocked, ${risk.hpLoss} HP at risk.`;
+  }).join(' ');
+  return `<button type="button" class="round-damage" data-rule aria-describedby="round-damage-help" data-hp-risk="${hpLoss}"><strong>Round end</strong><span>${summary}</span></button>
+    <span id="round-damage-help" hidden>Forecast if no more moves are played this round. ${escape(breakdown)}</span>`;
 }
 
 export function combat(state, { room, pending, newCards }) {
@@ -280,7 +328,7 @@ export function combat(state, { room, pending, newCards }) {
           ${button('End turn', 'end', { style: 'primary', disabled: !enabled, data: `data-seat="${seat}" title="${escape(next)}"` })}
         </div>
         ${companionControl(companionOwner, canAct, pending, state.players.length === 1)}
-        <div class="hud-instructions"><p class="turn-instructions" id="attack-instructions">${!canAct ? waitingInstructions : [canAim && 'Choose a move, then a rival.', canTap && 'Play Block directly.'].filter(Boolean).join(' ') || 'End your turn when you’re ready.'}</p>${button('Cancel aim', 'cancel-aim', { data: 'hidden' })}</div>
+        <div class="hud-instructions">${roundDamage(state, waitingSeat ?? seat)}<p class="turn-instructions" id="attack-instructions">${!canAct ? waitingInstructions : [canAim && 'Choose a move, then a rival.', canTap && 'Play Block directly.'].filter(Boolean).join(' ') || 'End your turn when you’re ready.'}</p>${button('Cancel aim', 'cancel-aim', { data: 'hidden' })}</div>
         ${effects(player, 'active', 'hand-effects')}
         <div class="card-table">
           ${combatPile('draw', 'Draw', player.drawPile.length, seat)}
@@ -295,7 +343,7 @@ export function combat(state, { room, pending, newCards }) {
               data: `data-seat="${seat}" data-index="${index}"`,
             });
           }).join('')}</div></details>` : ''}
-          ${freeMove && !player.companionId && canAct ? button(`${escape(freeMove.name)} · ${player.companionUsed ? 'Used' : 'Free move'}`, 'companion-strike', { disabled: !enabled || !freeMoveReady, data: `data-seat="${seat}" data-aim="${escape(freeMove.name)}" aria-pressed="false" aria-describedby="attack-instructions"` }) : ''}
+          ${freeMove && !player.companionId && canAct ? button(`${escape(freeMove.name)} · ${player.companionUsed ? 'Used' : 'Free move'}`, 'companion-strike', { disabled: !enabled || !freeMoveReady, data: `data-seat="${seat}" data-aim="${escape(freeMove.name)}" data-move-type="${escape(CRITTERS[moveAnimal].type)}" aria-pressed="false" aria-describedby="attack-instructions"` }) : ''}
           <span class="hand-counts">${escape(TYPES[CRITTERS[player.critterId].type].name)} type</span>
           ${state.players.map((member, index) => button(`${state.players.length === 1 ? 'Deck' : escape(CRITTERS[member.critterId].name) + '’s deck'} (${member.deck.length})`, 'view-battle-deck', { data: `data-seat="${index}" data-id="deck" aria-haspopup="dialog"` })).join('')}
           ${waitingSeat === null ? '' : ['draw', 'discard'].map((kind) => button(`Your ${battleCardViews[kind].label}`, 'view-battle-deck', { data: `data-seat="${waitingSeat}" data-id="${kind}" aria-haspopup="dialog"` })).join('')}

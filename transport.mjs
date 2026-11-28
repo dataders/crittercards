@@ -29,6 +29,16 @@ function roomPath(code) {
   return `/api/rooms/${encodeURIComponent(String(code).trim().toUpperCase())}`;
 }
 
+function canRetryDraft(before, after, seat) {
+  if (before?.phase !== 'reward' || after?.phase !== 'reward' ||
+      before.runId !== after.runId || before.encounter !== after.encounter ||
+      before.eliteReward !== after.eliteReward || before.hardReward !== after.hardReward) return false;
+  const other = 1 - seat;
+  return !before.rewardPicks[seat] && !after.rewardPicks[seat] &&
+    !before.rewardPicks[other] && Boolean(after.rewardPicks[other]) &&
+    JSON.stringify(before.rewardOptions[seat]) === JSON.stringify(after.rewardOptions[seat]);
+}
+
 function connect(data) {
   const { token, ...initial } = data;
   const path = roomPath(initial.code);
@@ -56,12 +66,14 @@ function connect(data) {
           return await sendAction(action, revision);
         } catch (error) {
           if (error.snapshot) accept(error.snapshot);
-          // Another seat can update concurrently. Retry only while our setup is unchanged.
-          if (attempt >= 2 || error.status !== 409 || !error.snapshot || latest.revision <= revision ||
-              !setupAction || before.state || latest.state ||
-              before.picks[seat] !== latest.picks[seat] ||
-              before.companions[seat] !== latest.companions[seat] ||
-              JSON.stringify(before.deck) !== JSON.stringify(latest.deck)) throw error;
+          if (attempt >= 2 || error.status !== 409 || !error.snapshot || latest.revision <= revision) throw error;
+          // Only replay independent choices that still belong to the same setup or reward.
+          const sameSetup = setupAction && !before.state && !latest.state &&
+            before.picks[seat] === latest.picks[seat] &&
+            before.companions[seat] === latest.companions[seat] &&
+            JSON.stringify(before.deck) === JSON.stringify(latest.deck);
+          const sameDraft = action.type === 'draft' && canRetryDraft(before.state, latest.state, seat);
+          if (!sameSetup && !sameDraft) throw error;
         }
       }
     },
