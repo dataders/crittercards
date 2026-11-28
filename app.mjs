@@ -1089,7 +1089,12 @@ document.addEventListener('click', async (event) => {
   if (action === 'route') return dispatch({ type: 'route', player: 0, routeId: id });
   if (action === 'buy') return dispatch({ type: 'buy', player: seat, cardId: id });
   if (action === 'buy-potion') return dispatch({ type: 'buyPotion', player: seat, potionId: id });
-  if (action === 'use-potion') return dispatch({ type: 'usePotion', player: seat, potionIndex: index });
+  if (action === 'use-potion') {
+    const pouch = control.closest('.combat-potions');
+    pouch.open = false;
+    pouch.querySelector('summary').focus({ preventScroll: true });
+    return dispatch({ type: 'usePotion', player: seat, potionIndex: index });
+  }
   if (action === 'shop-remove') return dispatch({ type: 'removeCard', player: seat, cardIndex: index });
   if (action === 'camp-heal') return dispatch({ type: 'camp', player: seat, choice: 'heal' });
   if (action === 'camp-upgrade') return dispatch({ type: 'camp', player: seat, choice: 'upgrade', cardIndex: index });

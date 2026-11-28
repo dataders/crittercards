@@ -154,6 +154,28 @@ test('Act I levels 8–12 open with distinct tactics on both routes', () => {
   assert.equal(end(healing).enemies[0].hp, healing.enemies[0].maxHp);
 });
 
+test('the final Thorn Court approach presents distinct solo intents on both routes', () => {
+  const openers = [
+    ['guard', 'attack'], ['attack', 'teamAttack'], ['rally', 'attack'],
+    ['crownCurse', 'rally'], ['attack', 'mendRivals'],
+  ];
+  for (const routeId of ['steady', 'perilous']) {
+    for (const [index, expected] of openers.entries()) {
+      const run = createRun(['fox'], 40);
+      run.encounter = 54 + index;
+      run.path = Array(run.encounter).fill('steady');
+      const battle = applyAction(run, { type: 'route', player: 0, routeId });
+      assert.deepEqual(battle.enemies.map(({ intent }) => intent.type), expected);
+      assert.ok(battle.enemies.every(({ block }) => block > 0));
+    }
+  }
+  const run = createRun(['fox'], 40);
+  run.encounter = 56;
+  run.path = Array(run.encounter).fill('steady');
+  const trial = applyAction(run, { type: 'route', player: 0, routeId: 'trial' });
+  assert.equal(getEncounter(trial).name, 'The War Grove');
+});
+
 test('a seeded solo replay clears 20 levels and defeats the Ash Regent', () => {
   const fixture = new URL('./fixtures/solo-campaign.json', import.meta.url);
   const { setup, actions } = JSON.parse(readFileSync(fixture, 'utf8'));

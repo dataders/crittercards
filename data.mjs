@@ -646,9 +646,58 @@ const laterActs = [
   },
 ];
 
+const thornCourtApproach = {
+  15: {
+    names: ['The Shielded Approach', 'The Barbed Gate'],
+    clue: 'Both rivals begin behind Block. One reinforces the guard while the other strikes.',
+    openingBlock: [56, 38],
+    moves: [
+      [['guard', 36], ['attack', 31], ['guard', 28]],
+      [['attack', 24], ['frailAttack', 26], ['teamAttack', 24]],
+    ],
+  },
+  16: {
+    names: ['The Twin Talons', 'The Twin Ambush'],
+    clue: 'Both rivals strike on the first round, then both guard. Use that opening to fight back.',
+    openingBlock: [44, 44],
+    moves: [
+      [['attack', 28], ['guard', 26], ['attack', 28]],
+      [['teamAttack', 27], ['guard', 24], ['teamAttack', 27]],
+    ],
+  },
+  17: {
+    names: ['The Herald’s Call', 'The Thorn Herald'],
+    clue: 'The herald builds Strength while its escort attacks. Cut the rally short before the next hit.',
+    openingBlock: [34, 57],
+    moves: [
+      [['rally', 9], ['attack', 30], ['rally', 7]],
+      [['attack', 25], ['shadowWard', 26], ['teamAttack', 25]],
+    ],
+  },
+  18: {
+    names: ['The Cursed Crossing', 'The Cursed Gate'],
+    clue: 'Crown Curse applies Frail and Vulnerable. The second rival builds Strength for the follow-up.',
+    openingBlock: [47, 43],
+    moves: [
+      [['crownCurse', 22], ['attack', 27], ['guard', 26]],
+      [['rally', 7], ['teamAttack', 26], ['attack', 25]],
+    ],
+  },
+  19: {
+    names: ['The Royal Guard', 'The Royal Ward'],
+    clue: 'The shielded guard pressures you while its partner mends it. Focus the healer first.',
+    openingBlock: [65, 36],
+    moves: [
+      [['attack', 28], ['guard', 32], ['frailAttack', 29]],
+      [['mendRivals', 28], ['attack', 23], ['mendRivals', 28]],
+    ],
+  },
+};
+
 function laterTrail(config, actIndex) {
   return Array.from({ length: LEVELS_PER_ACT }, (_, index) => {
     const boss = index === LEVELS_PER_ACT - 1;
+    const tactics = actIndex === 2 ? thornCourtApproach[index + 1] : undefined;
     return config.routes.map((name, option) => {
       const hard = option === 1 && HARD_LEVELS.has(index);
       const trainer = boss ? ACTS[actIndex].boss : config.trainers[index % config.trainers.length];
@@ -656,20 +705,21 @@ function laterTrail(config, actIndex) {
         const rosterIndex = (index * 2 + option * 3 + slot * 5) % config.animals.length;
         const animal = boss ? config.boss[slot].animal : config.animals[rosterIndex];
         const baseHp = 82 + (actIndex - 1) * 72 + index * 3 + (slot === 0 ? 14 : 0);
-        const moves = boss ? config.boss[slot].moves : config.turns[(index + slot + option) % config.turns.length];
+        const moves = boss ? config.boss[slot].moves : (tactics?.moves[slot] ?? config.turns[(index + slot + option) % config.turns.length]);
         return {
           animal,
           name: boss && slot === 0 ? trainer : CRITTERS[animal].name,
           boss: boss && slot === 0,
           hp: Math.ceil(baseHp * (boss ? (slot === 0 ? 2.1 : 1.25) : 1) * (hard ? 1.25 : 1)),
+          ...(tactics ? { openingBlock: tactics.openingBlock[slot] } : {}),
           moves: moves.map(([type, amount]) => [type, amount + Math.floor(index / 5) + (hard ? 4 : 0)]),
         };
       });
       return {
         id: option === 0 ? 'steady' : 'perilous',
-        name: boss ? (hard ? 'Challenge the court' : 'Enter the court') : name,
+        name: boss ? (hard ? 'Challenge the court' : 'Enter the court') : (tactics?.names[option] ?? name),
         trainer,
-        subtitle: boss ? `Face ${trainer} and their champion.` : `Face ${enemies.map((enemy) => enemy.name).join(' and ')}.`,
+        subtitle: boss ? `Face ${trainer} and their champion.` : (tactics?.clue ?? `Face ${enemies.map((enemy) => enemy.name).join(' and ')}.`),
         difficulty: boss ? (hard ? 'Hard boss' : 'Boss') : (hard ? 'Hard' : 'Standard'),
         goldPerEnemy: hard ? 24 : 8,
         coOpHealth: boss ? 1.45 : 1.30,
