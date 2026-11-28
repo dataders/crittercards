@@ -669,6 +669,15 @@ export function grantsLevelUp(state) {
   return state.eliteReward !== false;
 }
 
+export const LEVEL_UP_XP = 100;
+
+export function levelXp(state, seat) {
+  if (state.phase === 'reward' && grantsLevelUp(state) && !state.rewardPicks[seat]) return LEVEL_UP_XP;
+  if (state.phase !== 'combat' || !isEliteRoute(getEncounter(state))) return 0;
+  const defeated = state.enemies.filter(({ hp }) => hp === 0).length;
+  return Math.floor(LEVEL_UP_XP * defeated / state.enemies.length);
+}
+
 function draftCard(state, { player: playerIndex, cardId = null, perkId = 'fang', hardPerkId = null }) {
   const levelUp = grantsLevelUp(state);
   if (state.rewardPicks[playerIndex]) throw new Error('You have already claimed your reward.');

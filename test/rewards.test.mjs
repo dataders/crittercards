@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyAction, CARDS, createRun } from '../game.mjs';
+import { applyAction, CARDS, createRun, levelXp, LEVEL_UP_XP } from '../game.mjs';
 
 const route = (state, routeId = 'steady') => applyAction(state, { type: 'route', player: 0, routeId });
 const draft = (state, choices = {}) => applyAction(state, { type: 'draft', player: 0, perkId: 'fang', ...choices });
@@ -36,6 +36,37 @@ test('standard rewards allow a take or skip without leveling up', () => {
   assert.equal(next.phase, 'route');
   assert.deepEqual(next.players[1].deck, [...won.players[1].deck, cardId]);
   assert.deepEqual(route(next).players.map(({ hp }) => hp), [10, 12]);
+});
+
+test('level XP tracks defeated Elite rivals and resets for each player after claiming', () => {
+  const run = createRun(['fox', 'hare'], 40);
+  run.encounter = 2;
+  run.path = ['steady', 'steady'];
+  const weakened = (routeId) => {
+    const battle = route(run, routeId);
+    battle.players[0].hand = ['jab', 'jab'];
+    for (const enemy of battle.enemies) Object.assign(enemy, { hp: 1, block: 0 });
+    return battle;
+  };
+
+  const standard = play(weakened('steady'), 0);
+  assert.equal(levelXp(standard, 0), 0);
+  assert.equal(levelXp(play(standard, 0, 1), 0), 0);
+
+  const elite = weakened('perilous');
+  assert.equal(levelXp(elite, 0), 0);
+  const partial = play(elite, 0);
+  assert.equal(levelXp(partial, 0), LEVEL_UP_XP / 2);
+  assert.equal(levelXp(partial, 1), LEVEL_UP_XP / 2);
+  const won = play(partial, 0, 1);
+  assert.equal(levelXp(won, 0), LEVEL_UP_XP);
+  const claimed = draft(won, { hardPerkId: 'trailWard' });
+  assert.equal(claimed.players[0].level, 2);
+  assert.equal(levelXp(claimed, 0), 0);
+  assert.equal(levelXp(claimed, 1), LEVEL_UP_XP);
+  const next = draft(claimed, { player: 1, hardPerkId: 'trailWard' });
+  assert.equal(next.phase, 'route');
+  assert.equal(levelXp(next, 1), 0);
 });
 
 test('Hard fights and both boss variants level up even when the card is skipped', () => {

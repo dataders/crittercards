@@ -905,6 +905,45 @@ body:not([data-battle-area])::before {
 .hud-familiar { flex: 1; min-width: 0; }
 .hud-familiar h2 { font-size: clamp(.95rem, 2vw, 1.4rem); }
 .hud-familiar .turn-details { color: var(--paper); font-size: .78rem; }
+.xp-meter { display: grid; gap: .18rem; width: 100%; max-width: 17rem; }
+.xp-meter-label {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 .5rem;
+  color: var(--muted);
+  font-size: .78rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.xp-meter-label strong { color: var(--paper); }
+.xp-meter progress {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: .4rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--forest-deep);
+  color: var(--gold);
+}
+.xp-meter progress::-webkit-progress-bar { background: var(--forest-deep); }
+.xp-meter progress::-webkit-progress-value { background: var(--gold); }
+.xp-meter progress::-moz-progress-bar { background: var(--gold); }
+.hud-familiar .xp-meter { width: min(100%, 10rem); margin-top: .25rem; }
+.trail-xp {
+  display: grid;
+  gap: .45rem;
+  margin-bottom: .75rem;
+  padding: .62rem .8rem;
+  border: 1px solid var(--line);
+  border-radius: .6rem;
+  background: var(--panel);
+}
+.trail-xp-meters { display: flex; flex-wrap: wrap; gap: .45rem 1.4rem; }
+.trail-xp-meters .xp-meter { flex: 1 1 8.75rem; }
+.trail-xp p { color: var(--muted); font-size: .78rem; }
 .combat-screen .turn-energy {
   display: grid;
   justify-items: center;

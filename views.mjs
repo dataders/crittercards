@@ -1,4 +1,4 @@
-import { ACTS, CARDS, CRITTERS, COMPANION_ABILITIES, FLOODGATE_RECOIL_PERCENT, FRAIL_BLOCK_LOSS, HARD_PERKS, LEVELS_PER_ACT, TRAIL, TYPES, briarHealer, canAffordCard, canTakeTurn, freeMoveAnimal, getCardDescription, getCompanionDescription, getEncounter, matchup, trailPosition } from './game.mjs';
+import { ACTS, CARDS, CRITTERS, COMPANION_ABILITIES, FLOODGATE_RECOIL_PERCENT, FRAIL_BLOCK_LOSS, HARD_PERKS, LEVELS_PER_ACT, TRAIL, TYPES, briarHealer, canAffordCard, canTakeTurn, freeMoveAnimal, getCardDescription, getCompanionDescription, getEncounter, levelXp, LEVEL_UP_XP, matchup, trailPosition } from './game.mjs';
 import { COMBAT_TERMS, POTIONS, POTION_LIMIT } from './data.mjs';
 
 export const playerName = (seat) => `Player ${seat + 1}`;
@@ -10,6 +10,16 @@ export const button = (label, action, { style = 'secondary', disabled = false, d
 
 export function art(animal, className, fallback = animal) {
   return `<span class="${className}"><img src="assets/${escape(animal)}.webp" alt="" width="384" height="512" ${className === 'critter-art' ? 'loading="lazy"' : ''}><span class="art-fallback" hidden aria-hidden="true">${escape(fallback)}</span></span>`;
+}
+
+export function levelMeter(state, seat, { showName = false } = {}) {
+  const player = state.players[seat];
+  const name = escape(CRITTERS[player.critterId].name);
+  const xp = levelXp(state, seat);
+  return `<div class="xp-meter">
+    <div class="xp-meter-label"><strong>${showName ? `${name} · ` : ''}Level ${player.level}</strong><span>${xp}/${LEVEL_UP_XP} XP</span></div>
+    <progress value="${xp}" max="${LEVEL_UP_XP}" aria-label="${name}’s XP toward level ${player.level + 1}"></progress>
+  </div>`;
 }
 
 function health(unit) {
@@ -258,7 +268,7 @@ export function combat(state, { room, pending, newCards }) {
     <section class="hand-panel" aria-labelledby="turn-heading" tabindex="-1">
         <div class="hand-heading" data-block-drop data-hud-seat="${seat}" data-critter="${escape(player.critterId)}">
           ${art(player.critterId, 'hud-portrait', name)}
-          <div class="hud-familiar"><h2 id="turn-heading">${escape(turnTitle)}</h2><span class="turn-details">${player.hp}/${player.maxHp} HP${player.block ? ` · ${player.block} Block` : ''}</span></div>
+          <div class="hud-familiar"><h2 id="turn-heading">${escape(turnTitle)}</h2><span class="turn-details">${player.hp}/${player.maxHp} HP${player.block ? ` · ${player.block} Block` : ''}</span>${levelMeter(state, seat)}</div>
           <span class="turn-energy" role="group" aria-label="${player.energy} energy available${player.reserveEnergy ? `, plus ${player.reserveEnergy} next turn` : ''}">
             <span class="combat-metric-label" aria-hidden="true">Energy</span>
             <strong aria-hidden="true">${player.energy}</strong>

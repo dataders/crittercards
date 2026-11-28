@@ -10,7 +10,7 @@ import { createCombatInput, createEffectHelp } from './combat-input.mjs';
 import { captureCombatActors, freshCombatEffects, playCombatEffects } from './combat-effects.mjs';
 import { createAudioController } from './audio.mjs';
 import { advanceSoloRewardSave, readStorage, savedRewardChoices, savedRunStatus, saveKey, writeStorage } from './storage.mjs';
-import { actionCard, art, battleCardViews, button, cardReveal, combat, combatSeat, combatTurn, escape, intentLabel, playerName, progress, purse, trailLocation } from './views.mjs';
+import { actionCard, art, battleCardViews, button, cardReveal, combat, combatSeat, combatTurn, escape, intentLabel, levelMeter, playerName, progress, purse, trailLocation } from './views.mjs';
 import { captureViewState, restoreViewState, setupSelect } from './view-state.mjs';
 import { createRoom, findPublicMatch, isTerminalRoomError, joinRoom, resumeRoom, recoverRoom } from './transport.mjs';
 
@@ -393,6 +393,10 @@ function trailMap(state) {
       ${purse(state)}
     </section>
     ${progress(state)}
+    <section class="trail-xp" aria-label="Level progress">
+      <div class="trail-xp-meters">${state.players.map((_, seat) => levelMeter(state, seat, { showName: state.players.length > 1 })).join('')}</div>
+      <p>Defeat rivals in an Elite fight to earn XP.</p>
+    </section>
     ${ui.room?.seat === 1 ? '<p class="muted trail-wait">Player 1 chooses the next stop.</p>' : ''}
     <ol class="trail-ladder current-route" aria-label="Current route" start="${currentIndex + 1}">${renderLevel(actRoutes[currentIndex], currentIndex)}</ol>
     <details class="campaign-map" data-view-state="campaign-map"><summary>Act map</summary><ol class="act-levels">${actRoutes.map((_, index) => {
@@ -557,6 +561,7 @@ function rewards(state) {
           solo ? [perk?.name, selection].filter(Boolean).join(' · ') : 'Ready to confirm.';
         return `<section>
           <div class="section-heading"><h2>${escape(critter.name)}${solo ? '' : ` · ${playerName(seat)}`}</h2><span class="muted">${saved ? 'Ready' : levelUp ? `Level ${player.level} → ${player.level + 1}` : ''}</span></div>
+          ${levelMeter(state, seat)}
           ${saved ? `<p>${savedCard ? `Learned ${escape(CARDS[savedCard].name)}` : 'Skipped the card'}${savedPerk ? ` and chose ${escape(LEVEL_PERKS[savedPerk]?.name)}` : ''}${savedHardPerk ? ` and ${escape(HARD_PERKS[savedHardPerk].name)}` : ''}.</p>` : `
             ${levelUp ? `<h3 class="reward-label">1. Choose a perk for this run</h3>
             <div class="level-options" aria-label="Level-up perk">${rewardPerkChoices(Object.values(LEVEL_PERKS), 'perk', seat, ui.perks[seat], enabled)}</div>` : ''}
