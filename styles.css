@@ -1364,3 +1364,21 @@ body:not([data-battle-area])::before {
 @media (pointer: coarse) {
   .combat-hand [data-aim]:not(:disabled) { touch-action: pan-x; }
 }
+
+.combat-potions { position: relative; }
+.combat-potions > summary { cursor: pointer; min-height: 2.75rem; display: flex; align-items: center; }
+.combat-potion-list {
+  position: absolute;
+  inset: auto auto calc(100% + .35rem) 0;
+  z-index: 8;
+  display: grid;
+  gap: .35rem;
+  width: min(18rem, 72vw);
+  padding: .45rem;
+  border: 1px solid var(--action-line);
+  border-radius: .5rem;
+  background: var(--forest-deep);
+  box-shadow: 0 .5rem 1rem #07110caa;
+}
+.combat-potion-list .button { min-height: 2.75rem; text-align: start; }
+.shop-potions > summary { cursor: pointer; color: var(--gold); margin-block: .35rem; }

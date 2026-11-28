@@ -1,5 +1,5 @@
 import {
-  COUSINS, CRITTERS, CARDS, matchup, FRAIL_BLOCK_LOSS,
+  COUSINS, CRITTERS, CARDS, matchup, FRAIL_BLOCK_LOSS, POTIONS, POTION_LIMIT, potionPrice,
   COMPANION_ABILITIES, LEVEL_PERKS, HARD_PERKS, hardPerkOptions, trailPosition,
   FLOODGATE_RECOIL_PERCENT, TRAIL, MERCHANTS, CAMPS, getEncounter,
   rivalHealth, briarHealer, BASE_CARDS, BASIC_CARDS, ENERGY_CARDS, STARTER_DECK, STARTING_DECK_SIZE, MIN_STARTING_ONE_COST, MAX_STARTING_COPIES,
@@ -16,6 +16,7 @@ export {
 } from './data.mjs';
 
 const BOND_DAMAGE = 4;
+const potionIds = Object.keys(POTIONS);
 const HAND_SIZE = 5;
 const TURN_ENERGY = 3;
 const OPENING_SURGE_ATTACKS = 2;
@@ -161,6 +162,7 @@ function beginEncounter(state) {
   state.rewardOptions = state.players.map(() => []);
   state.rewardPicks = state.players.map(() => null);
   state.hardReward = false;
+  state.potionFinds = [];
   state.bondWardUsed = false;
   state.enemies = encounter.enemies.map((enemy) => ({
     id: enemy.animal,
@@ -231,6 +233,7 @@ export function createRun(critterIds, seed = Date.now(), startingDecks, companio
       level: 1,
       attackBonus: 0,
       perks: [],
+      potions: [],
       hand: [],
       deck: [...startingDecks[id], ...Array(critter.signatureCopies ?? 2).fill(critter.signature)],
       drawPile: [],
@@ -358,6 +361,26 @@ function defeatEnemy(state, enemy) {
   if (enemy.poison) enemy.poison = 0;
   state.gold += enemy.gold;
   log(state, `${enemy.name} falls. The pack earns ${enemy.gold} gold.`);
+  dropPotion(state, enemy);
+}
+
+function dropPotion(state, enemy) {
+  // Use a separate seeded stream so drops never change draws or reward rolls.
+  const random = { seed: state.potionSeed ?? ((state.seed ^ 0x9e3779b9) >>> 0) };
+  const roll = nextRandom(random);
+  state.potionSeed = random.seed;
+  if (roll >= 0.1) return;
+  const player = state.players[state.activePlayer];
+  const potions = player.potions ??= [];
+  const id = potionIds[Math.floor(roll * 10 * potionIds.length)];
+  const item = POTIONS[id];
+  if (potions.length >= POTION_LIMIT) {
+    log(state, `${enemy.name} drops ${item.name}, but ${critterName(player)}’s pouch is full.`);
+    return;
+  }
+  potions.push(id);
+  (state.potionFinds ??= []).push({ id, seat: player.id });
+  log(state, `${critterName(player)} finds ${item.name}.`);
 }
 
 function resolveCardEffect(state, player, card, target, attackerId = player.critterId) {
@@ -607,6 +630,7 @@ function chooseRoute(state, { player, routeId }) {
     }
     state.visitedShops.push(state.encounter);
     state.soldCards = [];
+    state.soldPotions = [];
     state.phase = 'shop';
     return;
   }
@@ -658,6 +682,34 @@ function buyCard(state, { player, cardId }) {
   log(state, `${critterName(buyer)} buys ${CARDS[cardId].name} for ${item.price} gold.`);
 }
 
+function buyPotion(state, { player, potionId }) {
+  if (state.phase !== 'shop') throw new Error('Visit a merchant to buy potions.');
+  const sold = state.soldPotions ??= [];
+  if (typeof potionId !== 'string' || !Object.hasOwn(POTIONS, potionId) || sold.includes(potionId)) throw new Error('That potion is unavailable.');
+  const buyer = state.players[player];
+  const potions = buyer.potions ??= [];
+  if (potions.length >= POTION_LIMIT) throw new Error('Your potion pouch is full.');
+  const price = potionPrice(state.encounter, potionId);
+  if (state.gold < price) throw new Error('The pack needs more gold.');
+  state.gold -= price;
+  potions.push(potionId);
+  sold.push(potionId);
+  log(state, `${critterName(buyer)} buys ${POTIONS[potionId].name} for ${price} gold.`);
+}
+
+function usePotion(state, { player: seat, potionIndex }) {
+  const player = state.players[seat];
+  const id = Number.isInteger(potionIndex) ? player.potions?.[potionIndex] : null;
+  if (!Object.hasOwn(POTIONS, id)) throw new Error('Choose a potion from your pouch.');
+  const potion = POTIONS[id];
+  if (potion.heal && player.hp === player.maxHp) throw new Error('You are already at full HP.');
+  player.potions.splice(potionIndex, 1);
+  if (potion.heal) heal(player, potion.heal);
+  if (potion.block) gainBlock(player, potion.block);
+  if (potion.strength) player.strength += potion.strength;
+  log(state, `${critterName(player)} drinks ${potion.name}.`);
+}
+
 export function freeMoveAnimal(state, player) {
   return player.companionId ?? (state.players.length === 1 && CRITTERS[player.critterId].animal ? player.critterId : null);
 }
@@ -669,10 +721,11 @@ export function applyAction(state, action) {
     useCamp(next, action);
     return next;
   }
-  if (action.type === 'route' || action.type === 'buy' || action.type === 'removeCard' || action.type === 'leaveShop') {
+  if (action.type === 'route' || action.type === 'buy' || action.type === 'buyPotion' || action.type === 'removeCard' || action.type === 'leaveShop') {
     const next = structuredClone(state);
     if (action.type === 'route') chooseRoute(next, action);
     else if (action.type === 'buy') buyCard(next, action);
+    else if (action.type === 'buyPotion') buyPotion(next, action);
     else if (action.type === 'removeCard') {
       if (state.phase !== 'shop') throw new Error('Visit a merchant to remove cards.');
       removeRunCard(next, action.player, action.cardIndex);
@@ -689,11 +742,12 @@ export function applyAction(state, action) {
     draftCard(next, action);
     return next;
   }
-  if (action.type !== 'play' && action.type !== 'endTurn' && action.type !== 'companionStrike') throw new Error('Unknown game action.');
+  if (action.type !== 'play' && action.type !== 'endTurn' && action.type !== 'companionStrike' && action.type !== 'usePotion') throw new Error('Unknown game action.');
   if (state.phase !== 'combat') throw new Error('This action requires an active battle.');
   if (action.player !== state.activePlayer) throw new Error('Wait for your critter’s turn.');
   const next = structuredClone(state);
   if (action.type === 'play') playCard(next, action);
+  else if (action.type === 'usePotion') usePotion(next, action);
   else if (action.type === 'companionStrike') {
     const player = next.players[action.player];
     const animal = freeMoveAnimal(next, player);

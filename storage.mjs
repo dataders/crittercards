@@ -1,4 +1,4 @@
-import { CAMPS, CARDS, COUSINS, CRITTERS, HARD_PERKS, LEVEL_PERKS, MERCHANTS, TRAIL } from './data.mjs';
+import { CAMPS, CARDS, COUSINS, CRITTERS, HARD_PERKS, LEVEL_PERKS, MERCHANTS, TRAIL, POTIONS, POTION_LIMIT } from './data.mjs';
 
 const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isCount = (value) => Number.isSafeInteger(value) && value >= 0;
@@ -7,6 +7,7 @@ const isCard = (id) => typeof id === 'string' && Object.hasOwn(CARDS, id);
 const isCritter = (id) => typeof id === 'string' && Object.hasOwn(CRITTERS, id);
 const isHardPerk = (id) => typeof id === 'string' && Object.hasOwn(HARD_PERKS, id);
 const isLevelPerk = (id) => typeof id === 'string' && Object.hasOwn(LEVEL_PERKS, id);
+const isPotion = (id) => typeof id === 'string' && Object.hasOwn(POTIONS, id);
 const isCampChoice = (value) => value === null || ['heal', 'upgrade', 'remove'].includes(value);
 const savePhases = new Set(['route', 'combat', 'camp', 'shop', 'reward']);
 const nonTargetedIntents = new Set(['guard', 'shadowWard', 'mendRivals', 'rally', 'eclipse', 'teamAttack']);
@@ -52,7 +53,8 @@ function validPlayer(player, seat) {
     (player.hardPerk == null || isHardPerk(player.hardPerk)) &&
     ['energy', 'reserveEnergy', 'level', 'attackBonus'].every((key) => isCount(player[key])) &&
     ['deck', 'hand', 'drawPile', 'discardPile'].every((key) => isList(player[key], isCard)) &&
-    player.deck.length > 0 && isList(player.perks, isLevelPerk);
+    player.deck.length > 0 && isList(player.perks, isLevelPerk) &&
+    (player.potions === undefined || (isList(player.potions, isPotion) && player.potions.length <= POTION_LIMIT));
 }
 
 function validIntent(intent, seats) {
@@ -89,6 +91,10 @@ export function validateSavedRun(saved) {
       !isList(state.log, (line) => typeof line === 'string') ||
       !isList(state.visitedShops, (level) => isCount(level) && Object.hasOwn(MERCHANTS, level)) ||
       !isList(state.soldCards, isCard) ||
+      (state.soldPotions !== undefined && !isList(state.soldPotions, isPotion)) ||
+      (state.potionSeed !== undefined && (!isCount(state.potionSeed) || state.potionSeed > 0xffffffff)) ||
+      (state.potionFinds !== undefined && !isList(state.potionFinds, (find) => isRecord(find) &&
+        isPotion(find.id) && isCount(find.seat) && find.seat < players.length)) ||
       (state.visitedCamps !== undefined && !isList(state.visitedCamps, (level) => CAMPS.includes(level)))) {
     return false;
   }

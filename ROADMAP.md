@@ -95,6 +95,15 @@ Priority P1 after the local basics are stable. [Existing #1](https://github.com/
 - [ ] Record at least one timed full clear or the precise stopping point. Report time by act and active time separately from breaks. Compare a completed run with the 90–120 minute target before adjusting campaign length.
 - [ ] Triage feedback into CC-03, CC-07, CC-08 or a new issue when it represents a distinct problem. Keep human observations distinct from headless balance results.
 
+**Human timing protocol**
+
+- Start a stopwatch when the player chooses **Begin the trail**. Keep time running while they read intents, draft, shop, or choose a route. Pause for breaks or technical interruptions.
+- Record a split after claiming each act boss reward, and stop at victory or the last completed level. Let the player choose routes freely. Record the first fight where they repeat a strategy without needing to reconsider it.
+Use one row per run.
+
+| Revision | Character and companion | Act I | Act II | Act III or stopping level | Breaks | First repeat or stall | Camp and shop choices |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+
 ### CC-07 · Make late gold and build choices matter
 
 Priority P2. [Existing #7](https://github.com/dataders/crittercards/issues/7). Owners: gameplay and economy after CC-04.
@@ -105,6 +114,10 @@ Priority P2. [Existing #7](https://github.com/dataders/crittercards/issues/7). O
 - [ ] Keep the chosen 15-gold merchant floor, 30-gold removal, and triple Hard reward unless the user changes them. Starting deck, companions, and legal purchase rules stay consistent within each comparison.
 - [ ] Identify any late shop where optimized players can buy every desirable option without sacrificing another. Test one focused intervention against that baseline and document its effect on early affordability and late decisions.
 - [ ] Check five-card draw, Keen Senses, Tito’s opener/fallback, and two contrasting cousin/companion pairings. Record any character-specific imbalance as a reproducible setup instead of changing several knobs in one pass.
+
+**Economy playtest evidence**
+
+Across two seeded solo builds on Standard routes, the wallet covered all three cards and a removal at 8 of 15 stops on each run. Adding the three potion prices brought the full-cart count down to 0 and 3 stops. Taking Hard routes at levels 14 and 18 of each act raised it to 6 stops in both runs. In the co-op campaign replay, the wallet still covered the full cart at the tested Act II and III merchants. Track actual purchases in a human run before changing prices across the campaign.
 
 ### CC-08 · Finish local save and make the trail readable across acts
 

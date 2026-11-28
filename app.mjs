@@ -4,7 +4,7 @@ import {
   ACTS, LEVELS_PER_ACT, trailPosition, hardPerkOptions, getEnemyIntent, rivalHealth,
   getCardDescription, canRemoveRunCard, MIN_RUN_DECK_SIZE, CARD_REMOVAL_PRICE,
 } from './game.mjs';
-import { deckLibrary, describeCard } from './data.mjs';
+import { deckLibrary, describeCard, POTIONS, POTION_LIMIT, potionPrice } from './data.mjs';
 import { soloGoals, soloProgressKey, updateSoloProgress } from './solo-progress.mjs';
 import { createCombatInput, createEffectHelp } from './combat-input.mjs';
 import { createAudioController } from './audio.mjs';
@@ -354,10 +354,7 @@ function lobby() {
             <button type="submit" class="button button-secondary" ${ui.pending ? 'disabled' : ''}>Join room</button>
           </form>
         </div>
-        <details data-view-state="restore-room"><summary>Restore a room after a restart</summary>
-          <p>Player 1: paste your private recovery code. If Player 2 already joined, they can reload their original tab to reconnect. Otherwise, they can join with the usual room code.</p>
-          <form id="recover-form" class="form-row"><label class="field">Recovery code<textarea name="recoveryCode" data-view-field="restore-code" required></textarea></label><button type="submit" class="button button-secondary" ${ui.pending ? 'disabled' : ''}>Restore room</button></form>
-        </details>` : ''}
+        ${roomRecoveryForm()}` : ''}
       ${room ? `
         <div class="form-row">
           <span>Room <strong class="room-code">${escape(room.code)}</strong></span>
@@ -447,11 +444,13 @@ function campScreen(state) {
       ${state.players.map((player, seat) => {
         const enabled = !ui.pending && !state.campChoices[seat] && (!ui.room || ui.room.seat === seat);
         const recovered = Math.min(player.maxHp - player.hp, Math.ceil(player.maxHp * 0.3));
+        const hasCampChoice = player.deck.some((id, index) => CARDS[id + '+'] ||
+          (state.gold >= CARD_REMOVAL_PRICE && canRemoveRunCard(player.deck, index)));
         const critter = CRITTERS[player.critterId];
         return `<section><div class="section-heading"><h2>${escape(critter.name)} · ${playerName(seat)}</h2><span class="muted">${player.hp} / ${player.maxHp} HP</span></div>
           ${state.campChoices[seat] ? `<p class="collection-status">${outcomes[state.campChoices[seat]]} · waiting for the pack.</p>` : `
             <p>Heal ${recovered} HP, upgrade a card, or remove a card for ${CARD_REMOVAL_PRICE} gold. Keep at least ${MIN_RUN_DECK_SIZE} cards and one attack.</p>
-            ${button(`Heal ${recovered} HP`, 'camp-heal', { style: 'primary', disabled: !enabled, data: `data-seat="${seat}"` })}
+            ${button(recovered ? `Heal ${recovered} HP` : hasCampChoice ? 'Already at full HP' : 'Leave camp', 'camp-heal', { style: 'primary', disabled: !enabled || (!recovered && hasCampChoice), data: `data-seat="${seat}"` })}
             <div class="camp-cards">${player.deck.map((id, index) => {
               const card = CARDS[id];
               const improved = CARDS[`${id}+`];
@@ -474,6 +473,7 @@ function campScreen(state) {
 function merchantShop(state) {
   const merchant = MERCHANTS[state.encounter];
   const canLead = !ui.pending && (!ui.room || ui.room.seat === 0);
+  const buyers = state.players.filter(({ id }) => !ui.room || ui.room.seat === id);
   return `<section class="battle-head"><div><p class="eyebrow">${trailLocation(state.encounter)} · Merchant</p><h1>${escape(merchant.name)}</h1></div>${purse(state)}</section>
     <section class="lobby-panel shop-panel" aria-label="Cards for sale">
       <p class="muted">Spend from the shared wallet. Each purchase adds one card to its buyer’s deck for this run.</p>
@@ -490,6 +490,23 @@ function merchantShop(state) {
             })).join('')}</div>`}
         </article>`;
       }).join('')}</div>
+      <details class="shop-potions" data-view-state="shop-potions" open>
+        <summary>Potions</summary>
+        <p class="muted">Use once in battle for no energy. Carry up to ${POTION_LIMIT} per player.</p>
+        <div class="shop-stock">${Object.entries(POTIONS).map(([id, potion]) => {
+          const price = potionPrice(state.encounter, id);
+          const sold = state.soldPotions?.includes(id);
+          return `<article class="shop-item"><h3>${escape(potion.name)}</h3><p>${escape(potion.description)}</p>
+            <strong class="shop-price">${sold ? 'Sold' : `${price} gold`}</strong>
+            ${sold ? '' : buyers.map((player) => {
+              const full = (player.potions?.length ?? 0) >= POTION_LIMIT;
+              return button(full ? `${escape(CRITTERS[player.critterId].name)}’s pouch is full` : `Buy for ${escape(CRITTERS[player.critterId].name)}`, 'buy-potion', {
+                disabled: ui.pending || full || state.gold < price,
+                data: `data-seat="${player.id}" data-id="${id}" aria-label="Buy ${escape(potion.name)} for ${escape(CRITTERS[player.critterId].name)} for ${price} gold"`,
+              });
+            }).join('')}</article>`;
+        }).join('')}</div>
+      </details>
       <h2>Remove a card · ${CARD_REMOVAL_PRICE} gold</h2>
       <p class="muted">Remove a card from your deck for this run. Keep at least ${MIN_RUN_DECK_SIZE} cards and one attack.</p>
       ${state.players.filter(({ id: seat }) => !ui.room || ui.room.seat === seat).map((player) => `<section><h3>${escape(CRITTERS[player.critterId].name)} · ${playerName(player.id)}</h3><div class="camp-cards">${player.deck.map((id, index) => `<article class="camp-card"><strong>${escape(CARDS[id].name)}</strong><span>${escape(getCardDescription(state, player.id, id))}</span>${button(`Remove · ${CARD_REMOVAL_PRICE} gold`, 'shop-remove', { disabled: ui.pending || state.gold < CARD_REMOVAL_PRICE || !canRemoveRunCard(player.deck, index), data: `data-seat="${player.id}" data-index="${index}" aria-label="Remove ${escape(CARDS[id].name)} for ${CARD_REMOVAL_PRICE} gold"` })}</article>`).join('')}</div></section>`).join('')}
@@ -517,6 +534,7 @@ function rewards(state) {
   return `
     <section class="battle-head"><div><p class="eyebrow">${bossLevel ? `Act ${actIndex + 1} cleared` : 'Trainer defeated'}</p><h1 id="reward-title" tabindex="-1">${solo ? 'Level up' : 'Level up your familiars'}</h1></div>${purse(state)}</section>
     ${bossLevel ? `<p class="status-line">The pack recovers to full health before entering ${escape(ACTS[actIndex + 1].name)}.</p>` : ''}
+    ${state.potionFinds?.length ? `<p class="status-line">Potion drops · ${state.potionFinds.map(({id, seat}) => solo ? escape(POTIONS[id].name) : `${escape(CRITTERS[state.players[seat].critterId].name)} found ${escape(POTIONS[id].name)}`).join(' · ')}</p>` : ''}
     ${trialReward ? `<p class="status-line">Trial cleared. Each player can draft ${escape(CARDS[trialReward].name)} as their card reward.</p>` : ''}
     ${!solo ? recruitment() + cardReveal(ui.newCards) : ''}
     ${solo && unlockCount ? `<details class="reward-unlocks" data-view-state="reward-unlocks"><summary>New unlocks · ${unlockCount}</summary>${recruitment()}${cardReveal(ui.newCards)}</details>` : ''}
@@ -694,7 +712,7 @@ function render() {
   const messages = `<div class="feedback" aria-live="polite">${ui.error ? `<p class="error-line" role="alert">${escape(ui.error)}</p>` : ''}${ui.notice ? `<p class="status-line">${escape(ui.notice)}</p>` : ''}</div>`;
   const runScenes = { route: trailMap, camp: campScreen, shop: merchantShop, combat: (state) => combat(state, ui), reward: rewards, victory: conclusion, defeat: conclusion };
   const scene = state ? runScenes[state.phase](state) : ui.reconnect
-    ? `<section class="lobby-panel"><h1>Reconnect to room ${escape(ui.reconnect.code)}</h1><p>The room is not available yet. If the server restarted, Player 1 can restore it with their recovery code. Your seat is saved in this tab.</p><div class="turn-actions">${button('Retry connection', 'retry-room', { style: 'primary', disabled: ui.pending })}${button('Return to setup', 'forget-room', { disabled: ui.pending })}</div></section>`
+    ? `<section class="lobby-panel"><h1>Reconnect to room ${escape(ui.reconnect.code)}</h1><p>The room is not available yet. If the server restarted, Player 1 can restore it with their recovery code. Your seat is saved in this tab.</p><div class="turn-actions">${button('Retry connection', 'retry-room', { style: 'primary', disabled: ui.pending })}${button('Return to setup', 'forget-room', { disabled: ui.pending })}</div>${roomRecoveryForm()}</section>`
     : lobby();
   const saveControl = state && !['victory', 'defeat'].includes(state.phase)
     ? `<div class="save-controls">${button('Save game', 'save', { disabled: ui.pending })}<span class="muted">Saved in this browser${ui.room ? ' · resumes on one screen' : ''}</span></div>` : '';
@@ -810,6 +828,13 @@ function attachRoom(room) {
     ui.error = error.message;
     render();
   });
+}
+
+function roomRecoveryForm() {
+  return `<details data-view-state="restore-room"><summary>Restore with a private recovery code</summary>
+    <p>Player 1 restores the room. Afterward, Player 2 can retry from their original tab.</p>
+    <form id="recover-form" class="form-row"><label class="field">Recovery code<textarea name="recoveryCode" data-view-field="restore-code" required></textarea></label><button type="submit" class="button button-secondary" ${ui.pending ? 'disabled' : ''}>Restore room</button></form>
+  </details>`;
 }
 
 function recoveryControls(room) {
@@ -1063,6 +1088,8 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'route') return dispatch({ type: 'route', player: 0, routeId: id });
   if (action === 'buy') return dispatch({ type: 'buy', player: seat, cardId: id });
+  if (action === 'buy-potion') return dispatch({ type: 'buyPotion', player: seat, potionId: id });
+  if (action === 'use-potion') return dispatch({ type: 'usePotion', player: seat, potionIndex: index });
   if (action === 'shop-remove') return dispatch({ type: 'removeCard', player: seat, cardIndex: index });
   if (action === 'camp-heal') return dispatch({ type: 'camp', player: seat, choice: 'heal' });
   if (action === 'camp-upgrade') return dispatch({ type: 'camp', player: seat, choice: 'upgrade', cardIndex: index });

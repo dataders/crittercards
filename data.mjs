@@ -31,6 +31,17 @@ const energyCards = {
 
 export const ENERGY_CARDS = Object.keys(energyCards);
 
+export const POTION_LIMIT = 3;
+export const POTIONS = {
+  remedy: { name: 'Moss Remedy', description: 'Restore 8 HP.', heal: 8, basePrice: 16 },
+  guardBrew: { name: 'Barkskin Brew', description: 'Gain 10 Block.', block: 10, basePrice: 14 },
+  vigor: { name: 'Briar Tonic', description: 'Gain 3 Strength for this fight.', strength: 3, basePrice: 20 },
+};
+
+export function potionPrice(encounter, potionId) {
+  return POTIONS[potionId].basePrice + trailPosition(encounter).actIndex * 8;
+}
+
 export const CARDS = {
   ...energyCards,
   shieldWall: { id: 'shieldWall', name: 'Venom Ward', cost: 1, type: 'support', target: 'enemy', block: 6, allyBlock: 5, poison: 3 },
@@ -419,7 +430,7 @@ const woodlandTeams = [
   [['stag', 'wolverine'], ['frog', 'porcupine']],
 ];
 
-const middleWoodland = {
+const woodlandTactics = {
   8: {
     names: ['The Bramble Barricade', 'The Thorn Barricade'],
     clue: 'One rival raises a barricade while the other attacks.',
@@ -463,6 +474,66 @@ const middleWoodland = {
       [['mendRivals', 14], ['attack', 9], ['mendRivals', 14]],
     ],
   },
+  14: {
+    names: ['The Iron Brambles', 'The Iron Thicket'],
+    clue: 'The armored rival guards while its partner attacks, then the armored rival strikes.',
+    hpAdjustment: [12, 8],
+    openingBlock: [20, 8],
+    moves: [
+      [['guard', 15], ['attack', 20], ['attack', 13]],
+      [['attack', 14], ['guard', 9], ['teamAttack', 14]],
+    ],
+  },
+  15: {
+    names: ['The Pincer', 'The Thorn Pincer'],
+    clue: 'The rivals stagger their heavy strikes. Watch which one is about to hit.',
+    hpAdjustment: [16, 14],
+    openingBlock: [10, 8],
+    moves: [
+      [['attack', 19], ['guard', 11], ['attack', 16]],
+      [['guard', 9], ['frailAttack', 19], ['guard', 10]],
+    ],
+  },
+  16: {
+    names: ['The Hollow Ward', 'The Deep Hollow Ward'],
+    clue: 'One rival heals and shields itself on its second turn. Finish it before the ward goes up.',
+    hpAdjustment: [17, 12],
+    openingBlock: [10, 8],
+    moves: [
+      [['attack', 11], ['shadowWard', 15], ['attack', 20]],
+      [['frailAttack', 13], ['attack', 16], ['guard', 11]],
+    ],
+  },
+  17: {
+    names: ['The Rising Howl', 'The Briar Crescendo'],
+    clue: 'Both rivals open by building Strength, then attack together.',
+    hpAdjustment: [18, 16],
+    openingBlock: [12, 12],
+    moves: [
+      [['rally', 5], ['attack', 18], ['attack', 15]],
+      [['rally', 4], ['teamAttack', 15], ['guard', 11]],
+    ],
+  },
+  18: {
+    names: ['The Thorn Counter', 'The Blackthorn Counter'],
+    clue: 'Both rivals open behind Block. One attacks while the other refreshes its guard.',
+    hpAdjustment: [16, 12],
+    openingBlock: [17, 17],
+    moves: [
+      [['guard', 17], ['frailAttack', 16], ['attack', 18]],
+      [['teamAttack', 15], ['attack', 18], ['guard', 12]],
+    ],
+  },
+  19: {
+    names: ['The Lantern Ambush', 'The Dying Lantern'],
+    clue: 'One rival applies Frail while the other gathers Strength for their next strikes.',
+    hpAdjustment: [20, 16],
+    openingBlock: [13, 12],
+    moves: [
+      [['frailAttack', 16], ['attack', 17], ['guard', 12]],
+      [['rally', 4], ['teamAttack', 18], ['attack', 17]],
+    ],
+  },
 };
 
 function woodlandEnemy(animal, level, slot, perilous, tactics) {
@@ -497,7 +568,7 @@ export function trailPosition(encounter) {
 
 const openingTrail = Array.from({ length: LEVELS_PER_ACT }, (_, index) => {
   if (index >= 2 && index < 19) {
-    const tactics = middleWoodland[index + 1];
+    const tactics = woodlandTactics[index + 1];
     return woodlandTeams[index - 2].map((animals, option) => {
       const alternate = option === 1;
       const perilous = alternate && HARD_LEVELS.has(index);
@@ -531,7 +602,7 @@ const openingTrail = Array.from({ length: LEVELS_PER_ACT }, (_, index) => {
   }
   const label = index === 19 ? 'Final boss' : `Level ${index + 1}`;
   return [
-    { ...encounter, name: `${label} · ${encounter.name}`, enemies: baseEnemies, id: 'steady', difficulty: index === 19 ? 'Boss' : 'Standard', goldPerEnemy: 8 },
+    { ...encounter, name: `${label} · ${encounter.name}`, enemies: index === 19 ? [{ ...baseEnemies[0], openingBlock: 20 }, { ...baseEnemies[1], openingBlock: 12 }] : baseEnemies, id: 'steady', difficulty: index === 19 ? 'Boss' : 'Standard', goldPerEnemy: 8 },
     {
       ...encounter, id: 'perilous', difficulty: index === 19 ? 'Hard boss' : 'Standard', goldPerEnemy: index === 19 ? 24 : 8,
       name: `${label} · ${alternate.name}`, subtitle: index === 19 ? 'The Ash Regent begins with a devastating Eclipse.' : alternate.subtitle,

@@ -285,7 +285,7 @@ test('all three acts have 20 levels and only the last boss ends the campaign', (
     run = applyAction(run, { type: 'route', player: 0, routeId: 'steady' });
     assert.equal(run.enemies.find((enemy) => enemy.boss)?.name, act.boss);
     run.players[0].hand = ['jab', 'jab'];
-    for (const enemy of run.enemies) enemy.hp = 1;
+    for (const enemy of run.enemies) { enemy.hp = 1; enemy.block = 0; }
     run = applyAction(run, { type: 'play', player: 0, cardIndex: 0, target: 0 });
     run = applyAction(run, { type: 'play', player: 0, cardIndex: 0, target: 1 });
     if (actIndex === ACTS.length - 1) {

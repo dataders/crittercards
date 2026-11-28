@@ -45,9 +45,11 @@ The Ash Regent uses Eclipse to damage the team and apply Vulnerable, Shadow Ward
 
 Optional merchants at levels 4, 8, 12, 16, and 19 of each act sell cards from different inventories and remove unwanted cards for 30 gold each. Card prices rise deeper into the campaign. Gold is shared and each purchase goes into one player’s deck for the current run. Visit each merchant once, then return to choose a fight on that level. In room play, Player 1 chooses routes and each player manages their own deck.
 
+Each player can carry **three potions**. A defeated rival has a 10% chance to drop one for the active player if their pouch has room. Merchants sell Moss Remedy, Barkskin Brew, and Briar Tonic. Open **Potions** during your turn to use one without spending energy. Potions and the pouch carry through saves and acts.
+
 Optional camps appear at levels 3, 7, 11, 15, and 19 of each act. Each familiar can recover 30% of its maximum health, rounded up, upgrade one card, or remove one card for 30 gold for this run. Each card can be upgraded once. Decks must keep at least five cards and one attack. A camp can be visited once, and each player chooses separately in co-op.
 
-Room state lives in one server process and expires after six hours of inactivity. A reload can recover your seat in the same tab while the room still exists. Restarting the process clears the rooms. Collection progress is saved in the browser and stays with that browser.
+Room state lives in one server process and expires after six hours of inactivity. Where room recovery is enabled, Player 1 can save a **Private room recovery code** from the menu after the latest move. If the server restarts, Player 1 can use **Restore with a private recovery code** from the reconnect screen. Player 2 can keep the original tab open and choose **Retry connection** after the host restores. Keep the recovery code private. Collection progress stays in its original browser.
 
 Use **Save game** during a run and **Continue saved game** on the opening screen to resume on the same browser. One manual save is kept, and saving again replaces it. A saved room game resumes as shared-screen play, with both players controlled on that browser.
 

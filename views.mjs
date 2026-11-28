@@ -1,5 +1,5 @@
 import { ACTS, CARDS, CRITTERS, COMPANION_ABILITIES, FLOODGATE_RECOIL_PERCENT, FRAIL_BLOCK_LOSS, HARD_PERKS, LEVELS_PER_ACT, TRAIL, TYPES, briarHealer, canAffordCard, freeMoveAnimal, getCardDescription, getCompanionDescription, getEncounter, matchup, trailPosition } from './game.mjs';
-import { COMBAT_TERMS } from './data.mjs';
+import { COMBAT_TERMS, POTIONS, POTION_LIMIT } from './data.mjs';
 
 export const playerName = (seat) => `Player ${seat + 1}`;
 export const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -244,6 +244,13 @@ export function combat(state, { room, pending, newCards }) {
           ${combatPile('discard', 'Discard', player.discardPile.length, seat)}
         </div>
         <div class="turn-actions combat-actions">
+          ${player.potions?.length ? `<details class="combat-potions" data-view-state="combat-potions"><summary class="button">Potions ${player.potions.length}/${POTION_LIMIT}</summary><div class="combat-potion-list">${player.potions.map((id, index) => {
+            const potion = POTIONS[id];
+            return button(`${escape(potion.name)} · ${escape(potion.description)}`, 'use-potion', {
+              disabled: !enabled || (potion.heal && player.hp >= player.maxHp),
+              data: `data-seat="${seat}" data-index="${index}"`,
+            });
+          }).join('')}</div></details>` : ''}
           ${freeMove ? button(`${escape(freeMove.name)} · ${player.companionUsed ? 'Used' : 'Free move'}`, 'companion-strike', { disabled: !enabled || !freeMoveReady, data: `data-seat="${seat}" data-aim="${escape(freeMove.name)}" aria-pressed="false" aria-describedby="attack-instructions"` }) : ''}
           <span class="hand-counts">${escape(TYPES[CRITTERS[player.critterId].type].name)} type</span>
           ${state.players.map((member, index) => button(`${state.players.length === 1 ? 'Deck' : escape(CRITTERS[member.critterId].name) + '’s deck'} (${member.deck.length})`, 'view-battle-deck', { data: `data-seat="${index}" data-id="deck" aria-haspopup="dialog"` })).join('')}
