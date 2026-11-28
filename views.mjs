@@ -8,6 +8,16 @@ export const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (char) 
 export const button = (label, action, { style = 'secondary', disabled = false, data = '' } = {}) =>
   `<button type="button" class="button button-${style}" data-do="${action}" ${data} ${disabled ? 'disabled' : ''}>${label}</button>`;
 
+export function titleScreen({ savedGame = '', modes }) {
+  return `<section class="hero title-screen">
+    <img class="hero-art" src="/assets/hollow-trail.webp" alt="">
+    <div class="hero-copy"><h1>The Hollow Trail</h1>
+      ${savedGame}
+      ${modes}
+    </div>
+  </section>`;
+}
+
 export function portraitAsset(animal, mutation) {
   return `assets/${mutation === 'glitched' ? 'glitched/' : ''}${animal}.webp`;
 }

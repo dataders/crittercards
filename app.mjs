@@ -10,7 +10,7 @@ import { createCombatInput, createEffectHelp } from './combat-input.mjs';
 import { captureCombatActors, freshCombatEffects, playCombatEffects } from './combat-effects.mjs';
 import { createAudioController } from './audio.mjs';
 import { advanceSoloRewardSave, readStorage, savedRewardChoices, savedRunStatus, saveKey, writeStorage } from './storage.mjs';
-import { actionCard, art, battleCardViews, button, cardReveal, combat, combatSeat, combatTurn, escape, intentLabel, levelMeter, playerName, portraitAsset, progress, purse, trailLocation } from './views.mjs';
+import { actionCard, art, battleCardViews, button, cardReveal, combat, combatSeat, combatTurn, escape, intentLabel, levelMeter, playerName, portraitAsset, progress, purse, titleScreen, trailLocation } from './views.mjs';
 import { captureViewState, restoreViewState, setupSelect } from './view-state.mjs';
 import { createRoom, findPublicMatch, isTerminalRoomError, joinRoom, resumeRoom, recoverRoom } from './transport.mjs';
 
@@ -445,14 +445,11 @@ function lobby() {
     }).join('')}
     ${!room ? button('Find a public match', 'public-match', { disabled: ui.pending }) : ''}
   </div>`;
-  if (!showingSetup) return `<section class="hero title-screen">
-    <img class="hero-art" src="assets/hollow-trail.webp" alt="">
-    <div class="hero-copy"><h1>The Hollow Trail</h1>
-      ${saved ? button('Continue saved game', 'continue', { style: 'primary' }) : ''}
-      ${corrupt ? `<div class="save-panel"><p>This saved game could not be loaded.</p>${button('Clear saved game', 'clear-save')}</div>` : ''}
-      ${modes}
-    </div>
-  </section>${soloGoalsPanel()}`;
+  if (!showingSetup) return titleScreen({
+    savedGame: saved ? button('Continue saved game', 'continue', { style: 'primary' }) :
+      corrupt ? `<div class="save-panel"><p>This saved game could not be loaded.</p>${button('Clear saved game', 'clear-save')}</div>` : '',
+    modes,
+  }) + soloGoalsPanel();
   const picks = room ? room.picks : ui.picks;
   const seat = room?.seat ?? ui.pickSeat;
   const companions = room?.companions ?? ui.companions;
