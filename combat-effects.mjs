@@ -222,10 +222,12 @@ function animateActor(actor, target, pose, color, delay, companion) {
   let node = actor.image.parentElement;
   if (detached || companion) {
     const shell = overlay('combat-move-actor', actor, color);
-    const mutation = actor.image.parentElement?.dataset.mutation;
+    const imageSource = actor.image.currentSrc || actor.image.src;
+    const useActorImage = !companion || imageSource.endsWith('/' + companion + '.webp');
+    const mutation = useActorImage && actor.image.parentElement?.dataset.mutation;
     if (mutation) shell.dataset.mutation = mutation;
     const img = document.createElement('img');
-    img.src = companion ? 'assets/' + companion + '.webp' : actor.image.currentSrc || actor.image.src;
+    img.src = useActorImage ? imageSource : 'assets/' + companion + '.webp';
     img.alt = '';
     shell.append(img);
     shell.style.width = (companion ? Math.min(72, Math.max(42, actor.width)) : Math.min(150, actor.width)) + 'px';

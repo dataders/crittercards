@@ -1687,6 +1687,7 @@ body:not([data-battle-area])::before {
 [data-mutation='diamond'] { --mutation-ink: #bbf2ff; }
 [data-mutation='rainbow'] { --mutation-ink: #f2c9fc; }
 [data-mutation='shiny'] { --mutation-ink: #f7dbff; }
+[data-mutation='glitched'] { --mutation-ink: #58ffd9; }
 
 [data-mutation] > img { outline: 2px solid var(--mutation-ink); outline-offset: -2px; }
 [data-mutation='gold'] > img { filter: sepia(.78) saturate(1.7) brightness(1.12); }

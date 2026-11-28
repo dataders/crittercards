@@ -41,6 +41,7 @@ let inspectedPile;
 const state = () => room ? room.state : solo;
 const seat = () => room?.seat ?? 0;
 const name = (id) => CRITTERS[id]?.name ?? '';
+const rivalName = ({ name, mutation }) => [MUTATIONS[mutation]?.name, name].filter(Boolean).join(' ');
 const options = (items) => items.map(([id, label]) => '<option value="' + escape(id) + '">' + escape(label) + '</option>').join('');
 const button = (label, action, data = '', disabled = false) =>
   '<button type="button" data-action="' + action + '" data-id="' + escape(data) + '"' + (disabled ? ' disabled' : '') + '>' + escape(label) + '</button>';
@@ -103,7 +104,7 @@ function renderHealth(next) {
     hp: player.hp, maxHp: player.maxHp,
   }));
   const rivals = next.enemies.map((enemy) => ({
-    label: enemy.name, hp: enemy.hp, maxHp: enemy.maxHp,
+    label: rivalName(enemy), hp: enemy.hp, maxHp: enemy.maxHp,
     intent: intentLabel(enemy.intent, enemy, next),
   }));
   const health = JSON.stringify([party, rivals]);
@@ -266,7 +267,7 @@ function combatModel() {
     companion: Boolean(freeMoveAnimal(next, player) && !player.companionUsed && enabled),
     potions: (player.potions ?? []).map((id) => POTIONS[id].name),
     rivals: next.enemies.map((enemy, index) => ({
-      index, name: enemy.name, animal: enemy.animal, hp: enemy.hp, block: enemy.block, skin: enemy.mutation,
+      index, name: rivalName(enemy), animal: enemy.animal, hp: enemy.hp, block: enemy.block, skin: enemy.mutation,
       intent: intentLabel(enemy.intent, enemy, next, true),
     })),
   };

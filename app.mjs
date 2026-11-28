@@ -10,7 +10,7 @@ import { createCombatInput, createEffectHelp } from './combat-input.mjs';
 import { captureCombatActors, freshCombatEffects, playCombatEffects } from './combat-effects.mjs';
 import { createAudioController } from './audio.mjs';
 import { advanceSoloRewardSave, readStorage, savedRewardChoices, savedRunStatus, saveKey, writeStorage } from './storage.mjs';
-import { actionCard, art, battleCardViews, button, cardReveal, combat, combatSeat, combatTurn, escape, intentLabel, levelMeter, playerName, progress, purse, trailLocation } from './views.mjs';
+import { actionCard, art, battleCardViews, button, cardReveal, combat, combatSeat, combatTurn, escape, intentLabel, levelMeter, playerName, portraitAsset, progress, purse, trailLocation } from './views.mjs';
 import { captureViewState, restoreViewState, setupSelect } from './view-state.mjs';
 import { createRoom, findPublicMatch, isTerminalRoomError, joinRoom, resumeRoom, recoverRoom } from './transport.mjs';
 
@@ -659,6 +659,9 @@ mutationIndex.addEventListener('change', (event) => {
   const portrait = event.target.closest('.mutation-entry').querySelector('.mutation-portrait');
   if (skin === 'standard') delete portrait.dataset.mutation;
   else portrait.dataset.mutation = skin;
+  const image = portrait.querySelector('img');
+  image.height = skin === 'glitched' ? 384 : 512;
+  image.src = portraitAsset(id, skin);
   render();
 });
 

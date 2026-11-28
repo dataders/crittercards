@@ -263,8 +263,9 @@ export const MUTATIONS = {
   diamond: { name: 'Diamond', odds: 50 },
   rainbow: { name: 'Rainbow', odds: 100 },
   shiny: { name: 'Shiny', odds: 200 },
+  glitched: { name: 'Glitched', odds: 500 },
 };
-export const MUTATION_SLOTS = 600;
+export const MUTATION_SLOTS = 3000;
 
 export function mutationForSlot(slot) {
   for (const [id, { odds }] of Object.entries(MUTATIONS)) {

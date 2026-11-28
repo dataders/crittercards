@@ -21,7 +21,7 @@ test('each equally likely slot yields at most one mutation at the requested rate
     const mutation = mutationForSlot(slot) ?? 'standard';
     rates[mutation] = (rates[mutation] ?? 0) + 1;
   }
-  assert.deepEqual(rates, { gold: 20, diamond: 12, rainbow: 6, shiny: 3, standard: 559 });
+  assert.deepEqual(rates, { gold: 100, diamond: 60, rainbow: 30, shiny: 15, glitched: 6, standard: 2789 });
 });
 
 test('mutation rolls persist through serialized runs and leave combat RNG and stats alone', () => {
@@ -85,4 +85,12 @@ test('both co-op seats can recruit a variant again without duplicating the skin'
   assert.deepEqual(next.recruited, [['badger'], ['badger']]);
   assert.ok(next.rewardPicks.every(({ recruitMutation }) => recruitMutation === 'rainbow'));
   assert.ok(validateSavedRun({ version: 1, state: snapshot(next) }));
+});
+
+test('Glitched portrait artwork covers exactly the existing animal roster', async () => {
+  const { readdir } = await import('node:fs/promises');
+  const { CRITTER_UNLOCKS } = await import('../data.mjs');
+  const assets = await readdir(new URL('../assets/glitched/', import.meta.url));
+  assert.deepEqual(assets.filter((name) => name.endsWith('.webp')).sort(),
+    Object.keys(CRITTER_UNLOCKS).map((id) => id + '.webp').sort());
 });

@@ -8,8 +8,12 @@ export const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (char) 
 export const button = (label, action, { style = 'secondary', disabled = false, data = '' } = {}) =>
   `<button type="button" class="button button-${style}" data-do="${action}" ${data} ${disabled ? 'disabled' : ''}>${label}</button>`;
 
+export function portraitAsset(animal, mutation) {
+  return `assets/${mutation === 'glitched' ? 'glitched/' : ''}${animal}.webp`;
+}
+
 export function art(animal, className, fallback = animal, mutation) {
-  return `<span class="${className}"${mutation ? ` data-mutation="${escape(mutation)}"` : ''}><img src="assets/${escape(animal)}.webp" alt="" width="384" height="512" ${className === 'critter-art' ? 'loading="lazy"' : ''}><span class="art-fallback" hidden aria-hidden="true">${escape(fallback)}</span></span>`;
+  return `<span class="${className}"${mutation ? ` data-mutation="${escape(mutation)}"` : ''}><img src="${escape(portraitAsset(animal, mutation))}" alt="" width="384" height="${mutation === 'glitched' ? 384 : 512}" ${className === 'critter-art' ? 'loading="lazy"' : ''}><span class="art-fallback" hidden aria-hidden="true">${escape(fallback)}</span></span>`;
 }
 
 export function levelMeter(state, seat, { showName = false } = {}) {

@@ -84,7 +84,7 @@ func _receive(args: Array) -> void:
 	labels.title.text = model.title
 	labels.player.text = "%s · %s HP · %s Block" % [model.player.name, int(model.player.hp), int(model.player.block)]
 	labels.status.text = "Round %s · %s energy%s" % [int(model.round), int(model.energy), " · Choose a rival" if model.targeting else ("" if model.enabled else " · Waiting")]
-	hudson.texture = _portrait(model.player.animal)
+	hudson.texture = _portrait(model.player.animal, model.player.skin)
 	_apply_skin(hudson, model.player.skin)
 
 	if last_rivals != model.rivals:
@@ -106,11 +106,12 @@ func _receive(args: Array) -> void:
 	buttons.companion.disabled = not model.companion
 
 
-func _portrait(id: String) -> Texture2D:
-	if not portraits.has(id):
-		var path := "res://assets/%s.webp" % id
-		portraits[id] = load(path) if ResourceLoader.exists(path) else null
-	return portraits[id]
+func _portrait(id: String, skin: Variant) -> Texture2D:
+	var folder := "glitched/" if skin == "glitched" else ""
+	var path := "res://assets/%s%s.webp" % [folder, id]
+	if not portraits.has(path):
+		portraits[path] = load(path) if ResourceLoader.exists(path) else null
+	return portraits[path]
 
 
 func _apply_skin(control: Control, skin: Variant) -> void:
@@ -141,7 +142,7 @@ func _render_rivals(entries: Array) -> void:
 		target.set_drag_forwarding(Callable(), _can_drag_to.bind(index), _drag_to.bind(index))
 		var row := HBoxContainer.new()
 		var portrait := TextureRect.new()
-		portrait.texture = _portrait(rival.animal)
+		portrait.texture = _portrait(rival.animal, rival.skin)
 		portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		portrait.custom_minimum_size.x = 46
