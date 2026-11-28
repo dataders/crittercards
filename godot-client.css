@@ -45,6 +45,16 @@ footer { margin-top: 1.2rem; font-size: .8rem; }
   overflow-wrap: anywhere;
 }
 #rival-health .hp-row { background: #46312d; }
+.hp-intent { display: none; }
+@media (max-width: 480px) {
+  .hp-intent {
+    display: block;
+    flex: 0 0 100%;
+    color: #eadbc5;
+    font-size: .77rem;
+    line-height: 1.25;
+  }
+}
 .hp-row strong { white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 #pile-dialog {

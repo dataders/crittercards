@@ -3,9 +3,11 @@ extends "res://battle.gd"
 const SKIN_COLORS := {
 	"gold": Color("#ffd48a"),
 	"diamond": Color("#b4edff"),
-	"rainbow": Color("#edbbed"),
 }
-const INVERT_SHADER = preload("res://invert.gdshader")
+const SKIN_SHADERS := {
+	"shiny": preload("res://invert.gdshader"),
+	"rainbow": preload("res://rainbow.gdshader"),
+}
 
 var bridge: JavaScriptObject
 var callback: JavaScriptObject
@@ -15,6 +17,7 @@ var last_rivals: Array = []
 var last_potions: Array = []
 var has_combat := false
 var portraits := {}
+var skin_materials := {}
 
 
 func _ready() -> void:
@@ -112,12 +115,11 @@ func _portrait(id: String) -> Texture2D:
 
 func _apply_skin(control: Control, skin: Variant) -> void:
 	control.modulate = SKIN_COLORS.get(skin, Color.WHITE)
-	if skin == "shiny":
+	if SKIN_SHADERS.has(skin) and not skin_materials.has(skin):
 		var material_override := ShaderMaterial.new()
-		material_override.shader = INVERT_SHADER
-		control.material = material_override
-	else:
-		control.material = null
+		material_override.shader = SKIN_SHADERS[skin]
+		skin_materials[skin] = material_override
+	control.material = skin_materials.get(skin)
 
 
 func _render_rivals(entries: Array) -> void:
@@ -130,8 +132,9 @@ func _render_rivals(entries: Array) -> void:
 			rival.name, int(rival.hp), " · %s Block" % int(rival.block) if rival.block else "", rival.intent
 		]
 		target.tooltip_text = rival.intent
-		target.custom_minimum_size.y = 60
-		target.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		target.custom_minimum_size.y = 72
+		target.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		target.add_theme_font_size_override("font_size", 18)
 		target.disabled = rival.hp <= 0
 		var index := int(rival.index)
 		target.pressed.connect(_input_action.bind("target", index))

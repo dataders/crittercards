@@ -32,6 +32,7 @@ let room = null;
 let stopWatching;
 let delivery;
 let pending = false;
+let statusSource = null;
 let selection = null;
 let renderedScene;
 let renderedHand;
@@ -44,7 +45,8 @@ const options = (items) => items.map(([id, label]) => '<option value="' + escape
 const button = (label, action, data = '', disabled = false) =>
   '<button type="button" data-action="' + action + '" data-id="' + escape(data) + '"' + (disabled ? ' disabled' : '') + '>' + escape(label) + '</button>';
 
-function message(text = '') {
+function message(text = '', source = 'action') {
+  statusSource = text ? source : null;
   status.textContent = text;
   status.hidden = !text;
 }
@@ -102,12 +104,14 @@ function renderHealth(next) {
   }));
   const rivals = next.enemies.map((enemy) => ({
     label: enemy.name, hp: enemy.hp, maxHp: enemy.maxHp,
+    intent: intentLabel(enemy.intent, enemy, next),
   }));
   const health = JSON.stringify([party, rivals]);
   if (health === renderedHealth) return;
   renderedHealth = health;
-  const row = ({ label, hp, maxHp }) =>
-    '<div class="hp-row"><span>' + escape(label) + '</span><strong>' + hp + '/' + maxHp + ' HP</strong></div>';
+  const row = ({ label, hp, maxHp, intent }) =>
+    '<div class="hp-row"><span>' + escape(label) + '</span><strong>' + hp + '/' + maxHp + ' HP</strong>' +
+    (intent ? '<span class="hp-intent">' + escape(intent) + '</span>' : '') + '</div>';
   partyHealth.innerHTML = party.map(row).join('');
   rivalHealth.innerHTML = rivals.map(row).join('');
 }
@@ -343,7 +347,10 @@ function attach(connection) {
   solo = null;
   room = connection;
   writeStorage(sessionStorage, roomKey, { code: room.code, token: room.token });
-  stopWatching = room.watch(render, (error) => message(error.message));
+  stopWatching = room.watch(() => {
+    if (statusSource === 'connection') message();
+    render();
+  }, (error) => message(error.message, 'connection'));
 }
 
 function character() { return controls.querySelector('#critter')?.value ?? 'hudson'; }

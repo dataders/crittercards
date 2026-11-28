@@ -1692,15 +1692,15 @@ body:not([data-battle-area])::before {
 [data-mutation='gold'] > img { filter: sepia(.78) saturate(1.7) brightness(1.12); }
 [data-mutation='shiny'] > img { filter: invert(1); }
 [data-mutation='diamond'] > img { filter: grayscale(.62) sepia(.32) hue-rotate(139deg) saturate(1.45) brightness(1.17); }
-[data-mutation='rainbow']:has(> img) { position: relative; }
+[data-mutation='rainbow']:has(> img) { position: relative; isolation: isolate; }
+[data-mutation='rainbow'] > img { filter: grayscale(1) contrast(1.08); }
 [data-mutation='rainbow']:has(> img)::after {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(140deg, #ff4e64d4, #ffdb4dc7 25%, #71ffd0d9 49%, #5eafffd9 72%, #de86ffd4);
-  mix-blend-mode: screen;
-  opacity: .56;
+  background: linear-gradient(135deg, #ff426b, #ffa63c 18%, #f4dc35 32%, #36db79 47%, #25d0ec 61%, #5467ff 77%, #da49ef 95%);
+  mix-blend-mode: color;
   pointer-events: none;
 }
 .combat-move-actor[data-mutation='rainbow']:has(> img) { position: fixed; }
