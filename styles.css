@@ -1684,9 +1684,11 @@ body:not([data-battle-area])::before {
 [data-mutation='gold'] { --mutation-ink: #ffe09a; }
 [data-mutation='diamond'] { --mutation-ink: #bbf2ff; }
 [data-mutation='rainbow'] { --mutation-ink: #f2c9fc; }
+[data-mutation='shiny'] { --mutation-ink: #f7dbff; }
 
 [data-mutation] > img { outline: 2px solid var(--mutation-ink); outline-offset: -2px; }
 [data-mutation='gold'] > img { filter: sepia(.78) saturate(1.7) brightness(1.12); }
+[data-mutation='shiny'] > img { filter: invert(1); }
 [data-mutation='diamond'] > img { filter: grayscale(.62) sepia(.32) hue-rotate(139deg) saturate(1.45) brightness(1.17); }
 [data-mutation='rainbow']:has(> img) { position: relative; }
 [data-mutation='rainbow']:has(> img)::after {

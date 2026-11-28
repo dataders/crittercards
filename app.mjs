@@ -234,18 +234,20 @@ function updateRecruitProgress(state) {
 function unlockRecruits(state) {
   let changed = false;
   const newSkins = new Set();
-  const earnedSkins = state?.recruitedMutations ?? [];
-  if (earnedSkins.some((keys, seat) => ownsRecruitsFor(seat) && keys.some((key) => !variants.has(key)))) refreshMutationCollection();
-  for (const [seat, keys] of earnedSkins.entries()) {
-    if (!ownsRecruitsFor(seat)) continue;
-    for (const key of keys) {
-      const recruit = parseRecruitKey(key);
-      if (!recruit?.mutation || variants.has(key)) continue;
-      variants.add(key);
-      newSkins.add(recruit.id);
-      if (!skinPreferences.has(recruit.id)) skinPreferences.set(recruit.id, recruit.mutation);
-      ui.recruits.push(key);
+  const earnedSkins = (state?.recruitedMutations ?? []).flat();
+  if (earnedSkins.some((key) => !variants.has(key))) refreshMutationCollection();
+  for (const key of earnedSkins) {
+    const recruit = parseRecruitKey(key);
+    if (!recruit?.mutation) continue;
+    if (!collection.has(recruit.id)) {
+      collection.add(recruit.id);
+      changed = true;
     }
+    if (variants.has(key)) continue;
+    variants.add(key);
+    newSkins.add(recruit.id);
+    if (!skinPreferences.has(recruit.id)) skinPreferences.set(recruit.id, recruit.mutation);
+    ui.recruits.push(key);
   }
   if (newSkins.size) saveMutationCollection();
   for (const [seat, ids] of (state?.recruited ?? []).entries()) {
@@ -611,7 +613,8 @@ function renderMutationIndex() {
   refreshMutationCollection();
   const animals = Object.keys(CRITTER_UNLOCKS);
   const kinds = Object.keys(MUTATIONS);
-  mutationIndexSummary.textContent = `${variants.size} / ${animals.length * kinds.length} mutations collected. Recruit a mutated rival to unlock its skin. Gold is 1 in 30, Diamond 1 in 50, and Rainbow 1 in 100 per rival.`;
+  const odds = Object.values(MUTATIONS).map(({ name, odds }) => `${name} 1 in ${odds}`).join(', ');
+  mutationIndexSummary.textContent = `${variants.size} / ${animals.length * kinds.length} mutations collected. Recruit a mutated rival to unlock its skin for everyone in co-op. Odds per rival are ${odds}.`;
   mutationIndexAnimals.innerHTML = animals.map((id) => {
     const { name, animal } = CRITTERS[id];
     const owned = kinds.filter((kind) => variants.has(recruitKey(id, kind)));
@@ -657,9 +660,12 @@ function rewardPerkChoices(perks, action, seat, selected, enabled) {
 
 function availableRecruits(state, seat) {
   if (!ownsRecruitsFor(seat)) return [];
+  const sharedSkins = state.players.length > 1 ? (state.recruitedMutations ?? []).flat() : null;
   return recruitOptions(state, seat).filter((key) => {
     const { id, mutation } = parseRecruitKey(key);
-    return meetsRecruitmentRequirement(id, recruitProgress) && (mutation ? !variants.has(key) : !collection.has(id));
+    if (!meetsRecruitmentRequirement(id, recruitProgress)) return false;
+    if (!mutation) return !collection.has(id);
+    return sharedSkins ? !sharedSkins.includes(key) : !variants.has(key);
   });
 }
 
@@ -679,7 +685,7 @@ function recruitReward(state, seat, options, enabled) {
           ${art(id, 'recruit-portrait', animal.name, mutation)}
           <span class="recruit-details">
             <strong>${selected ? '✓ ' : ''}${escape(recruitName(key))} · ${escape(animal.role)}</strong>
-            ${mutation ? `<span class="mutation-chip" data-mutation="${mutation}" data-collected="true">Unlocks ${MUTATIONS[mutation].name} skin</span>` : ''}
+            ${mutation ? `<span class="mutation-chip" data-mutation="${mutation}" data-collected="true">Unlocks ${MUTATIONS[mutation].name} skin${state.players.length > 1 ? ' for both players' : ''}</span>` : ''}
             <span>${escape(animal.animal)} · ${escape(TYPES[animal.type].name)} · ${animal.maxHp} HP</span>
             <span><b>Signature</b> ${escape(signature.name)} · ${escape(describeCard(signature, 0, { compact: true, solo: state.players.length === 1 }))}</span>
             <span><b>Companion</b> ${escape(COMPANION_ABILITIES[id].name)} · ${escape(getCompanionDescription(id, 0, { compact: true, solo: state.players.length === 1 }))}</span>

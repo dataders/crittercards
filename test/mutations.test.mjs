@@ -15,13 +15,13 @@ const seeds = Object.fromEntries(Object.keys(MUTATIONS).map((mutation) => {
   throw Error('No seed for ' + mutation);
 }));
 
-test('each of the 300 equally likely slots yields at most one mutation at the requested rates', () => {
+test('each equally likely slot yields at most one mutation at the requested rates', () => {
   const rates = {};
   for (let slot = 0; slot < MUTATION_SLOTS; slot++) {
     const mutation = mutationForSlot(slot) ?? 'standard';
     rates[mutation] = (rates[mutation] ?? 0) + 1;
   }
-  assert.deepEqual(rates, { gold: 10, diamond: 6, rainbow: 3, standard: 281 });
+  assert.deepEqual(rates, { gold: 20, diamond: 12, rainbow: 6, shiny: 3, standard: 559 });
 });
 
 test('mutation rolls persist through serialized runs and leave combat RNG and stats alone', () => {
