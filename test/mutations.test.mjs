@@ -68,3 +68,21 @@ test('a known animal can earn its own variant but the wrong species or rarity ca
   assert.deepEqual(savedRewardChoices({ recruitSelections: ['badger:rainbow', 'bat:purple'] }).recruitSelections, ['badger:rainbow', null]);
   assert.deepEqual(parseRecruitKey('fox:gold'), { id: 'fox', mutation: 'gold' });
 });
+
+test('both co-op seats can recruit a variant again without duplicating the skin', () => {
+  const battle = route(createRun(['hudson', 'quinn'], seeds.rainbow));
+  const key = 'badger:rainbow';
+  battle.recruited = [['badger'], ['badger']];
+  battle.recruitedMutations = [[key], [key]];
+  const reward = winWithoutRewritingMutation(battle);
+  const claim = { type: 'draft', recruitId: 'badger', recruitMutation: 'rainbow' };
+  assert.ok(recruitOptions(reward, 0).includes(key));
+  const partial = act(reward, claim);
+  assert.ok(recruitOptions(partial, 1).includes(key));
+  assert.ok(validateSavedRun({ version: 1, state: snapshot(partial) }));
+  const next = act(partial, { ...claim, player: 1 });
+  assert.deepEqual(next.recruitedMutations, [[key], [key]]);
+  assert.deepEqual(next.recruited, [['badger'], ['badger']]);
+  assert.ok(next.rewardPicks.every(({ recruitMutation }) => recruitMutation === 'rainbow'));
+  assert.ok(validateSavedRun({ version: 1, state: snapshot(next) }));
+});

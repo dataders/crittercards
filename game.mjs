@@ -733,13 +733,10 @@ export function levelXp(state, seat) {
 
 export function recruitOptions(state, seat) {
   if (state.phase !== 'reward' || !state.players[seat] || state.rewardPicks[seat]) return [];
-  const previous = new Set([...(state.recruited?.[seat] ?? []), ...(state.recruitedMutations?.[seat] ?? [])]);
   const offers = new Set();
   for (const enemy of state.enemies) {
     if (enemy.hp > 0 || !Object.hasOwn(CRITTER_UNLOCKS, enemy.animal)) continue;
-    if (!enemy.mutation && CRITTER_UNLOCKS[enemy.animal].kind === 'starter') continue;
-    const key = recruitKey(enemy.animal, enemy.mutation);
-    if (!previous.has(key)) offers.add(key);
+    offers.add(recruitKey(enemy.animal, enemy.mutation));
   }
   return [...offers];
 }
@@ -771,10 +768,12 @@ function draftCard(state, { player: playerIndex, cardId = null, perkId = 'fang',
     }
     if (recruitMutation !== null) {
       state.rewardPicks[playerIndex].recruitMutation = recruitMutation;
-      (state.recruitedMutations ??= state.players.map(() => []))[playerIndex].push(recruitKey(recruitId, recruitMutation));
+      const skins = (state.recruitedMutations ??= state.players.map(() => []))[playerIndex];
+      const key = recruitKey(recruitId, recruitMutation);
+      if (!skins.includes(key)) skins.push(key);
     }
     const recruitName = recruitMutation ? MUTATIONS[recruitMutation].name + ' ' + CRITTERS[recruitId].name : CRITTERS[recruitId].name;
-    log(state, `${recruitName} joins ${critterName(player)}’s recruits for future trails.`);
+    log(state, `${critterName(player)} recruits ${recruitName}.`);
   }
   if (cardId !== null) player.deck.push(cardId);
   if (hardPerkId !== null) player.hardPerk = hardPerkId;

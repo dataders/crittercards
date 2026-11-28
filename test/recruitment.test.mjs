@@ -48,14 +48,18 @@ test('co-op recruits stay with their seat after both rewards and an older save s
   assert.equal(validateSavedRun({ version: 1, state: next, recruitSeat: 2 }), false);
 });
 
-test('alternate routes offer their own defeated species and omit a recruit already chosen this run', () => {
+test('alternate routes offer their own defeated species even after recruiting one earlier this run', () => {
   const run = createRun(['hudson'], 40);
   run.encounter = 2;
   run.path = ['steady', 'steady'];
   const [normal, elite] = TRAIL[2];
   const first = normal.enemies[0].animal;
   run.recruited = [[first]];
-  assert.deepEqual(recruitOptions(win(run, normal.id), 0), [normal.enemies[1].animal]);
+  const reward = win(run, normal.id);
+  assert.deepEqual(recruitOptions(reward, 0), normal.enemies.map(({ animal }) => animal));
+  const next = act(reward, { type: 'draft', recruitId: first });
+  assert.deepEqual(next.recruited, [[first]]);
+  assert.ok(validateSavedRun({ version: 1, state: next }));
   assert.deepEqual(recruitOptions(win(run, elite.id), 0), elite.enemies.map(({ animal }) => animal));
 });
 
@@ -67,4 +71,14 @@ test('recruiting keeps the existing progression gates for late animals', () => {
   assert.ok(meetsRecruitmentRequirement('bear', { clears: 3 }));
   assert.equal(meetsRecruitmentRequirement('wolverine', { clears: 3 }), false);
   assert.ok(meetsRecruitmentRequirement('wolverine', { clears: 4 }));
+});
+
+test('an already owned starter rival can be recruited and saved mid-reward', () => {
+  const reward = win(createRun(['hudson', 'quinn'], 40));
+  reward.enemies[0].animal = 'fox';
+  assert.ok(recruitOptions(reward, 0).includes('fox'));
+  const partial = act(reward, { type: 'draft', recruitId: 'fox' });
+  assert.equal(partial.rewardPicks[0].recruitId, 'fox');
+  assert.ok(validateSavedRun({ version: 1, state: partial }));
+  assert.deepEqual(savedRewardChoices({ recruitSelections: ['fox'] }).recruitSelections, ['fox', null]);
 });

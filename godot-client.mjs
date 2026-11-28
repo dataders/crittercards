@@ -221,10 +221,10 @@ function renderReward(next) {
   }
   const offers = next.rewardOptions[seat()];
   const progress = readStorage(localStorage, progressKey, {});
-  const claimed = new Set((next.recruitedMutations ?? []).flat());
+  const owned = new Set(readStorage(localStorage, collectionKey, []));
   const recruits = recruitOptions(next, seat()).filter((key) => {
-    const { id, mutation } = parseRecruitKey(key);
-    return meetsRecruitmentRequirement(id, progress) && (!mutation || !claimed.has(key));
+    const { id } = parseRecruitKey(key);
+    return owned.has(id) || meetsRecruitmentRequirement(id, progress);
   });
   const field = (title, fieldName, values) => values.length ?
     '<label>' + title + '<select name="' + fieldName + '">' + options(values) + '</select></label>' : '';

@@ -674,12 +674,9 @@ function rewardPerkChoices(perks, action, seat, selected, enabled) {
 
 function availableRecruits(state, seat) {
   if (!ownsRecruitsFor(seat)) return [];
-  const sharedSkins = state.players.length > 1 ? (state.recruitedMutations ?? []).flat() : null;
   return recruitOptions(state, seat).filter((key) => {
-    const { id, mutation } = parseRecruitKey(key);
-    if (!meetsRecruitmentRequirement(id, recruitProgress)) return false;
-    if (!mutation) return !collection.has(id);
-    return sharedSkins ? !sharedSkins.includes(key) : !variants.has(key);
+    const { id } = parseRecruitKey(key);
+    return collection.has(id) || meetsRecruitmentRequirement(id, recruitProgress);
   });
 }
 
@@ -687,7 +684,7 @@ function recruitReward(state, seat, options, enabled) {
   if (!options.length) return '';
   return `<div class="recruit-reward">
     <h3 class="reward-label">Recruit an animal <small>(optional)</small></h3>
-    <p>Choose one for future runs. Play as the animal or bring it as a cousin’s companion.</p>
+    <p>Choose one, including animals you already have.</p>
     <div class="recruit-options">
       ${options.map((key) => {
         const { id, mutation } = parseRecruitKey(key);
@@ -699,7 +696,7 @@ function recruitReward(state, seat, options, enabled) {
           ${art(id, 'recruit-portrait', animal.name, mutation)}
           <span class="recruit-details">
             <strong>${selected ? '✓ ' : ''}${escape(recruitName(key))} · ${escape(animal.role)}</strong>
-            ${mutation ? `<span class="mutation-chip" data-mutation="${mutation}" data-collected="true">Unlocks ${MUTATIONS[mutation].name} skin${state.players.length > 1 ? ' for both players' : ''}</span>` : ''}
+            ${mutation ? `<span class="mutation-chip" data-mutation="${mutation}" data-collected="true">${MUTATIONS[mutation].name} skin${state.players.length > 1 ? ' · shared in co-op' : ''}</span>` : ''}
             <span>${escape(animal.animal)} · ${escape(TYPES[animal.type].name)} · ${animal.maxHp} HP</span>
             <span><b>Signature</b> ${escape(signature.name)} · ${escape(describeCard(signature, 0, { compact: true, solo: state.players.length === 1 }))}</span>
             <span><b>Companion</b> ${escape(COMPANION_ABILITIES[id].name)} · ${escape(getCompanionDescription(id, 0, { compact: true, solo: state.players.length === 1 }))}</span>

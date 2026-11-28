@@ -284,7 +284,6 @@ export function parseRecruitKey(value) {
   const [id, mutation = null, extra] = value.split(':');
   if (extra !== undefined || !Object.hasOwn(CRITTER_UNLOCKS, id)) return null;
   if (mutation !== null && !Object.hasOwn(MUTATIONS, mutation)) return null;
-  if (!mutation && CRITTER_UNLOCKS[id].kind === 'starter') return null;
   return { id, mutation };
 }
 

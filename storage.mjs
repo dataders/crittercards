@@ -79,8 +79,10 @@ function validEnemy(enemy, seats) {
 
 function validRewardPick(pick) {
   return pick === null || isCard(pick) || (isRecord(pick) && (pick.cardId === null || isCard(pick.cardId)) &&
-    (pick.perkId === null || isLevelPerk(pick.perkId)) && (pick.hardPerkId == null || isHardPerk(pick.hardPerkId)) && (pick.recruitMutation === undefined ? pick.recruitId === undefined || isRecruit(pick.recruitId) :
-      isMutation(pick.recruitMutation) && typeof pick.recruitId === 'string' && Boolean(CRITTERS[pick.recruitId]?.animal)));
+    (pick.perkId === null || isLevelPerk(pick.perkId)) && (pick.hardPerkId == null || isHardPerk(pick.hardPerkId)) && (pick.recruitId === undefined ?
+      pick.recruitMutation === undefined :
+      typeof pick.recruitId === 'string' && Object.hasOwn(CRITTER_UNLOCKS, pick.recruitId) &&
+      (pick.recruitMutation === undefined || isMutation(pick.recruitMutation))));
 }
 
 export function validateSavedRun(saved) {
