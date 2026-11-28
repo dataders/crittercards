@@ -19,7 +19,7 @@ const hourSoundtrackDownload = `/downloads/${hourSoundtrackFile}`;
 const enchantedWoodsAlbum = '/assets/crittercards-enchanted-woods-album.zip';
 const staticFiles = new Set([
   '/index.html', '/soundtrack.html', '/styles.css', '/app.mjs', '/game.mjs', '/transport.mjs',
-  '/audio.mjs', '/solo-progress.mjs', '/combat-input.mjs', '/data.mjs', '/storage.mjs', '/view-state.mjs', '/views.mjs',
+  '/audio.mjs', '/solo-progress.mjs', '/combat-input.mjs', '/combat-effects.mjs', '/data.mjs', '/storage.mjs', '/view-state.mjs', '/views.mjs',
   '/assets/crittercards-soundtrack.zip', enchantedWoodsAlbum,
 ]);
 const assetPath = /^\/assets\/(?:[\w-]+\/)*[\w.-]+\.(?:avif|gif|ico|jpe?g|mp3|png|svg|webp|woff2)$/i;

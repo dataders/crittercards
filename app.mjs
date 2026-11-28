@@ -7,6 +7,7 @@ import {
 import { deckLibrary, describeCard, POTIONS, POTION_LIMIT, potionPrice, isEliteRoute, CAMP_HEAL_PERCENT } from './data.mjs';
 import { soloGoals, soloProgressKey, updateSoloProgress } from './solo-progress.mjs';
 import { createCombatInput, createEffectHelp } from './combat-input.mjs';
+import { captureCombatActors, freshCombatEffects, playCombatEffects } from './combat-effects.mjs';
 import { createAudioController } from './audio.mjs';
 import { advanceSoloRewardSave, readStorage, savedRewardChoices, savedRunStatus, saveKey, writeStorage } from './storage.mjs';
 import { actionCard, art, battleCardViews, button, cardReveal, combat, escape, intentLabel, playerName, progress, purse, trailLocation } from './views.mjs';
@@ -704,6 +705,8 @@ function render() {
   const focus = previous?.dataset.do ? ['do', 'seat', 'id', 'index'].map((key) => previous.dataset[key]) : null;
   const state = ui.room ? ui.room.state : ui.run;
   const motion = combatMotion(presentedBattle, state);
+  const effects = matchMedia('(prefers-reduced-motion: reduce)').matches ? [] : freshCombatEffects(presentedBattle, state);
+  const actors = effects.length ? captureCombatActors(game) : null;
   if (presentedBattle !== state) lastCardPlay = undefined;
   presentedBattle = state?.phase === 'combat' ? state : undefined;
   const battleArea = state?.phase === 'combat' ? areaScenes[trailPosition(state.encounter).actIndex]?.id : null;
@@ -759,6 +762,7 @@ function render() {
   }
   if (battleDeck.open) renderBattleCards(state);
   if (motion) animateCombatMotion(motion);
+  if (actors) playCombatEffects(effects, actors, captureCombatActors(game));
 }
 
 function acceptState(state, previous) {

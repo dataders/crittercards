@@ -100,7 +100,7 @@ function rivalIntent(enemy, index, state) {
 
 function clearingFamiliar(player, active) {
   const { id, name } = CRITTERS[player.critterId];
-  return `<div class="clearing-familiar${active ? ' is-active' : ''}${player.hp ? '' : ' is-defeated'}">
+  return `<div class="clearing-familiar${active ? ' is-active' : ''}${player.hp ? '' : ' is-defeated'}" data-familiar-seat="${player.id}" data-critter="${escape(id)}">
     ${art(id, 'clearing-portrait', name)}
     <div class="clearing-nameplate"><strong class="unit-name">${escape(name)}</strong><span class="rival-vitals">${health(player)}</span></div>
   </div>`;
@@ -179,6 +179,22 @@ function combatPile(kind, label, count, seat) {
   </button>`;
 }
 
+function companionControl(player, canAct, pending, solo) {
+  const animal = player.companionId;
+  if (!animal) return '';
+  const ability = COMPANION_ABILITIES[animal];
+  const status = player.companionUsed ? 'Used this round' : canAct ? 'Ready · 0 energy' : 'Ready on your turn';
+  return `<button type="button" class="button battle-companion" data-do="companion-strike" data-seat="${player.id}" data-companion-seat="${player.id}"
+      data-aim="${escape(ability.name)}" aria-pressed="false" aria-describedby="companion-effect attack-instructions"
+      ${!canAct || pending || player.companionUsed ? 'disabled' : ''}>
+    ${art(animal, 'battle-companion-art')}
+    <span class="battle-companion-copy"><strong>${escape(CRITTERS[animal].name)} · ${escape(ability.name)}</strong>
+      <span id="companion-effect">${escape(getCompanionDescription(animal, player.attackBonus + player.strength, { compact: true, solo }))}</span>
+    </span>
+    <span class="battle-companion-status">${status}</span>
+  </button>`;
+}
+
 export function combat(state, { room, pending, newCards }) {
   const seat = state.activePlayer;
   const player = state.players[seat];
@@ -191,6 +207,7 @@ export function combat(state, { room, pending, newCards }) {
   const moveAnimal = freeMoveAnimal(state, player);
   const freeMoveReady = moveAnimal && !player.companionUsed;
   const freeMove = COMPANION_ABILITIES[moveAnimal];
+  const companionOwner = state.players[waitingSeat ?? seat];
   const playableCards = player.hand.filter((id) => canAffordCard(CARDS[id], player.energy));
   const canAim = freeMoveReady || playableCards.some((id) => CARDS[id].target === 'enemy');
   const canTap = playableCards.some((id) => CARDS[id].target !== 'enemy');
@@ -224,7 +241,7 @@ export function combat(state, { room, pending, newCards }) {
       </section>
     </div>
     <section class="hand-panel" aria-labelledby="turn-heading" tabindex="-1">
-        <div class="hand-heading" data-block-drop>
+        <div class="hand-heading" data-block-drop data-hud-seat="${seat}" data-critter="${escape(player.critterId)}">
           ${art(player.critterId, 'hud-portrait', name)}
           <div class="hud-familiar"><h2 id="turn-heading">${escape(turnTitle)}</h2><span class="turn-details">${player.hp}/${player.maxHp} HP${player.block ? ` · ${player.block} Block` : ''}</span></div>
           <span class="turn-energy" role="group" aria-label="${player.energy} energy available${player.reserveEnergy ? `, plus ${player.reserveEnergy} next turn` : ''}">
@@ -237,6 +254,7 @@ export function combat(state, { room, pending, newCards }) {
           </div>
           ${button('End turn', 'end', { style: 'primary', disabled: !enabled, data: `data-seat="${seat}" title="${escape(next)}"` })}
         </div>
+        ${companionControl(companionOwner, canAct, pending, state.players.length === 1)}
         <div class="hud-instructions"><p class="turn-instructions" id="attack-instructions">${!canAct ? 'You can look at the rivals while you wait.' : [canAim && 'Choose a move, then a rival.', canTap && 'Play Block directly.'].filter(Boolean).join(' ') || 'End your turn when you’re ready.'}</p>${button('Cancel aim', 'cancel-aim', { data: 'hidden' })}</div>
         ${effects(player, 'active', 'hand-effects')}
         <div class="card-table">
@@ -252,7 +270,7 @@ export function combat(state, { room, pending, newCards }) {
               data: `data-seat="${seat}" data-index="${index}"`,
             });
           }).join('')}</div></details>` : ''}
-          ${freeMove ? button(`${escape(freeMove.name)} · ${player.companionUsed ? 'Used' : 'Free move'}`, 'companion-strike', { disabled: !enabled || !freeMoveReady, data: `data-seat="${seat}" data-aim="${escape(freeMove.name)}" aria-pressed="false" aria-describedby="attack-instructions"` }) : ''}
+          ${freeMove && !player.companionId && canAct ? button(`${escape(freeMove.name)} · ${player.companionUsed ? 'Used' : 'Free move'}`, 'companion-strike', { disabled: !enabled || !freeMoveReady, data: `data-seat="${seat}" data-aim="${escape(freeMove.name)}" aria-pressed="false" aria-describedby="attack-instructions"` }) : ''}
           <span class="hand-counts">${escape(TYPES[CRITTERS[player.critterId].type].name)} type</span>
           ${state.players.map((member, index) => button(`${state.players.length === 1 ? 'Deck' : escape(CRITTERS[member.critterId].name) + '’s deck'} (${member.deck.length})`, 'view-battle-deck', { data: `data-seat="${index}" data-id="deck" aria-haspopup="dialog"` })).join('')}
           ${waitingSeat === null ? '' : ['draw', 'discard'].map((kind) => button(`Your ${battleCardViews[kind].label}`, 'view-battle-deck', { data: `data-seat="${waitingSeat}" data-id="${kind}" aria-haspopup="dialog"` })).join('')}

@@ -164,6 +164,7 @@ function beginEncounter(state) {
   state.hardReward = false;
   state.potionFinds = [];
   state.bondWardUsed = false;
+  state.combatEffects = [];
   state.enemies = encounter.enemies.map((enemy) => ({
     id: enemy.animal,
     name: enemy.name,
@@ -329,6 +330,28 @@ function finishEncounter(state) {
   log(state, state.eliteReward ? 'Elite defeated. Choose a level perk and take or skip a card.' : 'The pack prevails. Take or skip a card.');
 }
 
+function recordEffect(state, kind, move, actor, targets, support = []) {
+  const effects = state.combatEffects ??= [];
+  effects.push({ id: (effects.at(-1)?.id ?? 0) + 1, kind, move, actor, targets, support });
+  if (effects.length > 24) effects.shift();
+}
+
+function supportSnapshot(state) {
+  return state.players.map(({ hp, block, energy, reserveEnergy, strength }) => ({ hp, block, energy, reserveEnergy, strength }));
+}
+
+function supportChanges(state, before) {
+  return state.players.flatMap((player, seat) => {
+    const previous = before[seat];
+    const effects = [];
+    if (player.hp > previous.hp) effects.push('heal');
+    if (player.block > previous.block) effects.push('block');
+    if (player.energy > previous.energy || player.reserveEnergy > previous.reserveEnergy) effects.push('energy');
+    if (player.strength > previous.strength) effects.push('strength');
+    return effects.map((effect) => ({ seat, effect }));
+  });
+}
+
 function playCard(state, action) {
   const player = state.players[action.player];
   if (!Number.isInteger(action.cardIndex) || action.cardIndex < 0 || action.cardIndex >= player.hand.length) {
@@ -350,6 +373,8 @@ function playCard(state, action) {
 
   let target = action.target;
   let lastHitTarget;
+  const targets = [];
+  const before = supportSnapshot(state);
   const repeats = variable ? cost : 1;
   for (let repeat = 0; repeat < repeats; repeat += 1) {
     if (card.target === 'enemy' && state.enemies[target].hp === 0) {
@@ -357,8 +382,10 @@ function playCard(state, action) {
       if (target < 0) break;
     }
     resolveCardEffect(state, player, card, target);
+    if (card.target === 'enemy') targets.push(target);
     if (card.damage) lastHitTarget = target;
   }
+  recordEffect(state, 'card', card.id, action.player, targets, supportChanges(state, before));
   if (lastHitTarget !== undefined) finishAttackAction(state, { player: action.player, target: lastHitTarget });
 }
 
@@ -466,6 +493,8 @@ function enemyAttack(state, enemy, player, amount) {
 }
 
 function openingSurge(state, enemy) {
+  const targets = state.players.filter(({ hp }) => hp > 0).map(({ id }) => id);
+  recordEffect(state, 'rival', 'openingSurge', state.enemies.indexOf(enemy), targets);
   let fullyBlocked = false;
   for (const player of state.players) {
     const { hp, block } = player;
@@ -535,7 +564,9 @@ function finishTurn(state, playerIndex) {
 
   for (const enemy of state.enemies) {
     if (enemy.hp === 0) continue;
+    const index = state.enemies.indexOf(enemy);
     if (enemy.poison > 0) {
+      recordEffect(state, 'rival', 'poison', index, []);
       const damage = Math.min(enemy.hp, enemy.poison);
       enemy.hp -= damage;
       enemy.poison -= 1;
@@ -548,6 +579,14 @@ function finishTurn(state, playerIndex) {
     enemy.block = 0;
     const { type, amount, target } = enemy.intent;
     if (type === 'spentSurge' || type === 'brokenGuard') continue;
+    const team = state.players.filter(({ hp }) => hp > 0).map(({ id }) => id);
+    if (type !== 'openingSurge') {
+      const targets = type === 'eclipse' || type === 'teamAttack' ? team : team.includes(target) ? [target] : team.slice(0, 1);
+      const self = defensiveIntents.has(type);
+      const mend = type === 'mendRivals' ? state.enemies.flatMap((rival, seat) =>
+        rival !== enemy && rival.hp > 0 && rival.hp < rival.maxHp ? [seat] : []) : [];
+      recordEffect(state, 'rival', type, index, self ? mend : targets);
+    }
     if (type === 'guard') {
       const gained = gainBlock(enemy, amount);
       log(state, `${enemy.name} raises ${gained} Block.`);
@@ -784,7 +823,9 @@ export function applyAction(state, action) {
     const ability = COMPANION_ABILITIES[animal];
     const alongside = player.companionId ? ` alongside ${critterName(player)}` : '';
     log(next, `${CRITTERS[animal].name} uses ${ability.name}${alongside}.`);
+    const before = supportSnapshot(next);
     resolveCardEffect(next, player, ability, action.target, animal);
+    recordEffect(next, 'companion', animal, action.player, [action.target], supportChanges(next, before));
     finishAttackAction(next, action);
   } else finishTurn(next, action.player);
   return next;
