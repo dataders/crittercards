@@ -8,8 +8,8 @@ import {
   meetsRecruitmentRequirement, trailPosition, SKIP_FIGHT_ROUTE,
 } from './data.mjs';
 import { readStorage, writeStorage } from './storage.mjs';
-import { createRoom, isTerminalRoomError, joinRoom, recoverRoom, resumeRoom } from './transport.mjs';
-import { battleCardViews, escape, intentLabel } from './views.mjs';
+import { createRoom, findPublicMatch, isTerminalRoomError, joinRoom, recoverRoom, resumeRoom } from './transport.mjs';
+import { battleCardViews, escape, intentLabel, titleScreen } from './views.mjs';
 
 const controls = document.querySelector('#controls');
 const combat = document.querySelector('#combat');
@@ -32,6 +32,7 @@ const starters = ['hudson', 'quinn', 'fox', 'hare'];
 let solo = null;
 let room = null;
 let reconnect = null;
+let lobbyScreen = 'title';
 let stopWatching;
 let delivery;
 let pending = false;
@@ -48,6 +49,12 @@ const rivalName = ({ name, mutation }) => [MUTATIONS[mutation]?.name, name].filt
 const options = (items) => items.map(([id, label]) => '<option value="' + escape(id) + '">' + escape(label) + '</option>').join('');
 const button = (label, action, data = '', disabled = false) =>
   '<button type="button" data-action="' + action + '" data-id="' + escape(data) + '"' + (disabled ? ' disabled' : '') + '>' + escape(label) + '</button>';
+
+function characterPicker() {
+  const owned = readStorage(localStorage, collectionKey, []);
+  const characters = [...new Set([...starters, ...owned])].filter((id) => CRITTERS[id]);
+  return `<label>Critter <select id="critter">${options(characters.map((id) => [id, name(id)]))}</select></label>`;
+}
 
 function message(text = '', source = 'action') {
   statusSource = text ? source : null;
@@ -147,6 +154,28 @@ function restoreForm() {
     '<form id="recover-form"><label>Private recovery code <textarea name="recoveryCode" required rows="3" autocomplete="off" spellcheck="false"></textarea></label><button>Restore room</button></form></details>';
 }
 
+function renderLobby() {
+  if (lobbyScreen === 'title') {
+    controls.innerHTML = titleScreen({
+      savedGame: readStorage(localStorage, soloKey, null) ? button('Continue saved game', 'resume-solo') : '',
+      modes: `<div class="mode-picker" aria-label="Play mode">
+        ${button('Single player', 'open-setup', 'solo')}
+        ${button('Play with a room code', 'open-setup', 'online')}
+        ${button('Find a public match', 'public-match')}
+      </div>`,
+    });
+    return;
+  }
+  const soloSetup = lobbyScreen === 'solo';
+  controls.innerHTML = `<h1 tabindex="-1">${soloSetup ? 'Choose your character' : 'Multiplayer'}</h1>
+    ${characterPicker()}
+    <div class="choices">
+      ${soloSetup ? button('Begin the trail', 'solo') : button('Create room', 'host')}
+      ${button('Back to title', 'back-to-title')}
+    </div>
+    ${soloSetup ? '' : `<form id="join-form"><label>Room code <input name="code" required maxlength="6" autocomplete="off"></label><button>Join room</button></form>${restoreForm()}`}`;
+}
+
 function render() {
   const next = state();
   const code = room?.seat === 0 ? room.recoveryCode : '';
@@ -156,7 +185,7 @@ function render() {
   if (next) saveCollection(next);
   renderHealth(next);
   if (pileDialog.open) renderPile(next);
-  const scene = reconnect ? 'reconnect' : next ? `${next.runId}:${next.encounter}:${next.phase}` : 'lobby';
+  const scene = reconnect ? 'reconnect' : next ? `${next.runId}:${next.encounter}:${next.phase}` : lobbyScreen;
   if (scene !== renderedScene) selection = null;
   const phase = next?.phase;
   const handStamp = phase === 'combat' ? JSON.stringify([next.round, next.players[seat()].hand]) : null;
@@ -172,7 +201,7 @@ function render() {
       if (scene !== renderedScene) {
         controls.innerHTML = '<h1>Reconnect to room ' + escape(reconnect.code) + '</h1>' +
           '<p>Your seat is saved in this tab. After a restart, Player 1 can restore the room with their private recovery code.</p>' +
-          '<div class="choices">' + button('Retry connection', 'retry') + button('Return to setup', 'leave') + '</div>' + restoreForm();
+          '<div class="choices">' + button('Retry connection', 'retry') + button('Back to title', 'leave') + '</div>' + restoreForm();
         controls.querySelector('[data-action="retry"]').focus();
       }
     } else if (phase === 'route') {
@@ -190,19 +219,20 @@ function render() {
     } else if (phase === 'reward') {
       if (scene !== renderedScene || next.rewardPicks[seat()] || !controls.querySelector('#reward-form')) renderReward(next);
     } else if (phase === 'victory' || phase === 'defeat') {
-      controls.innerHTML = `<h1>${phase === 'victory' ? 'The Hollow Crown falls' : 'The woods close in'}</h1>${button('Return to preview lobby', 'leave')}`;
+      controls.innerHTML = `<h1>${phase === 'victory' ? 'The Hollow Crown falls' : 'The woods close in'}</h1>${button('Back to title', 'leave')}`;
     } else if (room) {
-      controls.innerHTML = `<h1>Room ${escape(room.code)}</h1><p>${room.joined.every(Boolean) ? 'Both players joined.' : 'Share this code with Player 2.'} You are Player ${seat() + 1}.</p>
+      const waiting = room.publicMatch && !room.joined[1];
+      const pick = room.picks[seat()] ?? (scene === renderedScene ? character() : 'hudson');
+      controls.innerHTML = `<h1>${room.publicMatch ? 'Public match' : 'Room'} ${escape(room.code)}</h1>
+        <p role="status">${room.joined[1] ? 'Both players joined.' : waiting ? 'Waiting for another player to find a public match.' : 'Share this code with Player 2.'} You are Player ${seat() + 1}.</p>
+        ${room.publicMatch ? room.ready[seat()] ? `<p>Playing as ${escape(name(pick))}.</p>` : characterPicker() : ''}
         <div class="choices">${button('Confirm deck', 'deck', '', room.ready[seat()])}
         ${seat() === 0 ? button('Begin the trail', 'start', '', !room.ready.every(Boolean)) : ''}
-        ${button('Leave preview room', 'leave')}</div>`;
-    } else if (scene !== renderedScene || !controls.querySelector('#join-form')) {
-      const owned = readStorage(localStorage, collectionKey, []);
-      controls.innerHTML = `<h1>Play Crittercards in Godot</h1><p>Explore the trail solo or join a private co-op room.</p>
-        <label>Critter <select id="critter">${options([...new Set([...starters, ...owned])].filter((id) => CRITTERS[id]).map((id) => [id, name(id)]))}</select></label>
-        <div class="choices">${button('Start solo', 'solo')}${readStorage(localStorage, soloKey, null) ? button('Resume solo', 'resume-solo') : ''}
-        ${button('Host private co-op', 'host')}</div>
-        <form id="join-form"><label>Room code <input name="code" required maxlength="6" autocomplete="off"></label><button>Join private co-op</button></form>${restoreForm()}`;
+        ${button(waiting ? 'Cancel matchmaking' : 'Leave preview room', 'leave')}</div>`;
+      const picker = controls.querySelector('#critter');
+      if (picker) picker.value = pick;
+    } else if (scene !== renderedScene) {
+      renderLobby();
     }
   }
   renderedScene = scene;
@@ -390,6 +420,13 @@ controls.addEventListener('click', (event) => {
   const control = event.target.closest('[data-action]');
   if (!control || pending) return;
   const { action, id } = control.dataset;
+  if (action === 'open-setup' || action === 'back-to-title') {
+    message();
+    lobbyScreen = action === 'open-setup' ? id : 'title';
+    render();
+    controls.querySelector(action === 'open-setup' ? 'h1' : '[data-action="open-setup"]').focus();
+    return;
+  }
   if (action === 'route') return act({ type: 'route', routeId: id });
   if (action === 'buy') return act({ type: 'buy', cardId: id });
   if (action === 'buy-potion') return act({ type: 'buyPotion', potionId: id });
@@ -398,6 +435,17 @@ controls.addEventListener('click', (event) => {
     if (action === 'remove' && state()?.phase === 'shop') return act({ type: 'removeCard', cardIndex: Number(id) });
     return act({ type: 'camp', choice: action, cardIndex: Number(id) });
   }
+  if (action === 'public-match') return run(async () => {
+    attach(await findPublicMatch());
+  });
+  if (action === 'deck' && room?.publicMatch) return run(async () => {
+    const pick = character();
+    if (room.picks[seat()] !== pick) await room.act({ type: 'select', critterId: pick });
+    if (companion(pick) && !room.companions[seat()]) {
+      await room.act({ type: 'companion', companionId: companion(pick) });
+    }
+    await room.act({ type: 'deck' });
+  });
   if (action === 'deck' || action === 'start') return act({ type: action });
   if (action === 'solo') return run(() => {
     const pick = character();
@@ -413,12 +461,17 @@ controls.addEventListener('click', (event) => {
   if (action === 'retry' && reconnect) return run(async () => {
     attach(await resumeRoom(reconnect.code, reconnect.token));
   });
-  if (action === 'leave') return run(() => {
+  if (action === 'leave') return run(async () => {
+    if (room?.publicMatch && seat() === 0 && !room.joined[1]) {
+      try { await room.act({ type: 'cancelMatch' }); }
+      catch (error) { if (!isTerminalRoomError(error)) throw error; }
+    }
     stopWatching?.();
     if (solo) writeStorage(localStorage, soloKey, null);
     reconnect = null;
     room = null;
     solo = null;
+    lobbyScreen = 'title';
     writeStorage(sessionStorage, roomKey, null);
   });
 });
