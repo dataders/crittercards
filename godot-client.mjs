@@ -3,13 +3,13 @@ import {
   canSkipFight, grantsLevelUp, recruitOptions,
 } from './game.mjs';
 import {
-  ACTS, CAMPS, CARDS, CRITTERS, HARD_PERKS, MERCHANTS, MUTATIONS, POTIONS, TRAIL,
+  ACTS, CAMPS, CARDS, COUSINS, CRITTERS, CRITTER_UNLOCKS, HARD_PERKS, MERCHANTS, MUTATIONS, POTIONS, TRAIL,
   getEncounter, hardPerkOptions, levelPerkChoices, parseRecruitKey, potionPrice, POTION_LIMIT, LEVELS_PER_ACT,
   meetsRecruitmentRequirement, trailPosition, SKIP_FIGHT_ROUTE,
 } from './data.mjs';
 import { readStorage, writeStorage } from './storage.mjs';
 import { createRoom, findPublicMatch, isTerminalRoomError, joinRoom, recoverRoom, resumeRoom } from './transport.mjs';
-import { battleCardViews, escape, intentLabel, titleScreen } from './views.mjs';
+import { art, battleCardViews, escape, intentLabel, titleScreen } from './views.mjs';
 
 const controls = document.querySelector('#controls');
 const combat = document.querySelector('#combat');
@@ -28,7 +28,7 @@ const mutationKey = 'crittercards.mutations.v1';
 const collectionKey = 'crittercards.collection.v1';
 const progressKey = 'crittercards.progress.v1';
 const soloKey = 'crittercards.godot-solo.v1';
-const starters = ['hudson', 'quinn', 'fox', 'hare'];
+const starters = [...Object.keys(COUSINS), ...Object.keys(CRITTER_UNLOCKS).filter((id) => CRITTER_UNLOCKS[id].kind === 'starter')];
 let solo = null;
 let room = null;
 let reconnect = null;
@@ -50,10 +50,24 @@ const options = (items) => items.map(([id, label]) => '<option value="' + escape
 const button = (label, action, data = '', disabled = false) =>
   '<button type="button" data-action="' + action + '" data-id="' + escape(data) + '"' + (disabled ? ' disabled' : '') + '>' + escape(label) + '</button>';
 
-function characterPicker() {
-  const owned = readStorage(localStorage, collectionKey, []);
-  const characters = [...new Set([...starters, ...owned])].filter((id) => CRITTERS[id]);
-  return `<label>Critter <select id="critter">${options(characters.map((id) => [id, name(id)]))}</select></label>`;
+function characterPicker(pick = 'hudson', showCollection = false) {
+  const owned = new Set([...starters, ...readStorage(localStorage, collectionKey, [])]);
+  const roster = Object.values(CRITTERS);
+  const card = ({ id, name, animal, role }, locked = false) => `
+    <label class="roster-card">
+      <input type="radio" name="critter" value="${escape(id)}" ${locked ? 'disabled' : ''} ${id === pick ? 'checked' : ''}>
+      ${art(id, 'critter-art', name)}
+      <span><strong>${escape(name)}</strong><small>${escape([animal, role].filter(Boolean).join(' · '))}</small>
+      ${locked ? '<small>Recruit to play</small>' : ''}</span>
+    </label>`;
+  const locked = roster.filter(({ id }) => !owned.has(id));
+  return `<fieldset class="character-picker"><legend>Choose a character</legend>
+    <div class="roster-grid">${roster.filter(({ id }) => owned.has(id)).map((critter) => card(critter)).join('')}</div>
+    ${locked.length ? `<details class="roster-collection" ${showCollection ? 'open' : ''}>
+      <summary>Unrecruited animals (${locked.length})</summary>
+      <div class="roster-grid">${locked.map((critter) => card(critter, true)).join('')}</div>
+    </details>` : ''}
+  </fieldset>`;
 }
 
 function message(text = '', source = 'action') {
@@ -222,15 +236,14 @@ function render() {
       controls.innerHTML = `<h1>${phase === 'victory' ? 'The Hollow Crown falls' : 'The woods close in'}</h1>${button('Back to title', 'leave')}`;
     } else if (room) {
       const waiting = room.publicMatch && !room.joined[1];
-      const pick = room.picks[seat()] ?? (scene === renderedScene ? character() : 'hudson');
+      const pick = controls.querySelector('input[name="critter"]:checked')?.value ?? room.picks[seat()] ?? 'hudson';
+      const showCollection = controls.querySelector('.roster-collection')?.open;
       controls.innerHTML = `<h1>${room.publicMatch ? 'Public match' : 'Room'} ${escape(room.code)}</h1>
         <p role="status">${room.joined[1] ? 'Both players joined.' : waiting ? 'Waiting for another player to find a public match.' : 'Share this code with Player 2.'} You are Player ${seat() + 1}.</p>
-        ${room.publicMatch ? room.ready[seat()] ? `<p>Playing as ${escape(name(pick))}.</p>` : characterPicker() : ''}
+        ${room.publicMatch ? room.ready[seat()] ? `<p>Playing as ${escape(name(room.picks[seat()]))}.</p>` : characterPicker(pick, showCollection) : ''}
         <div class="choices">${button('Confirm deck', 'deck', '', room.ready[seat()])}
         ${seat() === 0 ? button('Begin the trail', 'start', '', !room.ready.every(Boolean)) : ''}
         ${button(waiting ? 'Cancel matchmaking' : 'Leave preview room', 'leave')}</div>`;
-      const picker = controls.querySelector('#critter');
-      if (picker) picker.value = pick;
     } else if (scene !== renderedScene) {
       renderLobby();
     }
@@ -413,7 +426,7 @@ function attach(connection) {
   });
 }
 
-function character() { return controls.querySelector('#critter')?.value ?? 'hudson'; }
+function character() { return controls.querySelector('input[name="critter"]:checked')?.value ?? 'hudson'; }
 function companion(id) { return CRITTERS[id]?.animal ? null : 'hare'; }
 
 controls.addEventListener('click', (event) => {
