@@ -63,7 +63,7 @@ func _layout() -> void:
 	_place(potion_row, Vector2(center, floor_y - 310), Vector2(minf(size.x - 22, 610), 43))
 	_place(buttons.companion, Vector2(center - 98, floor_y - 62), Vector2(150, 46))
 	_place(buttons.turn, Vector2(center + 82, floor_y - 62), Vector2(150, 46))
-	_place(buttons.draw_pile, Vector2(62, floor_y - 252), Vector2(100, 218))
+	_place(buttons.draw_pile, Vector2(62, floor_y - 278), Vector2(100, 244))
 	_place(buttons.discard_pile, Vector2(size.x - 62, floor_y - 252), Vector2(100, 218))
 
 
@@ -97,7 +97,7 @@ func _receive(args: Array) -> void:
 	for index in range(int(model.draw)):
 		backs.append({"id": "_back", "index": index, "name": "", "cost": "", "text": "", "enabled": false})
 	_sync_zones(model.hand, model.discard, backs)
-	labels.draw.text = "Draw %s" % int(model.draw)
+	labels.draw.text = "%s cards" % int(model.draw)
 	labels.discard.text = "Discard %s" % model.discard.size()
 	buttons.turn.disabled = not model.enabled
 	buttons.companion.disabled = not model.companion
