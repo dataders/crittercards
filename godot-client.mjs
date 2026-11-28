@@ -8,11 +8,13 @@ import {
   meetsRecruitmentRequirement, trailPosition,
 } from './data.mjs';
 import { readStorage, writeStorage } from './storage.mjs';
-import { createRoom, joinRoom, resumeRoom } from './transport.mjs';
+import { createRoom, isTerminalRoomError, joinRoom, recoverRoom, resumeRoom } from './transport.mjs';
 import { battleCardViews, escape, intentLabel } from './views.mjs';
 
 const controls = document.querySelector('#controls');
 const combat = document.querySelector('#combat');
+const checkpoint = document.querySelector('#room-checkpoint');
+const checkpointCode = document.querySelector('#checkpoint-code');
 const status = document.querySelector('#status');
 const vitals = document.querySelector('#battle-vitals');
 const partyHealth = document.querySelector('#party-health');
@@ -29,6 +31,7 @@ const soloKey = 'crittercards.godot-solo.v1';
 const starters = ['hudson', 'quinn', 'fox', 'hare'];
 let solo = null;
 let room = null;
+let reconnect = null;
 let stopWatching;
 let delivery;
 let pending = false;
@@ -139,12 +142,21 @@ pileDialog.addEventListener('close', () => {
   if (!combat.hidden) combat.focus();
 });
 
+function restoreForm() {
+  return '<details><summary>Restore with a private recovery code</summary><p>Player 1 restores the room. Then Player 2 can retry from their original tab.</p>' +
+    '<form id="recover-form"><label>Private recovery code <textarea name="recoveryCode" required rows="3" autocomplete="off" spellcheck="false"></textarea></label><button>Restore room</button></form></details>';
+}
+
 function render() {
   const next = state();
+  const code = room?.seat === 0 ? room.recoveryCode : '';
+  checkpoint.hidden = !code;
+  if (!code) checkpoint.open = false;
+  if (checkpointCode.value !== (code || '')) checkpointCode.value = code || '';
   if (next) saveCollection(next);
   renderHealth(next);
   if (pileDialog.open) renderPile(next);
-  const scene = next ? `${next.runId}:${next.encounter}:${next.phase}` : 'lobby';
+  const scene = reconnect ? 'reconnect' : next ? `${next.runId}:${next.encounter}:${next.phase}` : 'lobby';
   if (scene !== renderedScene) selection = null;
   const phase = next?.phase;
   const handStamp = phase === 'combat' ? JSON.stringify([next.round, next.players[seat()].hand]) : null;
@@ -156,7 +168,14 @@ function render() {
     if (scene !== renderedScene) controls.innerHTML = '<h1>Combat</h1>';
   } else {
     combat.hidden = true;
-    if (phase === 'route') {
+    if (reconnect) {
+      if (scene !== renderedScene) {
+        controls.innerHTML = '<h1>Reconnect to room ' + escape(reconnect.code) + '</h1>' +
+          '<p>Your seat is saved in this tab. After a restart, Player 1 can restore the room with their private recovery code.</p>' +
+          '<div class="choices">' + button('Retry connection', 'retry') + button('Return to setup', 'leave') + '</div>' + restoreForm();
+        controls.querySelector('[data-action="retry"]').focus();
+      }
+    } else if (phase === 'route') {
       const { actIndex, level, bossLevel } = trailPosition(next.encounter);
       const routes = TRAIL[next.encounter].filter(({ id }) => id !== 'mystery-ambush');
       controls.innerHTML = `<h1>${escape(ACTS[actIndex].name)} · Level ${level}</h1>
@@ -182,7 +201,7 @@ function render() {
         <label>Critter <select id="critter">${options([...new Set([...starters, ...owned])].filter((id) => CRITTERS[id]).map((id) => [id, name(id)]))}</select></label>
         <div class="choices">${button('Start solo', 'solo')}${readStorage(localStorage, soloKey, null) ? button('Resume solo', 'resume-solo') : ''}
         ${button('Host private co-op', 'host')}</div>
-        <form id="join-form"><label>Room code <input name="code" required maxlength="6" autocomplete="off"></label><button>Join private co-op</button></form>`;
+        <form id="join-form"><label>Room code <input name="code" required maxlength="6" autocomplete="off"></label><button>Join private co-op</button></form>${restoreForm()}`;
     }
   }
   renderedScene = scene;
@@ -346,12 +365,20 @@ window.crittercardsGodot = {
 function attach(connection) {
   stopWatching?.();
   solo = null;
+  reconnect = null;
   room = connection;
   writeStorage(sessionStorage, roomKey, { code: room.code, token: room.token });
   stopWatching = room.watch(() => {
     if (statusSource === 'connection') message();
     render();
-  }, (error) => message(error.message, 'connection'));
+  }, (error) => {
+    if (isTerminalRoomError(error)) {
+      reconnect = { code: room.code, token: room.token };
+      room = null;
+      render();
+    }
+    message(error.message, 'connection');
+  });
 }
 
 function character() { return controls.querySelector('#critter')?.value ?? 'hudson'; }
@@ -381,9 +408,13 @@ controls.addEventListener('click', (event) => {
     attach(await createRoom(pick));
     if (companion(pick)) await room.act({ type: 'companion', companionId: companion(pick) });
   });
+  if (action === 'retry' && reconnect) return run(async () => {
+    attach(await resumeRoom(reconnect.code, reconnect.token));
+  });
   if (action === 'leave') return run(() => {
     stopWatching?.();
-    if (!room) writeStorage(localStorage, soloKey, null);
+    if (solo) writeStorage(localStorage, soloKey, null);
+    reconnect = null;
     room = null;
     solo = null;
     writeStorage(sessionStorage, roomKey, null);
@@ -399,12 +430,15 @@ controls.addEventListener('submit', (event) => {
     attach(await joinRoom(values.get('code'), pick));
     if (companion(pick)) await room.act({ type: 'companion', companionId: companion(pick) });
   });
+  if (event.target.id === 'recover-form') return run(async () => {
+    attach(await recoverRoom(values.get('recoveryCode')));
+  });
   const recruit = parseRecruitKey(values.get('recruit'));
   return act({ type: 'draft', cardId: values.get('cardId') || null,
     perkId: values.get('perkId') || undefined, hardPerkId: values.get('hardPerkId') || null,
     recruitId: recruit?.id ?? null, recruitMutation: recruit?.mutation ?? null });
 });
 
-render();
-const ticket = readStorage(sessionStorage, roomKey, null);
-if (ticket) run(async () => { attach(await resumeRoom(ticket.code, ticket.token)); });
+reconnect = readStorage(sessionStorage, roomKey, null);
+if (reconnect) run(async () => { attach(await resumeRoom(reconnect.code, reconnect.token)); });
+else render();

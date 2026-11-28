@@ -15,6 +15,11 @@
   </aside>
   <main>
     <p id="status" role="status" hidden></p>
+    <details id="room-checkpoint" hidden>
+      <summary>Private room recovery code</summary>
+      <p>Keep this code private. Save the latest copy after playing so you can restore this room if the server restarts.</p>
+      <label>Private recovery code <textarea id="checkpoint-code" readonly rows="3" spellcheck="false"></textarea></label>
+    </details>
     <section id="controls" aria-label="Trail and room controls"></section>
     <iframe title="Crittercards Godot combat" id="combat" hidden></iframe>
   </main>

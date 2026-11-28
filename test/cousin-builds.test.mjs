@@ -39,10 +39,10 @@ test('Quinn has separate Vulnerable burst and Frail strength payoffs', () => {
   const planned = play(play(omen, 0), 0);
   const reversed = play(play(omen, 1), 0);
   assert.equal(planned.enemies[0].hp, 107);
-  assert.equal(reversed.enemies[0].hp, 145);
+  assert.equal(reversed.enemies[0].hp, 141);
   assert.equal(planned.enemies[0].vulnerable, 0);
-  assert.equal(planned.players[0].block, 12);
-  assert.equal(reversed.players[0].block, 0);
+  assert.equal(planned.players[0].block, 18);
+  assert.equal(reversed.players[0].block, 6);
 
   const hex = setup('quinn', ['boneBulwark', 'grimResolve']);
   const frail = play(play(hex, 0), 0);

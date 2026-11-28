@@ -75,8 +75,8 @@ export const CARDS = {
   venomFang: { id: 'venomFang', name: 'Venom Fang', build: 'Poison', cost: 1, type: 'attack', target: 'enemy', damage: 4, poisonDamageCap: 28 },
   rootBrace: { id: 'rootBrace', name: 'Root Brace', build: 'Block', cost: 1, type: 'skill', target: 'none', block: 17, nextEnergy: 1 },
   shieldBash: { id: 'shieldBash', name: 'Shield Bash', build: 'Block', cost: 1, type: 'attack', target: 'enemy', damage: 5, spendBlock: 12 },
-  graveOmen: { id: 'graveOmen', name: 'Grave Omen', build: 'Vulnerable', cost: 0, type: 'support', target: 'enemy', mark: true, vulnerable: 1, exhaust: true },
-  graveBreaker: { id: 'graveBreaker', name: 'Gravebreaker', build: 'Vulnerable', cost: 1, type: 'attack', target: 'enemy', damage: 5, vulnerableBonus: 21, vulnerableBlock: 12 },
+  graveOmen: { id: 'graveOmen', name: 'Grave Omen', build: 'Vulnerable', cost: 0, type: 'support', target: 'enemy', mark: true, vulnerable: 1, block: 6, exhaust: true },
+  graveBreaker: { id: 'graveBreaker', name: 'Gravebreaker', build: 'Vulnerable', cost: 1, type: 'attack', target: 'enemy', damage: 9, vulnerableBonus: 17, vulnerableBlock: 12 },
   boneBulwark: { id: 'boneBulwark', name: 'Bone Bulwark', build: 'Frail', cost: 1, type: 'support', target: 'enemy', block: 15, frail: 2 },
   grimResolve: { id: 'grimResolve', name: 'Grim Resolve', build: 'Frail', cost: 0, type: 'support', target: 'enemy', block: 5, frailStrength: 8, exhaust: true },
   shieldWall: { id: 'shieldWall', name: 'Venom Ward', cost: 1, type: 'support', target: 'enemy', block: 6, allyBlock: 5, poison: 3 },
@@ -788,6 +788,7 @@ function laterTrail(config, actIndex) {
     return config.routes.map((name, option) => {
       const hard = option === 1 && HARD_LEVELS.has(index);
       const standardCourt = actIndex === 2 && !hard;
+      const reedwayStand = actIndex === 1 && index === 17 && !hard;
       const crossing = standardCourt && index === 17;
       const courtElite = actIndex === 2 && hard && !boss;
       const healthScale = courtElite ? 1.42 : hard ? 1.25 : standardCourt ? 0.75 : 0.9;
@@ -805,6 +806,7 @@ function laterTrail(config, actIndex) {
           hp: Math.ceil(baseHp * (boss ? (slot === 0 ? 1.55 : 1.15) : 1) * healthScale),
           ...(tactics ? { openingBlock: Math.ceil(tactics.openingBlock[slot] * (hard ? 0.5 : 0.28)) } : {}),
           moves: moves.map(([type, amount], turn) => {
+            if (reedwayStand && slot === 0 && turn === 0) return ['rally', 4];
             if (crossing && slot === 0 && turn === 1) return ['guard', 12];
             const openingCurse = crossing && (type === 'crownCurse' || type === 'rally');
             const scale = openingCurse ? 0.3 : moveScale;
@@ -814,9 +816,9 @@ function laterTrail(config, actIndex) {
       });
       return {
         id: option === 0 ? 'steady' : 'perilous',
-        name: boss ? (hard ? 'Challenge the court' : 'Enter the court') : (tactics?.names[option] ?? name),
+        name: boss ? (hard ? 'Challenge the court' : 'Enter the court') : (reedwayStand ? 'The Reedway Rally' : tactics?.names[option] ?? name),
         trainer,
-        subtitle: boss ? `Face ${trainer} and their champion.` : crossing ? 'One rival curses you, then guards while its partner attacks. Use that turn to break the rally.' : (tactics?.clue ?? `Face ${enemies.map((enemy) => enemy.name).join(' and ')}.`),
+        subtitle: boss ? `Face ${trainer} and their champion.` : crossing ? 'One rival curses you, then guards while its partner attacks. Use that turn to break the rally.' : (reedwayStand ? 'One rival rallies while the other attacks. Stop the rally before their next strike.' : tactics?.clue ?? `Face ${enemies.map((enemy) => enemy.name).join(' and ')}.`),
         difficulty: boss ? (hard ? 'Hard boss' : 'Boss') : (hard ? 'Hard' : 'Standard'),
         goldPerEnemy: hard ? 24 : 8,
         coOpHealth: boss ? 1.25 : 1.20,
