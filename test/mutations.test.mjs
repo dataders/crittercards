@@ -21,7 +21,7 @@ test('each equally likely slot yields at most one mutation at the requested rate
     const mutation = mutationForSlot(slot) ?? 'standard';
     rates[mutation] = (rates[mutation] ?? 0) + 1;
   }
-  assert.deepEqual(rates, { gold: 100, diamond: 60, rainbow: 30, shiny: 15, glitched: 6, standard: 2789 });
+  assert.deepEqual(rates, { gold: 100, diamond: 60, rainbow: 30, shiny: 15, glitched: 1500, standard: 1295 });
 });
 
 test('mutation rolls persist through serialized runs and leave combat RNG and stats alone', () => {

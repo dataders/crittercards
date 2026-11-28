@@ -8,7 +8,11 @@ const act = (state, action) => applyAction(state, { player: 0, ...action });
 function win(run, routeId = 'steady') {
   let battle = act(run, { type: 'route', routeId });
   battle.players[0].hand = ['jab', 'jab'];
-  for (const enemy of battle.enemies) { enemy.hp = 1; enemy.block = 0; }
+  for (const enemy of battle.enemies) {
+    enemy.hp = 1;
+    enemy.block = 0;
+    delete enemy.mutation; // These fixtures cover the standard animal rewards.
+  }
   for (const target of [0, 1]) battle = act(battle, { type: 'play', cardIndex: 0, target });
   return battle;
 }
